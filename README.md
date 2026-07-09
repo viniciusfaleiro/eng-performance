@@ -29,8 +29,12 @@ that exercises every layer end-to-end. The real backend is built on top of this 
 - **Spotless** (google-java-format) — formatting is the single source of truth.
 - **Checkstyle** — curated structural/style rules (`config/checkstyle`).
 - **SpotBugs + FindSecBugs** — static & security analysis (`config/spotbugs`).
-- **JaCoCo** — coverage reports everywhere; **70% line floor** enforced on `domain` + `application`.
+- **JaCoCo** — coverage reports everywhere; **70% line + 60% branch floor** enforced on `domain` + `application`.
 - **ArchUnit** — hexagonal boundaries fail the build if violated.
+
+Frontend (`frontend/`) has its own gate — **ESLint + Prettier + bundle build** (`npm run verify`),
+enforced by the git hooks. Run `npm --prefix frontend ci` once to enable it. Security supply-chain
+scanning (dependency CVEs, secrets) is intentionally out of scope for this harness.
 
 ## Common commands
 
@@ -60,8 +64,8 @@ git config core.hooksPath hooks
 chmod +x hooks/*
 ```
 
-- `pre-commit` → `spotlessCheck` + Checkstyle (fast).
-- `pre-push` → full `./gradlew build`.
+- `pre-commit` → `spotlessCheck` + Checkstyle, plus frontend ESLint/Prettier when `frontend/` changed (fast).
+- `pre-push` → full `./gradlew build` + frontend `npm run verify`.
 
 ## Echo slice (what runs today)
 

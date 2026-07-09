@@ -9,4 +9,13 @@ if ! ./gradlew --console=plain build; then
   exit 1
 fi
 
+# Frontend full gate: lint + format + rebuild the served bundle.
+echo "[pre-push] frontend verify (lint + prettier + build) ..."
+[ -d frontend/node_modules ] || ( cd frontend && npm ci )
+if ! ( cd frontend && npm run verify ); then
+  echo ""
+  echo "[pre-push] FAILED. Frontend gate not green — push aborted."
+  exit 1
+fi
+
 echo "[pre-push] OK"

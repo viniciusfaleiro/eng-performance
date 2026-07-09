@@ -30,10 +30,19 @@ Dependências só podem apontar para dentro. Violou → o build quebra.
 Frontend = Material Design 3 (`@material/web`) vendorizado em
 `adapter-in-web/.../static/vendor/md3.js` — **sem CDN em runtime**. Rebuild via `frontend/`.
 
-## Gates de qualidade (todos em `./gradlew build`)
+## Gates de qualidade
 
-Spotless (google-java-format) · Checkstyle · SpotBugs+FindSecBugs · JaCoCo
-(**piso de 70% de linha** em `domain`+`application`) · ArchUnit.
+**Backend (todos em `./gradlew build`):** Spotless (google-java-format) · Checkstyle ·
+SpotBugs+FindSecBugs · JaCoCo (**pisos de 70% de linha e 60% de branch** em
+`domain`+`application`) · ArchUnit.
+
+**Frontend (`frontend/`, npm):** ESLint + Prettier + build do bundle MD3, via
+`npm run verify`. Aplicados pelos git hooks (pre-commit = lint+format quando há
+mudança em `frontend/`; pre-push = `verify` completo). Requer `npm --prefix frontend ci` uma vez.
+
+Fora de escopo por decisão do produto: **scanning de segurança** (vulnerabilidades de
+dependências, secrets) — não faz parte deste harness. SpotBugs+FindSecBugs cobre análise
+estática de segurança do código; scanners de supply-chain não são usados.
 
 ## ⛔ Regra de gate — SEMPRE rode o harness antes de subir
 

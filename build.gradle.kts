@@ -21,6 +21,15 @@ val checkstyleToolVersion = "10.21.0"
 // Modules that carry business rules and therefore must meet a coverage gate.
 val coverageGatedModules = setOf("domain", "application")
 
+// OSS Index (Sonatype) credentials for the dependency-vulnerability gate.
+// Anonymous access now returns 401, so the gate stays dormant until a free
+// account's email + token are provided via -Possindex... , gradle.properties or env.
+val ossIndexUser: String? =
+    (findProperty("ossindexUsername") as String?) ?: System.getenv("OSSINDEX_USERNAME")
+val ossIndexToken: String? =
+    (findProperty("ossindexToken") as String?) ?: System.getenv("OSSINDEX_TOKEN")
+val ossIndexEnabled = !ossIndexUser.isNullOrBlank() && !ossIndexToken.isNullOrBlank()
+
 allprojects {
     group = "com.engperf"
     version = "0.1.0-SNAPSHOT"
@@ -104,6 +113,10 @@ subprojects {
                     limit {
                         counter = "LINE"
                         minimum = "0.70".toBigDecimal()
+                    }
+                    limit {
+                        counter = "BRANCH"
+                        minimum = "0.60".toBigDecimal()
                     }
                 }
             }
