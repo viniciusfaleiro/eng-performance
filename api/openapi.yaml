@@ -1,0 +1,1512 @@
+openapi: 3.0.3
+info:
+  title: Eng Performance API
+  version: 0.1.0
+  license:
+    name: Proprietary
+  description: |
+    Contratos de API da plataforma de performance de engenharia (Azure DevOps →
+    DORA / Fluxo / IA). Este documento cobre **todos os fluxos das telas** do
+    protótipo, cruzados com o catálogo de métricas e o RBAC do PRD
+    (`initial-spec/initial-spec.md`).
+
+    ## Convenções transversais
+    - **Contexto de estrutura** vem no parâmetro `nodeId` (`all`, `v:<slug>`,
+      `t:<slug>`, `p:<slug>`). O nível é derivável do prefixo.
+    - **Frequência** (`daily|weekly|monthly`) recalcula valores e evolução; nunca
+      recarrega a estrutura.
+    - **Polaridade:** todo `Delta` traz `direction` (segue o sinal numérico) e
+      `sentiment` (`good|bad|neutral`, segue a direção desejada da métrica). A UI
+      pinta a cor por `sentiment` e a seta por `direction`.
+    - **Benchmark:** `tier` (`elite|high|medium|low`) só é preenchido em métricas
+      DORA; nulo nas demais.
+    - **RBAC:** o backend filtra por papel. Acesso a um `nodeId` fora do escopo do
+      usuário responde `403`. Comparação/ranking **de pessoas** só é retornada ao
+      gestor daquele time (nunca leaderboard público nem cross-time).
+servers:
+  - url: /api
+    description: Servido pelo próprio serviço (mesmo host da UI)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Login próprio (email/senha) e sessão.
+  - name: Structure
+    description: Árvore organizacional (Vertical → Time → Pessoa) filtrada por RBAC.
+  - name: Catalog
+    description: Definições de métricas (chaves, unidades, polaridade, benchmark).
+  - name: Metrics
+    description: Cards e séries temporais reutilizáveis por qualquer nível.
+  - name: Dashboards
+    description: Painéis compostos por sub-dashboard (DORA / Fluxo / IA) em uma chamada.
+  - name: Rankings
+    description: Top-N por entidade (times ou pessoas, conforme o nível e o RBAC).
+  - name: Comparison
+    description: Heatmap cross-estrutura (entidades × métricas).
+  - name: Individual
+    description: Painel de contribuição de uma pessoa e drawer de atividade.
+  - name: Admin
+    description: Mapa organizacional, integração ADO e convenção de IA.
+
+paths:
+  # ---------------------------------------------------------------- Auth
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Autentica por email/senha e retorna um token de sessão.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        "200":
+          description: Autenticado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, user]
+                properties:
+                  token: { type: string, description: Bearer token JWT. }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Encerra a sessão atual.
+      responses:
+        "204": { description: Sessão encerrada. }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Usuário atual, papel e escopo de acesso (para montar a navegação).
+      responses:
+        "200":
+          description: Perfil do usuário logado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/password:
+    put:
+      tags: [Auth]
+      summary: Troca a própria senha.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChange" }
+      responses:
+        "204": { description: Senha alterada. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ---------------------------------------------------------------- Structure
+  /structure/tree:
+    get:
+      tags: [Structure]
+      summary: Árvore organizacional navegável, já filtrada por RBAC.
+      description: |
+        Retorna a raiz "Visão geral" e a hierarquia visível ao usuário. Pessoas só
+        aparecem sob times que o usuário lidera ou dos quais participa.
+      responses:
+        "200":
+          description: Árvore de nós.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [root]
+                properties:
+                  root: { $ref: "#/components/schemas/TreeNode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /structure/nodes/{nodeId}:
+    get:
+      tags: [Structure]
+      summary: Metadados de um nó (breadcrumb, nível e visões permitidas).
+      parameters:
+        - $ref: "#/components/parameters/NodeIdPath"
+      responses:
+        "200":
+          description: Metadados do nó selecionado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeContext" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- Catalog
+  /metrics/catalog:
+    get:
+      tags: [Catalog]
+      summary: Catálogo de métricas (drives labels, unidades e polaridade na UI).
+      parameters:
+        - name: group
+          in: query
+          schema: { $ref: "#/components/schemas/MetricGroup" }
+          description: Filtra por grupo (dora/flow/ai/individual).
+      responses:
+        "200":
+          description: Definições de métricas.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MetricDefinition" }
+
+  # ---------------------------------------------------------------- Metrics
+  /metrics/cards:
+    get:
+      tags: [Metrics]
+      summary: Cards de métrica de um grupo para o nó/frequência (topo dos painéis).
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+        - name: group
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/MetricGroup" }
+      responses:
+        "200":
+          description: Lista de cards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MetricCard" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /metrics/{metricKey}/series:
+    get:
+      tags: [Metrics]
+      summary: Série temporal de uma métrica (Tendências e gráficos hero).
+      description: |
+        Com `split=ai`, retorna duas séries (com IA vs. sem IA) para o comparativo
+        de impacto da IA.
+      parameters:
+        - $ref: "#/components/parameters/MetricKeyPath"
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Periods"
+        - name: split
+          in: query
+          schema: { type: string, enum: [none, ai], default: none }
+      responses:
+        "200":
+          description: Uma ou mais séries alinhadas aos mesmos rótulos de período.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeriesBundle" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------------------------------------------------------- Dashboards
+  /dashboards/{group}:
+    get:
+      tags: [Dashboards]
+      summary: Painel composto de um sub-dashboard (DORA / Fluxo / IA) em uma chamada.
+      description: |
+        Serve a tela inteira: cards no topo + gráfico hero + ranking + análises
+        (maiores/menores) + seções específicas do grupo (tabela de tiers DORA,
+        scatter e fases no Fluxo, donut e séries com/sem IA na IA).
+      parameters:
+        - name: group
+          in: path
+          required: true
+          schema: { type: string, enum: [dora, flow, ai] }
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+      responses:
+        "200":
+          description: Painel do grupo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardPanel" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Rankings
+  /rankings:
+    get:
+      tags: [Rankings]
+      summary: Top-N de entidades por uma métrica no nível atual.
+      description: |
+        As entidades ranqueadas dependem do nível de `nodeId`: `all`/vertical →
+        times; time → **pessoas do time** (só para o gestor). Pessoas nunca são
+        ranqueadas cross-time.
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+        - name: metricKey
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/MetricKey" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - name: order
+          in: query
+          description: Ordena por melhor ou pior; default respeita a polaridade da métrica.
+          schema: { type: string, enum: [best, worst], default: best }
+      responses:
+        "200":
+          description: Ranking ordenado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ranking" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Comparison
+  /comparison/heatmap:
+    get:
+      tags: [Comparison]
+      summary: Heatmap cross-estrutura (entidades × métricas) para a visão Comparativo.
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+        - name: scope
+          in: query
+          description: |
+            Dimensão das linhas. `teams`/`verticals` na visão geral; `people` só é
+            aceito quando `nodeId` é um time (e o solicitante é o gestor).
+          schema: { type: string, enum: [teams, verticals, people] }
+        - name: group
+          in: query
+          description: Restringe as colunas a um grupo de métricas (opcional).
+          schema: { $ref: "#/components/schemas/MetricGroup" }
+      responses:
+        "200":
+          description: Matriz do heatmap.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Heatmap" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Individual
+  /people/{personId}/summary:
+    get:
+      tags: [Individual]
+      summary: Cabeçalho do painel individual (assertividade de PRs + cards de entrega).
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/Frequency"
+      responses:
+        "200":
+          description: Resumo individual.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PersonSummary" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /people/{personId}/contributions:
+    get:
+      tags: [Individual]
+      summary: Mapa de contribuição de commits (calendário estilo GitHub, 12 meses).
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Contagens diárias de commits.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ContributionCalendar" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /people/{personId}/delivery/series:
+    get:
+      tags: [Individual]
+      summary: Evolução de entrega para os cards clicáveis (throughput / ciclo / % IA).
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Periods"
+        - name: metric
+          in: query
+          required: true
+          schema: { type: string, enum: [throughput, cycleTime, aiCommitPct] }
+      responses:
+        "200":
+          description: Série temporal da métrica selecionada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SeriesBundle" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /people/{personId}/reviews:
+    get:
+      tags: [Individual]
+      summary: Contribuição em code review (comentários, aprovações/rejeições, dados vs. recebidos).
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/Frequency"
+      responses:
+        "200":
+          description: Métricas de review.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewContribution" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /people/{personId}/work-distribution:
+    get:
+      tags: [Individual]
+      summary: Distribuição do trabalho por tipo de tarefa (% e horas).
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/Frequency"
+      responses:
+        "200":
+          description: Esforço por tipo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WorkDistribution" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /people/{personId}/activity:
+    get:
+      tags: [Individual]
+      summary: Drawer de atividade — últimos commits e PRs com deep-link para o ADO.
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: kind
+          in: query
+          schema: { type: string, enum: [all, commit, pull_request], default: all }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Itens de atividade paginados.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/ActivityItem" }
+                  nextCursor: { type: string, nullable: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # ---------------------------------------------------------------- Admin: Org map
+  /admin/verticals:
+    get:
+      tags: [Admin]
+      summary: Lista verticais.
+      responses:
+        "200":
+          description: Verticais.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Vertical" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Cria uma vertical.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerticalInput" }
+      responses:
+        "201":
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vertical" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/teams:
+    get:
+      tags: [Admin]
+      summary: Lista times (opcionalmente por vertical).
+      parameters:
+        - name: verticalId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Times.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Team" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Cria um time (pode mapear múltiplos projetos/repos do ADO).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TeamInput" }
+      responses:
+        "201":
+          description: Criado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/people:
+    get:
+      tags: [Admin]
+      summary: Lista pessoas.
+      parameters:
+        - name: teamId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Pessoas.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Person" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Cria uma pessoa e vincula suas identidades no ADO.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PersonInput" }
+      responses:
+        "201":
+          description: Criada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Person" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/people/{personId}:
+    parameters:
+      - $ref: "#/components/parameters/PersonId"
+    put:
+      tags: [Admin]
+      summary: Atualiza uma pessoa (time, gestor, identidades ADO).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PersonInput" }
+      responses:
+        "200":
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Person" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Admin]
+      summary: Remove uma pessoa.
+      responses:
+        "204": { description: Removida. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/people/{personId}/team-change:
+    post:
+      tags: [Admin]
+      summary: Move a pessoa para outro time preservando o histórico (as-of-event).
+      description: |
+        Encerra o membership vigente na véspera de `effectiveDate` e abre um novo.
+        Os números de períodos anteriores permanecem no time da época.
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TeamChange" }
+      responses:
+        "200":
+          description: Pessoa com o novo membership vigente.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Person" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ---------------------------------------------------------------- Admin: Users
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Lista as contas de usuário da plataforma.
+      parameters:
+        - name: role
+          in: query
+          schema: { $ref: "#/components/schemas/Role" }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/UserStatus" }
+      responses:
+        "200":
+          description: Contas de usuário.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/UserAccount" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Cria uma conta (email + senha + perfil), opcionalmente vinculada a uma Pessoa.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserAccountCreate" }
+      responses:
+        "201":
+          description: Conta criada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserAccount" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/users/{userId}:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Admin]
+      summary: Detalha uma conta.
+      responses:
+        "200":
+          description: Conta.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserAccount" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Admin]
+      summary: Atualiza nome, perfil, status ou vínculo de uma conta.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserAccountUpdate" }
+      responses:
+        "200":
+          description: Conta atualizada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserAccount" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Admin]
+      summary: Remove (ou desativa) uma conta.
+      responses:
+        "204": { description: Removida. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/users/{userId}/password:
+    put:
+      tags: [Admin]
+      summary: Redefine a senha de uma conta (reset pelo Admin).
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordReset" }
+      responses:
+        "204": { description: Senha redefinida. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ---------------------------------------------------------------- Admin: Integration & AI
+  /admin/integrations/azure-devops:
+    get:
+      tags: [Admin]
+      summary: Configuração da integração com o Azure DevOps.
+      responses:
+        "200":
+          description: Config atual (segredos redigidos).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdoIntegration" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Admin]
+      summary: Atualiza a integração (org, PAT, regra de stage de produção).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdoIntegrationInput" }
+      responses:
+        "200":
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdoIntegration" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+  /admin/ai-convention:
+    get:
+      tags: [Admin]
+      summary: Convenção de detecção de IA (trailer/tag de commit).
+      responses:
+        "200":
+          description: Convenção atual.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiConvention" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Admin]
+      summary: Atualiza a convenção de IA.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiConvention" }
+      responses:
+        "200":
+          description: Atualizada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AiConvention" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/ado/committers:
+    get:
+      tags: [Admin]
+      summary: Identidades de committers descobertas no ADO, com status de vínculo.
+      description: |
+        Alimenta a tela de associação: cada identidade (email de commit / usuário de
+        PR) aparece com a Pessoa vinculada, ou vazia quando ainda não mapeada.
+      parameters:
+        - name: mapped
+          in: query
+          schema: { type: string, enum: [all, mapped, unmapped], default: all }
+      responses:
+        "200":
+          description: Committers descobertos.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AdoCommitter" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      summary: Vincula uma identidade de committer a uma Pessoa (idempotente).
+      description: Passe `personId` nulo para desvincular a identidade.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommitterAssignment" }
+      responses:
+        "200":
+          description: Vínculo aplicado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdoCommitter" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/coverage:
+    get:
+      tags: [Admin]
+      summary: Cobertura de atribuição (eventos mapeados vs. balde "Não atribuído").
+      parameters:
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+      responses:
+        "200":
+          description: Percentuais de cobertura por dimensão.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Coverage" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /admin/sync/status:
+    get:
+      tags: [Admin]
+      summary: Status da última sincronização batch e cobertura do backfill.
+      responses:
+        "200":
+          description: Status de ingestão.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncStatus" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    NodeId:
+      name: nodeId
+      in: query
+      required: true
+      description: Contexto de estrutura (`all`, `v:<slug>`, `t:<slug>`, `p:<slug>`).
+      schema: { $ref: "#/components/schemas/NodeId" }
+    NodeIdPath:
+      name: nodeId
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/NodeId" }
+    PersonId:
+      name: personId
+      in: path
+      required: true
+      description: Id da pessoa (com ou sem o prefixo `p:`).
+      schema: { type: string }
+    MetricKeyPath:
+      name: metricKey
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/MetricKey" }
+    Frequency:
+      name: frequency
+      in: query
+      required: true
+      schema: { $ref: "#/components/schemas/Frequency" }
+    Periods:
+      name: periods
+      in: query
+      description: Número de períodos da série (janela histórica).
+      schema: { type: integer, minimum: 2, maximum: 104, default: 12 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Não autenticado.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Forbidden:
+      description: Autenticado, mas sem permissão para este nó/recurso (RBAC).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    NotFound:
+      description: Recurso não encontrado.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    Conflict:
+      description: "Conflito (ex.: email já cadastrado)."
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    ValidationError:
+      description: Corpo inválido.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    # ---- Enums / primitives ----
+    Frequency:
+      type: string
+      enum: [daily, weekly, monthly]
+    NodeLevel:
+      type: string
+      enum: [overview, vertical, team, person]
+    NodeId:
+      type: string
+      pattern: "^(all|v:[a-z0-9-]+|t:[a-z0-9-]+|p:[a-z0-9-]+)$"
+      example: "t:checkout"
+    MetricGroup:
+      type: string
+      enum: [dora, flow, ai, individual]
+    MetricKey:
+      type: string
+      description: Chave estável da métrica (ver `/metrics/catalog`).
+      enum:
+        - deploymentFrequency
+        - leadTime
+        - changeFailureRate
+        - mttr
+        - cycleTime
+        - throughput
+        - wip
+        - prReviewTime
+        - prSize
+        - flowEfficiency
+        - aiCommitPct
+        - aiAdoption
+        - aiImpact
+        - prFirstPassRate
+    BenchmarkTier:
+      type: string
+      enum: [elite, high, medium, low]
+    Sentiment:
+      type: string
+      description: Direção de valor (polaridade) — a UI pinta a cor por aqui.
+      enum: [good, bad, neutral]
+    TrendDirection:
+      type: string
+      description: Sinal numérico da variação — a UI aponta a seta por aqui.
+      enum: [up, down, flat]
+
+    Role:
+      type: string
+      enum: [exec, manager, contributor, admin]
+
+    # ---- Identity / navigation ----
+    User:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Role" }
+        managedTeamIds:
+          type: array
+          items: { type: string }
+          description: Times que o usuário lidera (habilita visão individual/coaching).
+        homeNodeId: { $ref: "#/components/schemas/NodeId" }
+    EntityRef:
+      type: object
+      required: [id, label, level]
+      properties:
+        id: { $ref: "#/components/schemas/NodeId" }
+        label: { type: string }
+        level: { $ref: "#/components/schemas/NodeLevel" }
+    TreeNode:
+      type: object
+      required: [id, label, level]
+      properties:
+        id: { $ref: "#/components/schemas/NodeId" }
+        label: { type: string }
+        level: { $ref: "#/components/schemas/NodeLevel" }
+        children:
+          type: array
+          items: { $ref: "#/components/schemas/TreeNode" }
+    NodeContext:
+      type: object
+      required: [id, label, level, breadcrumb, views]
+      properties:
+        id: { $ref: "#/components/schemas/NodeId" }
+        label: { type: string }
+        level: { $ref: "#/components/schemas/NodeLevel" }
+        breadcrumb:
+          type: array
+          items: { $ref: "#/components/schemas/EntityRef" }
+        baselineLabel:
+          type: string
+          description: 'Ex.: "vs. semana passada" (depende da frequência).'
+        views:
+          type: array
+          description: Visões permitidas neste nó (person → apenas `dashboard`).
+          items: { type: string, enum: [dashboard, trends, comparison] }
+
+    # ---- Metric core ----
+    MetricDefinition:
+      type: object
+      required: [key, label, unit, group, higherIsBetter, hasBenchmark]
+      properties:
+        key: { $ref: "#/components/schemas/MetricKey" }
+        label: { type: string }
+        unit: { type: string, example: "/dia" }
+        group: { $ref: "#/components/schemas/MetricGroup" }
+        higherIsBetter: { type: boolean }
+        hasBenchmark: { type: boolean, description: True apenas para métricas DORA. }
+        attributionScope:
+          type: string
+          enum: [person, repo]
+          description: Caminho de atribuição — pessoa (soma dos liderados) ou repo/pipeline.
+        aggregation:
+          type: string
+          enum: [sum, median, ratio, snapshot]
+          description: Como o valor é composto no roll-up (soma, mediana, taxa ponderada, fim do período).
+        description: { type: string }
+    Delta:
+      type: object
+      description: Variação vs. período anterior, com sinal e polaridade separados.
+      required: [percent, direction, sentiment]
+      properties:
+        absolute: { type: number, nullable: true }
+        percent: { type: number, description: Variação percentual (pode ser negativa). }
+        direction: { $ref: "#/components/schemas/TrendDirection" }
+        sentiment: { $ref: "#/components/schemas/Sentiment" }
+      example: { absolute: 2.1, percent: 11.1, direction: up, sentiment: bad }
+    MetricCard:
+      type: object
+      required: [key, label, value, unit, delta]
+      properties:
+        key: { $ref: "#/components/schemas/MetricKey" }
+        label: { type: string }
+        value: { type: number, nullable: true }
+        unit: { type: string }
+        delta: { $ref: "#/components/schemas/Delta" }
+        tier:
+          allOf: [{ $ref: "#/components/schemas/BenchmarkTier" }]
+        sparkline:
+          type: array
+          items: { type: number }
+          description: Mini-tendência (valores recentes) para o card.
+    SeriesPoint:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string, description: "Rótulo do período (ex.: S-6, Mar)." }
+        periodStart: { type: string, format: date, nullable: true }
+        value: { type: number, nullable: true }
+    Series:
+      type: object
+      required: [name, unit, points]
+      properties:
+        name: { type: string }
+        metricKey:
+          allOf: [{ $ref: "#/components/schemas/MetricKey" }]
+        unit: { type: string }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/SeriesPoint" }
+    SeriesBundle:
+      type: object
+      required: [labels, series]
+      properties:
+        metricKey: { $ref: "#/components/schemas/MetricKey" }
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        labels:
+          type: array
+          items: { type: string }
+        series:
+          type: array
+          description: Uma série (default) ou duas (com IA vs. sem IA quando split=ai).
+          items: { $ref: "#/components/schemas/Series" }
+
+    # ---- Rankings / stats ----
+    RankingEntry:
+      type: object
+      required: [entity, value, unit]
+      properties:
+        entity: { $ref: "#/components/schemas/EntityRef" }
+        value: { type: number }
+        unit: { type: string }
+        delta: { $ref: "#/components/schemas/Delta" }
+        tier:
+          allOf: [{ $ref: "#/components/schemas/BenchmarkTier" }]
+        sparkline:
+          type: array
+          items: { type: number }
+    Ranking:
+      type: object
+      required: [metricKey, entityLevel, entries]
+      properties:
+        metricKey: { $ref: "#/components/schemas/MetricKey" }
+        entityLevel:
+          allOf: [{ $ref: "#/components/schemas/NodeLevel" }]
+          description: Nível das entidades ranqueadas (team ou person).
+        order: { type: string, enum: [best, worst] }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/RankingEntry" }
+    StatInsight:
+      type: object
+      description: Cartão "maior/menor/melhor" das análises do dashboard.
+      required: [label, value, unit]
+      properties:
+        label: { type: string, example: "Maior Change Failure Rate" }
+        entity:
+          allOf: [{ $ref: "#/components/schemas/EntityRef" }]
+        value: { type: number }
+        unit: { type: string }
+        delta:
+          allOf: [{ $ref: "#/components/schemas/Delta" }]
+
+    # ---- Dashboard composite ----
+    DashboardPanel:
+      type: object
+      required: [group, node, frequency, cards]
+      properties:
+        group: { type: string, enum: [dora, flow, ai] }
+        node: { $ref: "#/components/schemas/EntityRef" }
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        baselineLabel: { type: string }
+        cards:
+          type: array
+          items: { $ref: "#/components/schemas/MetricCard" }
+        hero:
+          allOf: [{ $ref: "#/components/schemas/Series" }]
+          description: Evolução (área) da métrica-âncora do grupo.
+        ranking:
+          allOf: [{ $ref: "#/components/schemas/Ranking" }]
+        stats:
+          type: array
+          items: { $ref: "#/components/schemas/StatInsight" }
+        doraTierTable:
+          type: array
+          nullable: true
+          description: Só DORA — classificação Elite/Alto/Médio/Baixo por time.
+          items: { $ref: "#/components/schemas/TierRow" }
+        scatter:
+          allOf: [{ $ref: "#/components/schemas/Scatter" }]
+          description: Só Fluxo — throughput × cycle time.
+        phases:
+          allOf: [{ $ref: "#/components/schemas/PhaseBreakdown" }]
+          description: Só Fluxo — cycle time nas 4 fases.
+        aiSplit:
+          allOf: [{ $ref: "#/components/schemas/Donut" }]
+          description: Só IA — com IA vs. sem IA.
+        aiComparisonSeries:
+          type: array
+          nullable: true
+          description: Só IA — cycle time de PRs com IA vs. sem IA.
+          items: { $ref: "#/components/schemas/Series" }
+    TierRow:
+      type: object
+      required: [entity, cells]
+      properties:
+        entity: { $ref: "#/components/schemas/EntityRef" }
+        cells:
+          type: array
+          items:
+            type: object
+            required: [metricKey, tier]
+            properties:
+              metricKey: { $ref: "#/components/schemas/MetricKey" }
+              value: { type: number, nullable: true }
+              tier: { $ref: "#/components/schemas/BenchmarkTier" }
+    ScatterPoint:
+      type: object
+      required: [entity, x, y]
+      properties:
+        entity: { $ref: "#/components/schemas/EntityRef" }
+        x: { type: number }
+        y: { type: number }
+    Scatter:
+      type: object
+      required: [xMetric, yMetric, points]
+      properties:
+        xMetric: { $ref: "#/components/schemas/MetricKey" }
+        yMetric: { $ref: "#/components/schemas/MetricKey" }
+        xUnit: { type: string }
+        yUnit: { type: string }
+        points:
+          type: array
+          items: { $ref: "#/components/schemas/ScatterPoint" }
+    PhaseBreakdown:
+      type: object
+      description: Cycle time decomposto (Coding → PR pickup → Review → Deploy).
+      required: [unit, phases]
+      properties:
+        unit: { type: string }
+        phases:
+          type: array
+          items:
+            type: object
+            required: [name, value]
+            properties:
+              name: { type: string, enum: [coding, pickup, review, deploy] }
+              label: { type: string }
+              value: { type: number }
+    DonutSegment:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string }
+        value: { type: number }
+        percent: { type: number }
+    Donut:
+      type: object
+      required: [segments]
+      properties:
+        segments:
+          type: array
+          items: { $ref: "#/components/schemas/DonutSegment" }
+
+    # ---- Comparison heatmap ----
+    Heatmap:
+      type: object
+      required: [scope, metrics, rows]
+      properties:
+        scope: { type: string, enum: [teams, verticals, people] }
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        metrics:
+          type: array
+          items: { $ref: "#/components/schemas/MetricDefinition" }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/HeatmapRow" }
+    HeatmapRow:
+      type: object
+      required: [entity, cells]
+      properties:
+        entity: { $ref: "#/components/schemas/EntityRef" }
+        cells:
+          type: array
+          items: { $ref: "#/components/schemas/HeatmapCell" }
+    HeatmapCell:
+      type: object
+      required: [metricKey, value, normalized]
+      properties:
+        metricKey: { $ref: "#/components/schemas/MetricKey" }
+        value: { type: number, nullable: true }
+        unit: { type: string }
+        normalized:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Valor normalizado (0..1) para a intensidade da cor.
+        sentiment: { $ref: "#/components/schemas/Sentiment" }
+        tier:
+          allOf: [{ $ref: "#/components/schemas/BenchmarkTier" }]
+
+    # ---- Individual panel ----
+    PersonSummary:
+      type: object
+      required: [person, frequency, prFirstPassRate, deliveryCards]
+      properties:
+        person: { $ref: "#/components/schemas/EntityRef" }
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        prFirstPassRate:
+          type: object
+          description: Gauge "Taxa de assertividade de PRs" (aprovados sem ajustes).
+          required: [percent]
+          properties:
+            percent: { type: number, minimum: 0, maximum: 100 }
+            delta:
+              allOf: [{ $ref: "#/components/schemas/Delta" }]
+        deliveryCards:
+          type: array
+          description: Cards clicáveis (throughput / tempo por ciclo / % commits com IA).
+          items: { $ref: "#/components/schemas/MetricCard" }
+    ContributionDay:
+      type: object
+      required: [date, count, level]
+      properties:
+        date: { type: string, format: date }
+        count: { type: integer, minimum: 0 }
+        level: { type: integer, minimum: 0, maximum: 4, description: Intensidade 0–4. }
+    ContributionCalendar:
+      type: object
+      required: [from, to, total, days]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        total: { type: integer }
+        days:
+          type: array
+          items: { $ref: "#/components/schemas/ContributionDay" }
+    ReviewContribution:
+      type: object
+      required: [frequency, commentsMade, approvalsGiven, rejectionsGiven, reviews]
+      properties:
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        commentsMade: { type: integer }
+        approvalsGiven: { type: integer }
+        rejectionsGiven: { type: integer }
+        reviews:
+          type: object
+          required: [given, received]
+          properties:
+            given: { type: integer }
+            received: { type: integer }
+        deltas:
+          type: object
+          description: Variações opcionais por indicador.
+          additionalProperties: { $ref: "#/components/schemas/Delta" }
+    WorkDistributionItem:
+      type: object
+      required: [type, label, percent, hours]
+      properties:
+        type: { type: string, example: "feature" }
+        label: { type: string }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        hours: { type: number, minimum: 0 }
+    WorkDistribution:
+      type: object
+      required: [frequency, items]
+      properties:
+        frequency: { $ref: "#/components/schemas/Frequency" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/WorkDistributionItem" }
+    ActivityItem:
+      type: object
+      required: [kind, id, title, repository, timestamp, url]
+      properties:
+        kind: { type: string, enum: [commit, pull_request] }
+        id: { type: string, description: SHA curto ou número do PR. }
+        title: { type: string }
+        repository: { type: string }
+        timestamp: { type: string, format: date-time }
+        url: { type: string, format: uri, description: Deep-link direto para o Azure DevOps. }
+        aiAssisted: { type: boolean, nullable: true }
+        status:
+          type: string
+          nullable: true
+          description: Só PR.
+          enum: [active, completed, abandoned, draft]
+
+    # ---- Admin: users ----
+    UserStatus:
+      type: string
+      enum: [active, invited, disabled]
+    UserAccount:
+      type: object
+      required: [id, name, email, role, status]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: "#/components/schemas/Role" }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        personId:
+          type: string
+          nullable: true
+          description: Pessoa da estrutura vinculada a esta conta (para escopo/RBAC).
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+    UserAccountCreate:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        role: { $ref: "#/components/schemas/Role" }
+        personId: { type: string, nullable: true }
+    UserAccountUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        status: { $ref: "#/components/schemas/UserStatus" }
+        personId: { type: string, nullable: true }
+    PasswordChange:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, format: password }
+        newPassword: { type: string, format: password, minLength: 8 }
+    PasswordReset:
+      type: object
+      required: [newPassword]
+      properties:
+        newPassword: { type: string, format: password, minLength: 8 }
+
+    # ---- Admin: org structure ----
+    Vertical:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        managerId:
+          type: string
+          nullable: true
+          description: Gestor da vertical (definido manualmente pelo Admin).
+        teamIds:
+          type: array
+          items: { type: string }
+    VerticalInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        managerId: { type: string, nullable: true }
+    Team:
+      type: object
+      required: [id, name, verticalId]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        verticalId: { type: string }
+        managerId:
+          type: string
+          nullable: true
+          description: Gestor do time (definido manualmente pelo Admin).
+        adoProjects:
+          type: array
+          description: Projetos/repos do ADO que alimentam este time (1 repo → 1 time).
+          items: { $ref: "#/components/schemas/AdoRepoRef" }
+        productionStageOverride:
+          type: string
+          nullable: true
+          description: Sobrescreve a regra global de stage de produção para este time.
+    TeamInput:
+      type: object
+      required: [name, verticalId]
+      properties:
+        name: { type: string }
+        verticalId: { type: string }
+        managerId: { type: string, nullable: true }
+        adoProjects:
+          type: array
+          items: { $ref: "#/components/schemas/AdoRepoRef" }
+        productionStageOverride: { type: string, nullable: true }
+    AdoRepoRef:
+      type: object
+      required: [project]
+      properties:
+        project: { type: string }
+        repository: { type: string, nullable: true }
+    Person:
+      type: object
+      required: [id, name, teamId]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        teamId:
+          type: string
+          description: Time atual (o membership vigente sem data de fim).
+        email: { type: string, format: email, nullable: true }
+        adoIdentities:
+          type: array
+          description: Emails de commit / usuários de PR/work item vinculados.
+          items: { type: string }
+        memberships:
+          type: array
+          description: Histórico de vínculos com vigência (as-of-event).
+          items: { $ref: "#/components/schemas/TeamMembership" }
+    PersonInput:
+      type: object
+      required: [name, teamId]
+      properties:
+        name: { type: string }
+        teamId: { type: string }
+        effectiveDate:
+          type: string
+          format: date
+          description: Início do vínculo com este time (default = hoje).
+        email: { type: string, format: email, nullable: true }
+        adoIdentities:
+          type: array
+          items: { type: string }
+    TeamMembership:
+      type: object
+      required: [teamId, startDate]
+      properties:
+        teamId: { type: string }
+        teamName: { type: string, nullable: true }
+        startDate: { type: string, format: date }
+        endDate:
+          type: string
+          format: date
+          nullable: true
+          description: Vazio no vínculo vigente.
+    TeamChange:
+      type: object
+      required: [teamId, effectiveDate]
+      properties:
+        teamId: { type: string }
+        effectiveDate: { type: string, format: date }
+    AdoCommitter:
+      type: object
+      required: [identity, mapped]
+      properties:
+        identity: { type: string, description: Email de commit ou usuário do ADO. }
+        displayName: { type: string, nullable: true }
+        mapped: { type: boolean }
+        personId: { type: string, nullable: true }
+        personName: { type: string, nullable: true }
+        commitCount: { type: integer, nullable: true }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+    CommitterAssignment:
+      type: object
+      required: [identity]
+      properties:
+        identity: { type: string }
+        personId:
+          type: string
+          nullable: true
+          description: Pessoa alvo; nulo desvincula.
+    AdoIntegration:
+      type: object
+      required: [organizationUrl, connected]
+      properties:
+        organizationUrl: { type: string, format: uri }
+        connected: { type: boolean }
+        patRedacted: { type: string, description: PAT mascarado (nunca retornado em claro). }
+        productionStageRule:
+          type: string
+          description: Regra global de stage de produção (times podem sobrescrever).
+        lastValidatedAt: { type: string, format: date-time, nullable: true }
+    Coverage:
+      type: object
+      description: Percentual de eventos atribuídos vs. balde "Não atribuído".
+      required: [attributedPercent]
+      properties:
+        attributedPercent: { type: number, minimum: 0, maximum: 100 }
+        byDimension:
+          type: array
+          items:
+            type: object
+            required: [dimension, attributedPercent]
+            properties:
+              dimension: { type: string, enum: [commits, prs, deploys, workItems] }
+              attributedPercent: { type: number, minimum: 0, maximum: 100 }
+              unattributed: { type: integer, description: Eventos no balde "Não atribuído". }
+    AdoIntegrationInput:
+      type: object
+      required: [organizationUrl, personalAccessToken]
+      properties:
+        organizationUrl: { type: string, format: uri }
+        personalAccessToken: { type: string, format: password }
+        productionStageRule: { type: string }
+    AiConvention:
+      type: object
+      required: [strategy]
+      properties:
+        strategy: { type: string, enum: [trailer, tag] }
+        trailer:
+          type: string
+          example: "Co-authored-by: Copilot"
+        tag: { type: string, example: "[ai]" }
+        caseSensitive: { type: boolean, default: false }
+    SyncStatus:
+      type: object
+      required: [lastSyncAt, state]
+      properties:
+        lastSyncAt: { type: string, format: date-time, nullable: true }
+        state: { type: string, enum: [ok, running, failed, never] }
+        backfillFrom: { type: string, format: date, nullable: true }
+        message: { type: string, nullable: true }
+
+    # ---- Errors ----
+    Problem:
+      type: object
+      description: RFC 7807 problem detail.
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }

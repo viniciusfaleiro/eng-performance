@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
 <title>Eng Performance — Protótipo completo</title>
 <style>
 /* ===== Tech-dark identity (dark is the default; light is a clean counterpart) ===== */
@@ -300,8 +300,49 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 }
 @media (max-width:560px){.grid.dora{grid-template-columns:1fr;}.content{padding:16px 14px 64px;}.topbar{padding:10px 14px;}.cmp-row{grid-template-columns:104px 1fr auto;}}
 
+/* Login */
+.login{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(1100px 560px at 50% -12%,rgba(124,131,255,.12),transparent 60%),var(--surface);}
+.login.hidden{display:none;}
+.login-card{width:100%;max-width:392px;background:var(--surface-1);border:1px solid var(--outline-var);border-radius:18px;padding:34px 32px;box-shadow:0 26px 64px rgba(0,0,0,.42);}
+.login-brand{display:flex;gap:12px;align-items:center;margin-bottom:26px;}
+.login-title{font-size:23px;font-weight:650;letter-spacing:-.01em;}
+.login-sub{color:var(--on-surface-var);font-size:13.5px;margin:3px 0 22px;}
+.login-form{display:flex;flex-direction:column;gap:15px;}
+.login-form label{display:flex;flex-direction:column;gap:6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--on-surface-var);}
+.login-form input{font-family:var(--mono);font-size:13.5px;color:var(--on-surface);background:var(--surface-2);border:1px solid var(--outline);border-radius:10px;padding:11px 13px;}
+.login-form input:focus{outline:none;border-color:var(--primary);}
+.login-btn{justify-content:center;padding:12px;margin-top:4px;font-size:14px;width:100%;}
+.login-hint{text-align:center;font-size:11.5px;color:var(--muted);}
+/* Admin badges + coverage */
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;border:1px solid var(--outline);white-space:nowrap;}
+.badge.role{background:var(--surface-2);color:var(--on-surface);}
+.badge.on{background:var(--good-c);color:var(--on-good-c);border-color:transparent;}
+.badge.off{background:var(--surface-2);color:var(--muted);}
+.badge.inv{background:var(--warn-c);color:var(--on-warn-c);border-color:transparent;}
+.badge.unmapped{background:var(--warn-c);color:var(--on-warn-c);border-color:transparent;}
+.cov-wrap{display:flex;align-items:center;gap:12px;margin:2px 0 16px;}
+.cov-bar{flex:1;height:8px;border-radius:6px;background:var(--surface-3);overflow:hidden;}
+.cov-fill{height:100%;background:var(--good);border-radius:6px;}
+.cov-pct{font-family:var(--mono);font-size:13px;font-weight:600;}
+.admin-sel{font-family:inherit;font-size:12.5px;color:var(--on-surface);background:var(--surface-2);border:1px solid var(--outline);border-radius:7px;padding:5px 8px;max-width:180px;}
+.admin-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.btn.sm{padding:5px 10px;font-size:11.5px;}
 </style>
 <script>document.documentElement.dataset.theme="dark";</script>
+
+<div id="login" class="login">
+  <div class="login-card">
+    <div class="login-brand"><div class="brand-mark">EP</div><div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps · protótipo</div></div></div>
+    <div class="login-title">Entrar</div>
+    <div class="login-sub">Acesse com seu email e senha.</div>
+    <form id="loginForm" class="login-form" autocomplete="on">
+      <label>Email<input id="loginEmail" type="email" value="admin@empresa.com" autocomplete="username"></label>
+      <label>Senha<input id="loginPass" type="password" value="prototipo" autocomplete="current-password"></label>
+      <button class="btn login-btn" type="submit">Entrar</button>
+      <div class="login-hint">protótipo · qualquer credencial entra</div>
+    </form>
+  </div>
+</div>
 
 <div class="app">
   <aside class="sidebar" id="sidebar">
@@ -337,6 +378,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         </div>
       </div>
       <button class="icon-btn" id="themeBtn" aria-label="Alternar tema" style="align-self:flex-end">◐</button>
+      <button class="icon-btn" id="logoutBtn" aria-label="Sair" title="Sair" style="align-self:flex-end">⏻</button>
     </div>
     <div class="content" id="content"></div>
   </main>
@@ -361,6 +403,44 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const NODES={};
   NODES["all"]={label:"Visão geral",level:"Organização",teamIds:[]};
   ORG.forEach(v=>{const vid="v:"+slug(v.name);const vt=[];v.teams.forEach(t=>{const tid="t:"+t.id;vt.push(tid);NODES[tid]={label:t.name,level:"Time",teamIds:[tid],vertical:v.name,people:t.people.map(p=>"p:"+slug(p))};t.people.forEach(p=>{NODES["p:"+slug(p)]={label:p,level:"Pessoa",teamIds:[tid],vertical:v.name,team:t.name};});});NODES[vid]={label:v.name,level:"Vertical",teamIds:vt};NODES["all"].teamIds.push(...vt);});
+
+  /* ---------- Admin mock data ---------- */
+  const TEAM_MANAGER={checkout:"Ana Souza",antifraude:"Carla Dias","core-banking":"Eduardo Alves",sre:"Gustavo Melo",aquisicao:"Igor Nunes",retencao:"Karina Alves"};
+  const VERT_MANAGER={Pagamentos:"Ana Souza",Plataforma:"Eduardo Alves",Growth:"Igor Nunes"};
+  const USERS=[
+    {name:"Admin Root",email:"admin@empresa.com",role:"Admin",status:"Ativo",person:null},
+    {name:"Ana Souza",email:"ana.souza@empresa.com",role:"Gestor",status:"Ativo",person:"Ana Souza"},
+    {name:"Bruno Lima",email:"bruno.lima@empresa.com",role:"Colaborador",status:"Ativo",person:"Bruno Lima"},
+    {name:"Eduardo Alves",email:"eduardo.alves@empresa.com",role:"Gestor",status:"Ativo",person:"Eduardo Alves"},
+    {name:"Paula Executiva",email:"paula@empresa.com",role:"Exec",status:"Ativo",person:null},
+    {name:"Novo Convidado",email:"convidado@empresa.com",role:"Colaborador",status:"Convidado",person:null},
+    {name:"Ex-Colaborador",email:"ex@empresa.com",role:"Colaborador",status:"Desativado",person:null},
+  ];
+  const COMMITTERS=[
+    {identity:"ana.souza@empresa.com",name:"Ana Souza",person:"Ana Souza",commits:412},
+    {identity:"asouza@users.noreply.dev.azure.com",name:"ana-souza",person:"Ana Souza",commits:38},
+    {identity:"bruno.lima@empresa.com",name:"Bruno Lima",person:"Bruno Lima",commits:355},
+    {identity:"eduardo.alves@empresa.com",name:"Eduardo Alves",person:"Eduardo Alves",commits:298},
+    {identity:"copilot@github.com",name:"GitHub Copilot",person:null,commits:96},
+    {identity:"azure-deploy@ci.local",name:"deploy-bot",person:null,commits:640},
+    {identity:"c.dias.pessoal@gmail.com",name:"carla d.",person:null,commits:27},
+  ];
+  const REPOS=[
+    {repo:"checkout-service",project:"Pagamentos",team:"Checkout"},
+    {repo:"pix-gateway",project:"Pagamentos",team:"Checkout"},
+    {repo:"antifraude-api",project:"Pagamentos",team:"Antifraude"},
+    {repo:"core-banking",project:"Plataforma",team:"Core Banking"},
+    {repo:"sre-tooling",project:"Plataforma",team:"SRE"},
+    {repo:"growth-web",project:"Growth",team:"Aquisição"},
+    {repo:"retention-jobs",project:"Growth",team:"Retenção"},
+    {repo:"legacy-batch",project:"Plataforma",team:null},
+  ];
+  const ALL_PEOPLE=[];ORG.forEach(v=>v.teams.forEach(t=>t.people.forEach(p=>ALL_PEOPLE.push(p))));
+  const ALL_TEAMS=[];ORG.forEach(v=>v.teams.forEach(t=>ALL_TEAMS.push(t.name)));
+  const peopleOpts=(sel)=>ALL_PEOPLE.map(p=>'<option'+(p===sel?" selected":"")+'>'+p+'</option>').join("");
+  const teamOpts=(sel)=>ALL_TEAMS.map(t=>'<option'+(t===sel?" selected":"")+'>'+t+'</option>').join("");
+  const roleBadge=(r)=>'<span class="badge role">'+r+'</span>';
+  const statusBadge=(s)=>'<span class="badge '+(s==="Ativo"?"on":s==="Convidado"?"inv":"off")+'">'+s+'</span>';
 
   /* ---------- Metrics ---------- */
   const DORA=[
@@ -423,7 +503,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"org",indMetric:"tp"};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp"};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -745,23 +825,56 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   function viewAdmin(){
-    const tabs=[["org","Mapa organizacional"],["ado","Integração Azure DevOps"],["ia","Convenção de IA"]];
+    const tabs=[["users","Usuários"],["structure","Estrutura"],["identities","Identidades"],["repos","Repositórios"],["ado","Integração ADO"],["ia","Convenção de IA"]];
     let h='<div class="tabs">'+tabs.map(t=>'<button class="tab'+(state.adminTab===t[0]?" active":"")+'" data-atab="'+t[0]+'">'+t[1]+'</button>').join("")+'</div>';
-    if(state.adminTab==="ado")h+=adminAdo();
-    else if(state.adminTab==="ia")h+=adminIA();
-    else h+=adminOrg();
-    return h;
+    const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA}[state.adminTab]||adminUsers;
+    return h+fn();
   }
-  function adminOrg(){
-    let rows="";ORG.forEach(v=>v.teams.forEach(t=>{rows+='<tr><td>'+v.name+'</td><td>'+t.name+'</td><td>'+t.people.join(", ")+'</td><td><span class="code">'+t.id+'</span></td></tr>';}));
-    return '<div class="callout">Cadastro próprio (desacoplado do ADO): Vertical → Time → Pessoa. Cada pessoa é vinculada às suas identidades no ADO para atribuição correta das métricas.</div>'+
-      '<div style="display:flex;gap:8px;margin-bottom:14px"><button class="btn">+ Vertical</button><button class="btn ghost">+ Time</button><button class="btn ghost">Importar do ADO</button></div>'+
-      '<div class="panel" style="padding:6px 12px"><table class="tbl"><thead><tr><th>Vertical</th><th>Time</th><th>Pessoas</th><th>ID</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  function adminUsers(){
+    const rows=USERS.map(u=>'<tr><td>'+u.name+'</td><td><span class="code">'+u.email+'</span></td><td>'+roleBadge(u.role)+'</td><td>'+statusBadge(u.status)+'</td><td>'+(u.person||'<span style="color:var(--muted)">—</span>')+'</td><td style="white-space:nowrap"><button class="btn ghost sm">Editar</button> <button class="btn ghost sm">Redefinir senha</button></td></tr>').join("");
+    return '<div class="callout">Contas de login da plataforma (email · senha · perfil). O vínculo a uma <b>Pessoa</b> define o escopo/RBAC do que a conta enxerga.</div>'+
+      '<div class="admin-bar"><button class="btn">+ Novo usuário</button></div>'+
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Status</th><th>Pessoa vinculada</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  function adminStructure(){
+    let rows="";
+    ORG.forEach(v=>{v.teams.forEach((t,i)=>{
+      rows+='<tr>'+
+        (i===0?'<td rowspan="'+v.teams.length+'" style="vertical-align:top"><b>'+v.name+'</b></td><td rowspan="'+v.teams.length+'" style="vertical-align:top"><select class="admin-sel">'+peopleOpts(VERT_MANAGER[v.name])+'</select></td>':'')+
+        '<td>'+t.name+'</td><td><select class="admin-sel">'+peopleOpts(TEAM_MANAGER[t.id])+'</select></td><td>'+t.people.join(", ")+'</td>'+
+        '<td style="white-space:nowrap"><button class="btn ghost sm">Mover pessoa</button></td></tr>';
+    });});
+    return '<div class="callout">Hierarquia fixa <b>Vertical → Time → Pessoa</b>. Defina o <b>gestor da vertical</b> e o <b>gestor do time</b> (habilita a visão de coaching). Mover uma pessoa preserva o histórico no time da época (<b>as-of-event</b>).</div>'+
+      '<div class="admin-bar"><button class="btn">+ Vertical</button><button class="btn ghost">+ Time</button><button class="btn ghost">+ Pessoa</button></div>'+
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Vertical</th><th>Gestor da vertical</th><th>Time</th><th>Gestor do time</th><th>Pessoas</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  function adminIdentities(){
+    const total=COMMITTERS.reduce((a,c)=>a+c.commits,0);
+    const mapped=COMMITTERS.filter(c=>c.person).reduce((a,c)=>a+c.commits,0);
+    const pct=Math.round(mapped/total*100);
+    const rows=COMMITTERS.map(c=>{
+      const sel=c.person?('<select class="admin-sel">'+peopleOpts(c.person)+'</select>'):('<select class="admin-sel"><option selected>— não atribuído —</option>'+peopleOpts("")+'</select>');
+      const st=c.person?'<span class="badge on">Vinculado</span>':'<span class="badge unmapped">Não atribuído</span>';
+      return '<tr><td><span class="code">'+c.identity+'</span></td><td>'+c.name+'</td><td style="font-family:var(--mono)">'+c.commits+'</td><td>'+sel+'</td><td>'+st+'</td></tr>';
+    }).join("");
+    return '<div class="callout">Identidades de committer <b>descobertas na sincronização</b>. Vincule cada uma à Pessoa correta; bots, service accounts e emails pessoais não mapeados ficam no balde <b>"Não atribuído"</b>.</div>'+
+      '<div class="cov-wrap"><span style="font-size:12px;color:var(--on-surface-var)">Cobertura de atribuição</span><div class="cov-bar"><div class="cov-fill" style="width:'+pct+'%"></div></div><span class="cov-pct">'+pct+'%</span></div>'+
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Identidade (ADO)</th><th>Nome</th><th>Commits</th><th>Pessoa</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  function adminRepos(){
+    const rows=REPOS.map(r=>{
+      const sel=r.team?('<select class="admin-sel">'+teamOpts(r.team)+'</select>'):('<select class="admin-sel"><option selected>— sem time —</option>'+teamOpts("")+'</select>');
+      const st=r.team?'':' <span class="badge unmapped">Fora da DORA</span>';
+      return '<tr><td><span class="code">'+r.repo+'</span></td><td>'+r.project+'</td><td>'+sel+st+'</td></tr>';
+    }).join("");
+    return '<div class="callout">Vincule cada repositório/projeto do ADO a um time — regra <b>1 repositório → 1 time</b>. É esse vínculo que faz a <b>DORA</b> (deploys/pipelines) subir para o time; repos sem time não entram na DORA.</div>'+
+      '<div class="admin-bar"><button class="btn ghost">Redescobrir repos do ADO</button></div>'+
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Projeto ADO</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
   function adminAdo(){
-    return '<div class="form-grid"><label>Organização ADO<input value="https://dev.azure.com/minhaorg" /></label><label>Personal Access Token<input type="password" value="••••••••••••" /></label><label>Projetos (separados por vírgula)<input value="Pagamentos, Plataforma, Growth" /></label><label>Stage de produção (Pipelines)<input value="production, prod-release" /></label></div>'+
+    return '<div class="form-grid"><label>Organização ADO<input value="https://dev.azure.com/minhaorg" /></label><label>Personal Access Token<input type="password" value="••••••••••••" /></label><label>Regra global do stage de produção<input value="production, prod-release" /></label></div>'+
       '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn">Testar conexão</button><span class="status-dot"><i style="background:var(--good)"></i>Conectado · última sync há 3 h</span></div>'+
-      '<div class="callout"><b>Sincronização:</b> batch diário (madrugada). <b>Backfill inicial:</b> 6–12 meses de histórico. Fontes: Repos+PRs, Boards, Pipelines.</div>';
+      '<div class="callout"><b>Stage de produção:</b> regra global acima, com <b>override por time</b> na aba Estrutura quando o pipeline foge do padrão. <b>Sincronização:</b> batch diário. <b>Backfill:</b> 6–12 meses. Fontes: Repos+PRs, Boards, Pipelines.</div>';
   }
   function adminIA(){
     return '<div class="callout">No MVP, um commit é considerado assistido por IA via <b>convenção de trailer</b> no commit — sem integração externa. Documente a convenção como pré-requisito de adoção do time.</div>'+
@@ -872,8 +985,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   $("menuBtn").addEventListener("click",()=>{sb.classList.add("open");ns.classList.add("open");});
   ns.addEventListener("click",closeNav);
 
+  /* ---------- Login / logout ---------- */
+  $("loginForm").addEventListener("submit",e=>{e.preventDefault();$("login").classList.add("hidden");});
+  $("logoutBtn").addEventListener("click",()=>{closeNav();$("login").classList.remove("hidden");});
+
   render();
 })();
 </script>
 
-</html>
+</body></html>
