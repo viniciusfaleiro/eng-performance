@@ -6,8 +6,13 @@ slice vira uma change do openspec (`/opsx:propose → apply → archive`), exerc
 `./gradlew build` verde.
 
 **Decisões de fatiamento (combinadas):**
-- **Fixtures primeiro:** adapters in-memory com eventos-semente atrás das portas; o
-  **adapter real do ADO é o último slice** (S9), sem retrabalho.
+- **Persistência durável desde o S1:** todo slice fecha como entrega completa e
+  testável, gravando em **PostgreSQL** (nada em memória). Fixtures são **semeadas no
+  banco** (seeder idempotente). O **adapter real do ADO é o último slice** (S9) —
+  ele só troca a *fonte* dos dados, não a *casa* (o banco já existe desde o S1).
+- Persistência: Postgres + Flyway (migrations) + adapter JPA atrás das portas.
+  Testes de integração rodam contra Postgres real (Testcontainers); o app roda
+  contra o Postgres do `docker-compose`.
 - **Por grupo de métrica:** DORA / Fluxo / IA entram como slices inteiros (não uma
   métrica por vez), cada um com seu dashboard composto.
 - **Tela por slice:** cada slice server-renderiza sua tela **reusando o design
@@ -22,7 +27,7 @@ slice vira uma change do openspec (`/opsx:propose → apply → archive`), exerc
 - **Domínio:** Vertical, Time, Pessoa, **TeamMembership (vigência / as-of-event)**,
   Repo, Identidade. Invariantes: 1 repo → 1 time; hierarquia fixa 3 níveis.
 - **App:** use-cases CRUD + `StructureRepositoryPort`.
-- **Adapter-out:** in-memory.
+- **Adapter-out:** PostgreSQL (JPA + Flyway) atrás da porta.
 - **Web:** `/structure/tree`, `/admin/{verticals,teams,people}`, `team-change`,
   `/admin/ado/committers`, `/admin/coverage` (stub); telas Admin **Estrutura /
   Identidades / Repositórios**.

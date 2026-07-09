@@ -1,0 +1,23 @@
+# Local PostgreSQL for running the app end-to-end (data persists across restarts via the volume).
+#   docker compose up -d db     # start
+#   ./gradlew :bootstrap:bootRun
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: engperf-db
+    environment:
+      POSTGRES_DB: engperf
+      POSTGRES_USER: engperf
+      POSTGRES_PASSWORD: engperf
+    ports:
+      - "5432:5432"
+    volumes:
+      - engperf-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U engperf -d engperf"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  engperf-pgdata:

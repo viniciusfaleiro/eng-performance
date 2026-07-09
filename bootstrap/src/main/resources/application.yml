@@ -3,6 +3,16 @@ spring:
     name: eng-performance
   thymeleaf:
     cache: false
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/engperf}
+    username: ${DB_USERNAME:engperf}
+    password: ${DB_PASSWORD:engperf}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
 
 server:
   port: 8080

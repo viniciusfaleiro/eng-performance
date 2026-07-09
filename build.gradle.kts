@@ -100,6 +100,9 @@ subprojects {
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
         finalizedBy(tasks.named("jacocoTestReport"))
+        // Testcontainers: skip the Ryuk resource-reaper container (fails in constrained/CI envs;
+        // containers are still cleaned up on JVM exit).
+        environment("TESTCONTAINERS_RYUK_DISABLED", "true")
     }
 
     tasks.withType<JacocoReport>().configureEach {

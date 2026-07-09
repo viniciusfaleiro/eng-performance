@@ -18,7 +18,7 @@ auth/RBAC, sem ADO real — tudo fixture/in-memory.
 
 **Non-Goals:**
 - Contas/login/RBAC (S2); eventos/métricas/cobertura real (S3); ADO real (S9).
-- Persistência durável — o adapter é in-memory; cobertura é derivada de fixtures.
+- Cobertura ainda é derivada de contagens semente (fixtures), não de eventos reais (S3).
 
 ## Decisions
 
@@ -35,10 +35,11 @@ auth/RBAC, sem ADO real — tudo fixture/in-memory.
   1 membership aberto por pessoa, gestor = Person registrada — validados em
   fábricas/métodos do domínio, que lançam exceções de domínio. O web as traduz
   para 4xx (422/409).
-- **Uma porta de saída (`StructureRepositoryPort`) no `application`.** O
-  `adapter-out-persistence` provê `InMemoryStructureRepository` (mapas +
-  cópias defensivas). *Alternativa:* portas separadas por entidade — adiado; uma
-  porta coesa basta para o CRUD deste slice.
+- **Uma porta de saída (`StructureRepositoryPort`) no `application`, banco real no
+  adapter.** O `adapter-out-persistence` provê `JpaStructureRepository` sobre
+  **PostgreSQL** (JPA + Flyway), mapeando domínio↔entidade — o domínio/aplicação
+  nunca veem JPA. Membership é `@ElementCollection`. *Alternativa:* in-memory —
+  rejeitado: todo slice deve ser entrega durável e testável, sem pedaços em memória.
 - **Identidades e repositórios como sub-recursos do cadastro.** `CommitterIdentity
   { identity, personId? }` e `Repository { key, teamId? }` moram na mesma porta.
   Cobertura = eventos atribuídos / total, derivada de contagens fixtures (campo

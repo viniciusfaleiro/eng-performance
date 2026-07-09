@@ -16,10 +16,11 @@
 - [x] 2.5 Use-cases de repositório: listar, mapear repo→time (1:1), sinalizar não mapeado
 - [x] 2.6 Testes de aplicação com um fake da porta cobrindo os fluxos
 
-## 3. Adapter de saída (module `adapter-out-persistence`)
+## 3. Adapter de saída — PostgreSQL (module `adapter-out-persistence`)
 
-- [x] 3.1 Implementar `InMemoryStructureRepository` (mapas + cópias defensivas) satisfazendo `StructureRepositoryPort`
-- [x] 3.2 Teste do adapter in-memory (round-trip de cada entidade)
+- [x] 3.1 Entidades JPA + Spring Data repositories + migration Flyway (`db/migration/V1__structure.sql`)
+- [x] 3.2 Implementar `JpaStructureRepository` (mapeia domínio↔entidade) satisfazendo `StructureRepositoryPort`
+- [x] 3.3 Teste de integração contra Postgres real (Testcontainers): round-trip + histórico de membership
 
 ## 4. Adapter web (module `adapter-in-web`)
 
@@ -32,7 +33,8 @@
 ## 5. Composição e fixtures (module `bootstrap`)
 
 - [x] 5.1 Wiring dos use-cases → `InMemoryStructureRepository` (composition root)
-- [x] 5.2 Semear fixtures (verticais/times/pessoas/identidades/repos do protótipo, incluindo não atribuídos)
+- [x] 5.2 Semear fixtures **no banco** de forma idempotente (verticais/times/pessoas/identidades/repos do protótipo)
+- [x] 5.4 `docker-compose.yml` (Postgres) + datasource/Flyway no `application.yml`
 - [x] 5.3 Manter o echo slice como smoke por ora (remoção fica para o S2)
 
 ## 6. Fronteiras e fechamento

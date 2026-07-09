@@ -23,13 +23,27 @@ Dependências só podem apontar para dentro. Violou → o build quebra.
 | `domain` | Regras de negócio puras. **Sem framework, sem Spring.** | — |
 | `application` | Use cases + ports (in/out). **Sem Spring.** | `domain` |
 | `adapter-in-web` | HTTP + Thymeleaf UI (inbound). | `application`, `domain` |
-| `adapter-out-persistence` | Impl dos ports de saída. | `application`, `domain` |
+| `adapter-out-persistence` | Impl dos ports de saída — **PostgreSQL (JPA + Flyway)**. | `application`, `domain` |
 | `bootstrap` | App executável; composition root (liga ports→adapters). | todos |
 | `architecture-tests` | Regras ArchUnit que guardam as fronteiras. | todos (test) |
 
 Frontend = **design system próprio do protótipo** (`prototype/` é a spec visual),
 server-renderizado com Thymeleaf + JS vanilla, **self-contained (sem CDN)**. O
 `@material/web`/MD3 foi **descontinuado** — reusamos o CSS/markup do protótipo.
+
+## Banco de dados (persistência durável — nada em memória)
+
+Todo slice grava em **PostgreSQL**; schema por **Flyway** (`db/migration`), mapeado
+por **JPA** dentro do `adapter-out-persistence` (domínio/aplicação nunca veem JPA).
+Fixtures são semeadas no banco por um seeder **idempotente**.
+
+- **Rodar o app:** `docker compose up -d db` (Postgres local, dados persistem em
+  volume) e então `./gradlew :bootstrap:bootRun`. Config via env
+  `DB_URL`/`DB_USERNAME`/`DB_PASSWORD` (defaults batem com o compose).
+- **Testes de integração:** rodam contra Postgres real via **Testcontainers**; o
+  Gradle não precisa de banco pré-existente para eles. (Neste host, o daemon Docker
+  é muito novo — piso de API 1.40 — e exigiu baixar o piso para 1.24 via
+  `scripts/fix-docker-min-api.sh`; sem isso o Testcontainers não conecta.)
 
 ## Gates de qualidade
 
@@ -78,7 +92,8 @@ de alto nível; as **specs do openspec** são a verdade viva por capacidade.
 ## Comandos comuns
 
 ```bash
-./gradlew build                # compila + todos os gates
+docker compose up -d db        # Postgres local (necessário para rodar o app)
+./gradlew build                # compila + todos os gates (Testcontainers p/ o teste de DB)
 ./gradlew spotlessApply        # auto-formata
 ./gradlew :bootstrap:bootRun   # roda o app em http://localhost:8080
 openspec list                  # changes ativas

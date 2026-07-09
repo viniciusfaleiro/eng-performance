@@ -21,7 +21,7 @@ that exercises every layer end-to-end. The real backend is built on top of this 
 | `domain` | Pure business rules. No framework. | — |
 | `application` | Use cases + ports (inbound/outbound). No Spring. | `domain` |
 | `adapter-in-web` | HTTP + Thymeleaf UI (inbound adapter). | `application`, `domain` |
-| `adapter-out-persistence` | Outbound port impls (in-memory for now). | `application`, `domain` |
+| `adapter-out-persistence` | Outbound port impls — PostgreSQL (JPA + Flyway). | `application`, `domain` |
 | `bootstrap` | Executable app; composition root wiring ports→adapters. | all |
 | `architecture-tests` | ArchUnit rules guarding the boundaries. | all (test) |
 
@@ -40,10 +40,15 @@ scanning (dependency CVEs, secrets) is intentionally out of scope for this harne
 ## Common commands
 
 ```bash
-./gradlew build            # compile + all gates (tests, coverage, spotbugs, checkstyle, archunit)
+docker compose up -d db    # local PostgreSQL (required to run the app; data persists in a volume)
+./gradlew build            # compile + all gates (Testcontainers spins up Postgres for the DB test)
 ./gradlew spotlessApply    # auto-format
 ./gradlew :bootstrap:bootRun   # run the app at http://localhost:8080
 ```
+
+Persistence is PostgreSQL (JPA + Flyway migrations in `adapter-out-persistence`), seeded with
+fixtures on first start. Integration tests use Testcontainers. This host's Docker daemon is very
+new (API floor 1.40); `scripts/fix-docker-min-api.sh` lowers it to 1.24 so Testcontainers connects.
 
 ## Frontend (prototype design system)
 
