@@ -21,12 +21,12 @@
 - [ ] 3.1 Implementar `InMemoryStructureRepository` (mapas + cópias defensivas) satisfazendo `StructureRepositoryPort`
 - [ ] 3.2 Teste do adapter in-memory (round-trip de cada entidade)
 
-## 4. Adapter web + MD3 (module `adapter-in-web`)
+## 4. Adapter web (module `adapter-in-web`)
 
 - [ ] 4.1 Controllers REST conforme `api/openapi.yaml`: `/structure/tree`, `/admin/verticals`, `/admin/teams`, `/admin/people`, `/admin/people/{id}/team-change`
 - [ ] 4.2 Controllers de `/admin/ado/committers` (listar + `POST` de vínculo) e `/admin/coverage` (global, sobre fixtures)
 - [ ] 4.3 DTOs de request/response + tradução de exceções de domínio para 422/409
-- [ ] 4.4 Telas MD3 (Thymeleaf) de Admin **Estrutura**, **Identidades** e **Repositórios**, espelhando `prototype/`
+- [ ] 4.4 Telas (Thymeleaf, design system do protótipo) de Admin **Estrutura**, **Identidades** e **Repositórios**, espelhando `prototype/`
 - [ ] 4.5 Testes de web (MockMvc) dos endpoints e dos códigos de erro
 
 ## 5. Composição e fixtures (module `bootstrap`)

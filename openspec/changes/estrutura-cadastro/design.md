@@ -13,7 +13,7 @@ auth/RBAC, sem ADO real — tudo fixture/in-memory.
 - Domínio de cadastro puro (sem Spring) com as invariantes do PRD.
 - Persistência atrás de uma porta única (`StructureRepositoryPort`) com adapter
   in-memory, permitindo trocar por Postgres/ADO depois sem tocar domínio/app.
-- Endpoints e telas MD3 de Admin (Estrutura, Identidades, Repositórios) fiéis ao
+- Endpoints e telas de Admin (Estrutura, Identidades, Repositórios) fiéis ao
   `api/openapi.yaml` e ao `prototype/`.
 
 **Non-Goals:**
@@ -43,7 +43,7 @@ auth/RBAC, sem ADO real — tudo fixture/in-memory.
   { identity, personId? }` e `Repository { key, teamId? }` moram na mesma porta.
   Cobertura = eventos atribuídos / total, derivada de contagens fixtures (campo
   `commitCount` semente), pois ainda não há eventos crus (S3).
-- **Web = controllers finos + Thymeleaf/MD3.** Controllers convertem DTOs↔domínio;
+- **Web = controllers finos + Thymeleaf.** Controllers convertem DTOs↔domínio;
   as telas server-renderizam o que o `prototype/` já desenhou. Sem lógica de
   negócio no adapter-in.
 - **Bootstrap semeia fixtures** (as verticais/times/pessoas/identidades/repos do
@@ -55,7 +55,7 @@ auth/RBAC, sem ADO real — tudo fixture/in-memory.
   remoção fica explícita numa task, evitando quebrar testes/ArchUnit sem querer.
 - **Cobertura "de mentira" (fixtures).** → Documentado como stub; o cálculo real
   sobre eventos chega no S3, reusando a mesma superfície de API.
-- **Divergência entre telas MD3 e o protótipo.** → O `prototype/` é a referência
+- **Divergência entre as telas e o protótipo.** → O `prototype/` é a referência
   visual; as telas apenas o reproduzem, sem reinventar layout.
 - **JaCoCo 70% em domain+application.** → As invariantes ricas do domínio dão
   cobertura natural; garantir testes de fábrica/membership para não furar o piso.

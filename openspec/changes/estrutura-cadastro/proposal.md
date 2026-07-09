@@ -19,7 +19,7 @@ qual todos os demais dependem.
 - Expõe os endpoints de estrutura/admin conforme `api/openapi.yaml`:
   `/structure/tree`, `/admin/verticals`, `/admin/teams`, `/admin/people`,
   `/admin/people/{id}/team-change`, `/admin/ado/committers`, `/admin/coverage`.
-- Server-renderiza as telas MD3 de **Admin: Estrutura, Identidades e
+- Server-renderiza as telas de **Admin: Estrutura, Identidades e
   Repositórios**, espelhando `prototype/`.
 - Move a pessoa entre times **preservando o histórico** (encerra o membership
   vigente e abre outro), e mantém identidades/repos não mapeados num balde
@@ -51,7 +51,7 @@ qual todos os demais dependem.
 
 - **Módulos:** `domain` (novas entidades/invariantes), `application` (use-cases +
   `StructureRepositoryPort`), `adapter-out-persistence` (adapter in-memory),
-  `adapter-in-web` (controllers + templates MD3), `architecture-tests` (mantém as
+  `adapter-in-web` (controllers + templates Thymeleaf), `architecture-tests` (mantém as
   fronteiras).
 - **Contratos:** implementa o subconjunto de estrutura/admin do
   `api/openapi.yaml`.

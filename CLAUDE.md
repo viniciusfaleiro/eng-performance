@@ -22,13 +22,14 @@ Dependências só podem apontar para dentro. Violou → o build quebra.
 |---|---|---|
 | `domain` | Regras de negócio puras. **Sem framework, sem Spring.** | — |
 | `application` | Use cases + ports (in/out). **Sem Spring.** | `domain` |
-| `adapter-in-web` | HTTP + Thymeleaf/MD3 (inbound). | `application`, `domain` |
+| `adapter-in-web` | HTTP + Thymeleaf UI (inbound). | `application`, `domain` |
 | `adapter-out-persistence` | Impl dos ports de saída. | `application`, `domain` |
 | `bootstrap` | App executável; composition root (liga ports→adapters). | todos |
 | `architecture-tests` | Regras ArchUnit que guardam as fronteiras. | todos (test) |
 
-Frontend = Material Design 3 (`@material/web`) vendorizado em
-`adapter-in-web/.../static/vendor/md3.js` — **sem CDN em runtime**. Rebuild via `frontend/`.
+Frontend = **design system próprio do protótipo** (`prototype/` é a spec visual),
+server-renderizado com Thymeleaf + JS vanilla, **self-contained (sem CDN)**. O
+`@material/web`/MD3 foi **descontinuado** — reusamos o CSS/markup do protótipo.
 
 ## Gates de qualidade
 
@@ -36,7 +37,7 @@ Frontend = Material Design 3 (`@material/web`) vendorizado em
 SpotBugs+FindSecBugs · JaCoCo (**pisos de 70% de linha e 60% de branch** em
 `domain`+`application`) · ArchUnit.
 
-**Frontend (`frontend/`, npm):** ESLint + Prettier + build do bundle MD3, via
+**Frontend (`frontend/`, npm):** ESLint + Prettier + build do bundle de assets, via
 `npm run verify`. Aplicados pelos git hooks (pre-commit = lint+format quando há
 mudança em `frontend/`; pre-push = `verify` completo). Requer `npm --prefix frontend ci` uma vez.
 
