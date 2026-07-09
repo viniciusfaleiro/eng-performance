@@ -1,0 +1,14 @@
+{
+  "name": "eng-performance-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vendors Material Design 3 web components into the Spring service's static resources.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@material/web": "^2.3.0",
+    "esbuild": "^0.24.2"
+  }
+}

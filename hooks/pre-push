@@ -1,0 +1,12 @@
+#!/bin/sh
+# Full gate before code leaves the machine: compile, tests, coverage, SpotBugs, ArchUnit.
+set -e
+
+echo "[pre-push] running full verification (./gradlew build) ..."
+if ! ./gradlew --console=plain build; then
+  echo ""
+  echo "[pre-push] FAILED. The build is not green — push aborted."
+  exit 1
+fi
+
+echo "[pre-push] OK"

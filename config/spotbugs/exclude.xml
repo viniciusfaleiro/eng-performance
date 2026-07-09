@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- Spring Boot main class is intentionally a launcher shell. -->
+    <Match>
+        <Class name="~.*Application"/>
+        <Bug pattern="DM_EXIT"/>
+    </Match>
+
+    <!-- Test sources are excluded from EI/security heuristics. -->
+    <Match>
+        <Source name="~.*[/\\]test[/\\].*"/>
+    </Match>
+</FindBugsFilter>

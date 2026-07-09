@@ -1,0 +1,38 @@
+schema: spec-driven
+
+context: |
+  Produto: plataforma que mede performance de times de engenharia a partir do
+  Azure DevOps (métricas DORA, Fluxo e IA). PRD em initial-spec/initial-spec.md.
+
+  Stack: Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) multi-módulo.
+  Arquitetura hexagonal (ports & adapters) imposta por ArchUnit. Módulos:
+  domain (regras puras, sem framework) < application (use cases + ports, sem Spring)
+  < adapter-in-web (HTTP + Thymeleaf/MD3) / adapter-out-persistence (impl de ports)
+  < bootstrap (composition root). architecture-tests guarda as fronteiras.
+  Frontend = Material Design 3 (@material/web) vendorizado, servido pelo próprio serviço.
+
+  Estado atual: harness de engenharia completo + uma fatia "echo" trivial que
+  exercita todas as camadas. O backend real é modelado depois, sobre este harness.
+
+  Gates de qualidade (todos em ./gradlew build): Spotless (google-java-format),
+  Checkstyle, SpotBugs+FindSecBugs, JaCoCo (piso de 70% linha em domain+application),
+  ArchUnit. Convenção de commit: uma linha imperativa curta.
+
+# Per-artifact rules (optional)
+rules:
+  proposal:
+    - Sempre incluir uma seção "Non-goals".
+    - Referenciar as métricas/decisões do PRD (initial-spec/initial-spec.md) quando aplicável.
+  tasks:
+    - A última tarefa de toda change é rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL.
+    - Respeitar as fronteiras hexagonais; domínio não conhece Spring.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

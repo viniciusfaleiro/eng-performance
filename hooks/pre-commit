@@ -1,0 +1,13 @@
+#!/bin/sh
+# Fast gate: formatting + lint. Keeps commits clean without a full build.
+set -e
+
+echo "[pre-commit] spotlessCheck + checkstyle ..."
+if ! ./gradlew --quiet --console=plain spotlessCheck checkstyleMain checkstyleTest; then
+  echo ""
+  echo "[pre-commit] FAILED. Fix formatting with: ./gradlew spotlessApply"
+  echo "             and address any Checkstyle violations, then re-commit."
+  exit 1
+fi
+
+echo "[pre-commit] OK"

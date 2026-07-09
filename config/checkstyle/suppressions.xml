@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- Generated or build outputs are exempt. Add project-specific suppressions here. -->
+    <suppress files="[/\\]build[/\\]" checks=".*"/>
+
+    <!-- Spring Boot main classes only expose main(); they are not utility classes. -->
+    <suppress files="Application\.java" checks="HideUtilityClassConstructor"/>
+
+    <!-- ArchUnit idiom: rules are lowercase static-final @ArchTest fields in a holder class. -->
+    <suppress files="architecture-tests" checks="ConstantName|HideUtilityClassConstructor"/>
+</suppressions>

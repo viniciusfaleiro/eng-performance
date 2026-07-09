@@ -1,0 +1,114 @@
+/* Minimal Material Design 3 styling using MD3 color roles. */
+:root {
+  --md-sys-color-primary: #4f46e5;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-surface: #fdfbff;
+  --md-sys-color-surface-container: #f2effa;
+  --md-sys-color-on-surface: #1b1b21;
+  --md-sys-color-on-surface-variant: #46464f;
+  --md-sys-color-outline: #767680;
+  --md-sys-color-error: #ba1a1a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --md-sys-color-primary: #bec2ff;
+    --md-sys-color-on-primary: #1a1b6b;
+    --md-sys-color-surface: #131318;
+    --md-sys-color-surface-container: #1f1f25;
+    --md-sys-color-on-surface: #e4e1e9;
+    --md-sys-color-on-surface-variant: #c7c5d0;
+    --md-sys-color-outline: #91909a;
+    --md-sys-color-error: #ffb4ab;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Roboto", system-ui, -apple-system, sans-serif;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+}
+
+.shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 4px 28px;
+}
+
+.brand {
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--md-sys-color-primary);
+}
+
+.tag {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.card {
+  background: var(--md-sys-color-surface-container);
+  border-radius: 28px;
+  padding: 28px 24px;
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.16),
+    0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.card h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0 0 24px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.form md-outlined-text-field {
+  flex: 1 1 260px;
+}
+
+.result {
+  margin-top: 24px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--md-sys-color-outline);
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.result-seq {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+}
+
+.error {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: var(--md-sys-color-error);
+  border: 1px solid var(--md-sys-color-error);
+}
