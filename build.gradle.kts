@@ -53,6 +53,10 @@ subprojects {
         }
     }
 
+    // Emit method parameter names so Spring MVC (@PathVariable/@RequestParam) and Jackson
+    // record binding work without explicit names — the same default the Spring Boot plugin sets.
+    tasks.withType<JavaCompile>().configureEach { options.compilerArgs.add("-parameters") }
+
     extensions.configure<DependencyManagementExtension> {
         imports {
             mavenBom(SpringBootPlugin.BOM_COORDINATES)

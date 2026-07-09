@@ -10,4 +10,14 @@
     <Match>
         <Source name="~.*[/\\]test[/\\].*"/>
     </Match>
+
+    <!-- Constructor-injected Spring beans in the inbound web adapter are effectively
+         immutable references; EI_EXPOSE_REP2 is a false positive for DI controllers. -->
+    <Match>
+        <Package name="~com\.engperf\.adapter\.inbound\.web.*"/>
+        <Or>
+            <Bug pattern="EI_EXPOSE_REP2"/>
+            <Bug pattern="EI_EXPOSE_REP"/>
+        </Or>
+    </Match>
 </FindBugsFilter>
