@@ -128,6 +128,53 @@ class AdminAccountsApiTest {
         .andExpect(jsonPath("$.tag").value("[ai]"));
   }
 
+  @Test
+  void createWithBlankPasswordReturns422() throws Exception {
+    mvc.perform(
+            post("/api/admin/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"name\":\"B\",\"email\":\"b@x.com\",\"password\":\"\",\"role\":\"admin\"}"))
+        .andExpect(status().isUnprocessableEntity());
+  }
+
+  @Test
+  void updateUserProfileChangesRoleAndStatus() throws Exception {
+    mvc.perform(
+            post("/api/admin/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"name\":\"Ana\",\"email\":\"ana@x.com\",\"password\":\"pw12345678\","
+                        + "\"role\":\"contributor\"}"))
+        .andExpect(status().isCreated());
+    mvc.perform(
+            put("/api/admin/users/u:ana-x-com")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Ana\",\"role\":\"admin\",\"status\":\"disabled\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.role").value("admin"))
+        .andExpect(jsonPath("$.status").value("disabled"));
+  }
+
+  @Test
+  void adoSaveKeepsSecretWhenPatBlank() throws Exception {
+    mvc.perform(
+            put("/api/admin/integrations/azure-devops")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"organizationUrl\":\"https://dev.azure.com/org\","
+                        + "\"personalAccessToken\":\"pat\",\"productionStageRule\":\"prod\"}"))
+        .andExpect(status().isOk());
+    mvc.perform(
+            put("/api/admin/integrations/azure-devops")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"organizationUrl\":\"https://dev.azure.com/org2\","
+                        + "\"personalAccessToken\":\"\",\"productionStageRule\":\"prod2\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.patRedacted").isNotEmpty());
+  }
+
   private static final class FakeAccounts implements UserAccountRepositoryPort {
     private final Map<String, UserAccount> byId = new LinkedHashMap<>();
 
