@@ -37,7 +37,16 @@
 - [x] 5.4 `docker-compose.yml` (Postgres) + datasource/Flyway no `application.yml`
 - [x] 5.3 Manter o echo slice como smoke por ora (remoção fica para o S2)
 
-## 6. Fronteiras e fechamento
+## 6. Admin completo — contas & configuração (DB-backed)
 
-- [x] 6.1 Garantir ArchUnit verde (domínio sem Spring; adapters não se cruzam)
-- [x] 6.2 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL
+- [x] 6.1 Domínio: `UserAccount`/`Role`/`AccountStatus`, `AdoIntegration`, `AiConvention` (+ `Text`/`ConflictException` comuns)
+- [x] 6.2 App: portas `UserAccountRepositoryPort`/`PlatformConfigPort`/`PasswordHasher` + serviços `UserAccountService`/`PlatformConfigService`
+- [x] 6.3 Adapter: JPA + migration V2 (`user_account`, `ado_integration`, `ai_convention`) + `BCryptPasswordHasher`
+- [x] 6.4 Web: `UserController` (CRUD + reset senha) e `ConfigController` (ADO + convenção IA); senha nunca sai do servidor
+- [x] 6.5 Seed idempotente das contas do protótipo + config default; wiring no bootstrap
+- [x] 6.6 Wire das abas **Usuários / Integração ADO / Convenção de IA** na tela, com paridade visual 0px
+
+## 7. Fronteiras e fechamento
+
+- [x] 7.1 Garantir ArchUnit verde (domínio sem Spring; adapters não se cruzam)
+- [x] 7.2 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL

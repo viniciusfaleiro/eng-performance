@@ -8,6 +8,7 @@ import com.engperf.domain.structure.Team;
 import com.engperf.domain.structure.Vertical;
 import java.time.LocalDate;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Component;
  * content. Placeholder data — replaced by the real Azure DevOps sync (S9).
  */
 @Component
+@Order(1)
 class StructureFixtures implements CommandLineRunner {
 
   private static final LocalDate START = LocalDate.of(2025, 1, 1);

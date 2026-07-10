@@ -27,11 +27,13 @@ qual todos os demais dependem.
 
 ## Non-goals
 
-- Contas de usuário, login e RBAC (S2).
+- **Login e enforcement de RBAC** (S2) — aqui há apenas o **cadastro/CRUD de contas**
+  pelo Admin (email/senha/perfil), sem fluxo de autenticação nem checagem de escopo.
+- **Sync real do Azure DevOps** (S9) — a config de conexão é persistida; "Testar
+  conexão" apenas marca `connected` (não chama o ADO). `committers`/`coverage`
+  operam sobre fixtures.
 - Eventos crus, ingestão e qualquer métrica/agregação (S3+).
-- Integração real com o Azure DevOps — `/admin/ado/committers` e `/admin/coverage`
-  operam sobre **fixtures**; o adapter real do ADO é o S9.
-- Metas/benchmarks e demais telas (dashboards, comparativo, individual).
+- Métricas/telas de dashboards, comparativo, individual.
 
 ## Capabilities
 
@@ -43,6 +45,12 @@ qual todos os demais dependem.
   uma Pessoa, com balde "Não atribuído" e indicador de cobertura (sobre fixtures).
 - `repository-mapping`: vínculo de repositórios/projetos do ADO a times, com a
   regra 1 repositório → 1 time.
+- `user-accounts`: cadastro de contas de login (nome, email, senha hasheada,
+  perfil, status), vínculo opcional a uma Pessoa; gerenciado pelo Admin (sem
+  login/RBAC, que é S2).
+- `platform-config`: configuração singleton da plataforma — conexão com o Azure
+  DevOps (persistida, PAT redigido; "testar" marca conectado) e convenção de
+  detecção de IA (trailer/tag/regex).
 
 ### Modified Capabilities
 <!-- Nenhuma: não há specs existentes; o echo slice não é uma capability versionada. -->

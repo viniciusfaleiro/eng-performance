@@ -1,5 +1,6 @@
 package com.engperf.domain.structure;
 
+import com.engperf.domain.common.ConflictException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;

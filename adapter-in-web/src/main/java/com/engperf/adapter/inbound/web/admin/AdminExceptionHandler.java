@@ -1,6 +1,6 @@
 package com.engperf.adapter.inbound.web.admin;
 
-import com.engperf.domain.structure.ConflictException;
+import com.engperf.domain.common.ConflictException;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;

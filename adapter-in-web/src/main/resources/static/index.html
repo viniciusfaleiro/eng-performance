@@ -460,17 +460,23 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   rebuildStructure();
 
   /* ---------- API wiring (S1: structure/admin) ---------- */
-  let NAME2ID={},VNAME2ID={},TNAME2ID={};
+  let NAME2ID={},VNAME2ID={},TNAME2ID={},ADO_CFG={},AI_CFG={};
+  const ROLE_PT={admin:"Admin",exec:"Exec",manager:"Gestor",contributor:"Colaborador"};
+  const STATUS_PT={active:"Ativo",invited:"Convidado",disabled:"Desativado"};
+  const ROLE_API={Admin:"admin",Exec:"exec",Gestor:"manager",Colaborador:"contributor"};
+  const STATUS_API={Ativo:"active",Convidado:"invited",Desativado:"disabled"};
   const jget=(u)=>fetch(u).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
   const jsend=(m,u,b)=>fetch(u,{method:m,headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.status===204?null:r.json();});
   const jpost=(u,b)=>jsend("POST",u,b),jput=(u,b)=>jsend("PUT",u,b);
+  const jdel=(u)=>fetch(u,{method:"DELETE"}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return null;});
   const apiErr=(e)=>toast("Erro: "+(e&&e.message||e));
   const today=()=>new Date().toISOString().slice(0,10);
   async function loadFromApi(){
     try{
-      const [tree,verts,teams,coms,repos]=await Promise.all([
+      const [tree,verts,teams,coms,repos,accts,ado,ai]=await Promise.all([
         jget("/api/structure/tree"),jget("/api/admin/verticals"),jget("/api/admin/teams"),
-        jget("/api/admin/ado/committers"),jget("/api/admin/repositories")]);
+        jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
+        jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention")]);
       const nameById={},teamNameById={};
       NAME2ID={};VNAME2ID={};TNAME2ID={};
       tree.children.forEach(v=>{VNAME2ID[v.label]=v.id;
@@ -486,6 +492,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
       REPOS.length=0;
       repos.forEach(r=>REPOS.push({repo:r.key,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null}));
+      USERS.length=0;
+      accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
+      ADO_CFG=ado;AI_CFG=ai;
       rebuildStructure();
     }catch(e){/* offline: keep the seeded mock so the UI still renders */}
     render();
@@ -929,15 +938,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Projeto ADO</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
   function adminAdo(){
-    return '<div class="form-grid"><label>Organização ADO<input value="https://dev.azure.com/minhaorg" /></label><label>Personal Access Token<input type="password" value="••••••••••••" /></label><label>Regra global do stage de produção<input value="production, prod-release" /></label></div>'+
-      '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn" data-aact="test-ado">Testar conexão</button><button class="btn ghost" data-aact="save">Salvar</button><span class="status-dot"><i style="background:var(--good)"></i>Conectado · última sync há 3 h</span></div>'+
+    const org=ADO_CFG.organizationUrl||"",pat=ADO_CFG.patRedacted||"",stage=ADO_CFG.productionStageRule||"";
+    const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado · última sync há 3 h</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Desconectado</span>';
+    return '<div class="form-grid"><label>Organização ADO<input id="ado_org" value="'+org+'" /></label><label>Personal Access Token<input id="ado_pat" type="password" value="'+pat+'" /></label><label>Regra global do stage de produção<input id="ado_stage" value="'+stage+'" /></label></div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn" data-aact="test-ado">Testar conexão</button><button class="btn ghost" data-aact="save">Salvar</button>'+status+'</div>'+
       '<div class="callout"><b>Stage de produção:</b> regra global acima, com <b>override por time</b> na aba Estrutura quando o pipeline foge do padrão. <b>Sincronização:</b> batch diário. <b>Backfill:</b> 6–12 meses. Fontes: Repos+PRs, Boards, Pipelines.</div>';
   }
   function adminIA(){
     return '<div class="callout">No MVP, um commit é considerado assistido por IA via <b>convenção de trailer</b> no commit — sem integração externa. Documente a convenção como pré-requisito de adoção do time.</div>'+
       '<div class="panel" style="margin-bottom:14px"><div class="chart-title" style="margin-bottom:10px">Trailers reconhecidos</div>'+
       '<div style="display:flex;flex-direction:column;gap:8px"><span class="code">Co-authored-by: Copilot &lt;...&gt;</span><span class="code">Co-authored-by: Claude &lt;...&gt;</span><span class="code">Assisted-by: Cursor</span><span class="code">[ai] no início da mensagem</span></div></div>'+
-      '<div class="form-grid"><label>Regex de detecção<input value="(?i)(co-authored-by:\\s*(copilot|claude)|assisted-by|\\[ai\\])" /></label><label>Janela de backfill (meses)<input value="6" /></label></div>'+
+      '<div class="form-grid"><label>Regex de detecção<input id="ia_regex" value="'+(AI_CFG.regex||"")+'" /></label><label>Janela de backfill (meses)<input id="ia_backfill" value="6" /></label></div>'+
       '<button class="btn" data-aact="save">Salvar convenção</button>';
   }
 
@@ -960,9 +971,26 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const body='<div class="modal-grid">'+fInput("mu_name","Nome",u.name)+fInput("mu_email","Email",u.email,"email")+fInput("mu_pass","Senha","","password")+fSelect("mu_role","Perfil",["Admin","Exec","Gestor","Colaborador"],u.role)+fSelect("mu_status","Status",["Ativo","Convidado","Desativado"],u.status)+fSelect("mu_person","Pessoa vinculada",["—"].concat(ALL_PEOPLE),u.person||"—")+'</div>';
     openModal(i!=null?"Editar usuário":"Novo usuário",body,()=>{
       if(!mval("mu_name")){toast("Informe o nome");return false;}
-      const rec={name:mval("mu_name"),email:mval("mu_email"),role:$("mu_role").value,status:$("mu_status").value,person:($("mu_person").value==="—"?null:$("mu_person").value)};
-      if(i!=null)USERS[i]=rec;else USERS.push(rec);
-      render();toast(i!=null?"Usuário atualizado":"Usuário criado");
+      const role=ROLE_API[$("mu_role").value],status=STATUS_API[$("mu_status").value];
+      const personId=$("mu_person").value==="—"?null:NAME2ID[$("mu_person").value];
+      if(i!=null){
+        jput("/api/admin/users/"+encodeURIComponent(USERS[i].id),{name:mval("mu_name"),role,status,personId})
+          .then(loadFromApi).then(()=>toast("Usuário atualizado")).catch(apiErr);
+      } else {
+        if(!mval("mu_email")){toast("Informe o email");return false;}
+        if(!$("mu_pass").value){toast("Informe a senha");return false;}
+        jpost("/api/admin/users",{name:mval("mu_name"),email:mval("mu_email"),password:$("mu_pass").value,role,status,personId})
+          .then(loadFromApi).then(()=>toast("Usuário criado")).catch(apiErr);
+      }
+    });
+  }
+  function passwordModal(i){
+    const u=USERS[i];
+    const body='<div class="modal-grid">'+fInput("pw_new","Nova senha","","password",true)+'</div><div class="modal-note">Define uma nova senha para '+u.name+'.</div>';
+    openModal("Redefinir senha",body,()=>{
+      if(!mval("pw_new")){toast("Informe a senha");return false;}
+      jput("/api/admin/users/"+encodeURIComponent(u.id)+"/password",{newPassword:mval("pw_new")})
+        .then(()=>toast("Senha redefinida")).catch(apiErr);
     });
   }
   function verticalModal(){
@@ -1004,15 +1032,24 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function adminAction(act,ds){
     if(act==="add-user")userModal();
     else if(act==="edit-user")userModal(+ds.i);
-    else if(act==="reset-pass")toast("Link de redefinição enviado a "+USERS[+ds.i].email);
-    else if(act==="del-user"){const n=USERS[+ds.i].name;USERS.splice(+ds.i,1);render();toast(n+" removido");}
+    else if(act==="reset-pass")passwordModal(+ds.i);
+    else if(act==="del-user"){const n=USERS[+ds.i].name;jdel("/api/admin/users/"+encodeURIComponent(USERS[+ds.i].id)).then(loadFromApi).then(()=>toast(n+" removido")).catch(apiErr);}
     else if(act==="add-vertical")verticalModal();
     else if(act==="add-team")teamModal();
     else if(act==="add-person")personModal();
     else if(act==="move-person")movePersonModal(ds.t);
     else if(act==="rediscover")toast("Sincronização disparada — reprocessando identidades…");
-    else if(act==="test-ado")toast("Conexão OK · última sync há 3 h");
-    else if(act==="save")toast("Configuração salva");
+    else if(act==="test-ado")jpost("/api/admin/integrations/azure-devops/test",{}).then(loadFromApi).then(()=>toast("Conexão OK · última sync há 3 h")).catch(apiErr);
+    else if(act==="save"){
+      if(state.adminTab==="ado"){
+        const pat=$("ado_pat").value,patToSend=(pat===ADO_CFG.patRedacted?null:pat);
+        jput("/api/admin/integrations/azure-devops",{organizationUrl:mval("ado_org"),personalAccessToken:patToSend,productionStageRule:mval("ado_stage")})
+          .then(loadFromApi).then(()=>toast("Configuração salva")).catch(apiErr);
+      } else if(state.adminTab==="ia"){
+        jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})
+          .then(loadFromApi).then(()=>toast("Convenção salva")).catch(apiErr);
+      } else toast("Configuração salva");
+    }
   }
   function adminSet(kind,ds,value){
     if(kind==="vert-mgr"){
