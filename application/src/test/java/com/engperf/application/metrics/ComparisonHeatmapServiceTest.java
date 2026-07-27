@@ -20,20 +20,36 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 
-class AiDashboardServiceTest {
+class ComparisonHeatmapServiceTest {
 
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC);
   private static final LocalDate JAN1 = LocalDate.of(2026, 1, 1);
+  private static final List<String> COLUMN_ORDER =
+      List.of(
+          "deploy_freq",
+          "lead_time",
+          "cfr",
+          "mttr",
+          "cycle_time",
+          "throughput",
+          "wip",
+          "pr_review_time",
+          "pr_size",
+          "flow_efficiency",
+          "ai_share",
+          "ai_adoption",
+          "ai_impact");
 
   private final FakeStructure structure = new FakeStructure();
   private final FakeEvents events = new FakeEvents();
   private final MetricCatalog catalog = new MetricCatalog();
   private final MetricsService metrics = new MetricsService(structure, events, catalog, CLOCK);
   private final AiDashboardService ai = new AiDashboardService(metrics, catalog, structure);
+  private final ComparisonHeatmapService heatmap =
+      new ComparisonHeatmapService(metrics, catalog, structure, ai);
 
   private int seq = 0;
 
@@ -50,155 +66,89 @@ class AiDashboardServiceTest {
     structure.identities.add(new CommitterIdentity("id-carla", "Carla", "p:carla", 0));
   }
 
-  private Map<String, AiCard> cards(String node) {
-    var m = new java.util.HashMap<String, AiCard>();
-    ai.dashboard(node, Frequency.MONTHLY).cards().forEach(c -> m.put(c.definition().key(), c));
-    return m;
+  @Test
+  void matrixIsChildrenByAllMetricsInCatalogOrder() {
+    baseStructure();
+    events.add(pr("id-ana"));
+    events.add(pr("id-bruno"));
+    events.add(pr("id-carla"));
+
+    var h = heatmap.heatmap("all", Frequency.MONTHLY, "times");
+    assertThat(h.metrics()).extracting(HeatmapMetric::key).containsExactlyElementsOf(COLUMN_ORDER);
+    // Default overview scope compares the teams.
+    assertThat(h.rows()).extracting(HeatmapRow::nodeId).containsExactly("t:checkout", "t:core");
+    assertThat(h.rows()).allSatisfy(r -> assertThat(r.values()).hasSize(COLUMN_ORDER.size()));
+    assertThat(h.rows()).extracting(HeatmapRow::rowType).containsOnly("Time");
   }
 
   @Test
-  void shareAdoptionAndImpact() {
+  void aCellEqualsTheSameNodesDashboardCard() {
     baseStructure();
-    // Commits: Ana 1 AI + 1 non-AI; Bruno 2 non-AI → share 1/4, adoption (Ana only) 1/2.
-    events.add(commit("id-ana", true));
-    events.add(commit("id-ana", false));
-    events.add(commit("id-bruno", false));
-    events.add(commit("id-bruno", false));
-    // PRs: Ana two AI PRs @cycle 6; Bruno two non-AI PRs @cycle 10 → impact (10-6)/10 = 40%.
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-bruno", 10, false));
-    events.add(pr("id-bruno", 10, false));
+    events.add(pr("id-ana"));
+    events.add(pr("id-ana"));
+    events.add(pr("id-bruno"));
 
-    var byKey = cards("t:checkout");
-    assertThat(byKey.get("ai_share").value().value()).isCloseTo(0.25, Offset.offset(1e-9));
-    assertThat(byKey.get("ai_adoption").value().value()).isCloseTo(0.5, Offset.offset(1e-9));
-    assertThat(byKey.get("ai_impact").value().value()).isCloseTo(40.0, Offset.offset(1e-9));
-    // Coverage of impact = AI share of PRs = 2/4.
-    assertThat(byKey.get("ai_impact").coverage().percent()).isEqualTo(50.0);
-  }
-
-  @Test
-  void adoptionCountsEachPersonOnce() {
-    baseStructure();
-    // Ana: 3 AI commits (still one adopter); Bruno: 2 non-AI commits.
-    events.add(commit("id-ana", true));
-    events.add(commit("id-ana", true));
-    events.add(commit("id-ana", true));
-    events.add(commit("id-bruno", false));
-    events.add(commit("id-bruno", false));
-
-    var byKey = cards("t:checkout");
-    // Adoption = adopters(Ana)=1 / active(Ana,Bruno)=2, not 3/5.
-    assertThat(byKey.get("ai_adoption").value().value()).isCloseTo(0.5, Offset.offset(1e-9));
-    assertThat(byKey.get("ai_share").value().value()).isCloseTo(0.6, Offset.offset(1e-9));
-  }
-
-  @Test
-  void adoptionRankingComparesVerticalsNeverPeople() {
-    baseStructure();
-    events.add(commit("id-ana", true)); // v:pag adopter
-    events.add(commit("id-bruno", false)); // v:pag active, not adopter
-    events.add(commit("id-carla", true)); // v:plat adopter (only person)
-
-    var dash = ai.dashboard("all", Frequency.MONTHLY);
-    assertThat(dash.childType()).isEqualTo("vertical");
-    // v:plat adoption 1/1 > v:pag adoption 1/2 → v:plat first.
-    assertThat(dash.adoption()).extracting(AdoptionRank::nodeId).containsExactly("v:plat", "v:pag");
-    assertThat(dash.adoption()).noneMatch(r -> r.nodeId().startsWith("p:"));
-    assertThat(dash.adoption().get(0).adoption()).isCloseTo(1.0, Offset.offset(1e-9));
-    assertThat(dash.adoption().get(1).adoption()).isCloseTo(0.5, Offset.offset(1e-9));
-  }
-
-  @Test
-  void oneCohortEmptyYieldsNoImpact() {
-    baseStructure();
-    // Only non-AI PRs → the AI cohort is empty → no comparison (value 0, no evolution).
-    events.add(pr("id-bruno", 10, false));
-    events.add(pr("id-bruno", 12, false));
-
-    var impact = cards("t:checkout").get("ai_impact");
-    assertThat(impact.value().value()).isEqualTo(0.0);
-    assertThat(impact.value().changePct()).isNull();
-  }
-
-  @Test
-  void impactCardMatchesTheDashboard() {
-    baseStructure();
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-bruno", 10, false));
-    events.add(pr("id-bruno", 10, false));
-
-    var fromDashboard = cards("t:checkout").get("ai_impact");
-    var standalone = ai.impact("t:checkout", Frequency.MONTHLY);
-    assertThat(standalone.value().value()).isEqualTo(fromDashboard.value().value());
-    assertThat(standalone.coverage().percent()).isEqualTo(fromDashboard.coverage().percent());
-  }
-
-  @Test
-  void cohortSeriesPartitionThePopulation() {
-    baseStructure();
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-ana", 6, true));
-    events.add(pr("id-bruno", 10, false));
-    events.add(pr("id-bruno", 10, false));
-    events.add(pr("id-bruno", 10, false));
-
-    double aiPrs = last(metrics.cohortSeries("throughput", "t:checkout", Frequency.MONTHLY, true));
-    double nonPrs =
-        last(metrics.cohortSeries("throughput", "t:checkout", Frequency.MONTHLY, false));
-    double all =
+    var h = heatmap.heatmap("all", Frequency.MONTHLY, "times");
+    int throughputCol = COLUMN_ORDER.indexOf("throughput");
+    double cell =
+        h.rows().stream()
+            .filter(r -> r.nodeId().equals("t:checkout"))
+            .findFirst()
+            .orElseThrow()
+            .values()
+            .get(throughputCol);
+    double card =
         metrics.cards("t:checkout", Frequency.MONTHLY).stream()
             .filter(c -> c.definition().key().equals("throughput"))
             .mapToDouble(c -> c.current().value())
             .findFirst()
             .orElseThrow();
-    assertThat(aiPrs).isEqualTo(2);
-    assertThat(nonPrs).isEqualTo(3);
-    assertThat(aiPrs + nonPrs).isEqualTo(all); // cohorts partition, none counted twice
+    assertThat(cell).isEqualTo(card).isEqualTo(3); // Ana 2 + Bruno 1
   }
 
-  private static double last(MetricSeries s) {
-    return s.points().get(s.points().size() - 1).value().value();
+  @Test
+  void rowsAreNodeAware() {
+    baseStructure();
+
+    assertThat(heatmap.heatmap("all", Frequency.MONTHLY, "verticais").rows())
+        .extracting(HeatmapRow::nodeId)
+        .containsExactly("v:pag", "v:plat");
+    assertThat(heatmap.heatmap("all", Frequency.MONTHLY, "verticais").rows())
+        .extracting(HeatmapRow::rowType)
+        .containsOnly("Vertical");
+
+    assertThat(heatmap.heatmap("v:pag", Frequency.MONTHLY, "times").rows())
+        .extracting(HeatmapRow::nodeId)
+        .containsExactly("t:checkout");
+
+    var teamRows = heatmap.heatmap("t:checkout", Frequency.MONTHLY, "times").rows();
+    assertThat(teamRows).extracting(HeatmapRow::nodeId).containsExactly("p:ana", "p:bruno");
+    assertThat(teamRows).extracting(HeatmapRow::rowType).containsOnly("Pessoa");
   }
 
-  private RawEvent commit(String identity, boolean ai) {
-    return new RawEvent(
-        "c" + (seq++),
-        EventType.COMMIT,
-        Instant.parse("2026-06-10T10:00:00Z"),
-        null,
-        identity,
-        null,
-        null,
-        ai,
-        null);
-  }
-
-  private RawEvent pr(String identity, double cycle, boolean ai) {
+  private RawEvent pr(String identity) {
     return new RawEvent(
         "e" + (seq++),
         EventType.PR,
         Instant.parse("2026-06-10T10:00:00Z"),
         null,
         identity,
-        cycle,
+        4.0,
         "review",
-        ai,
-        Map.of("cycle_h", Double.toString(cycle)));
+        false,
+        Map.of("cycle_h", "8", "num", "6", "den", "8"));
   }
 
   private static final class FakeEvents implements EventStorePort {
     private final List<RawEvent> all = new ArrayList<>();
 
-    void add(RawEvent e) {
-      all.add(e);
-    }
-
     @Override
     public void saveAll(java.util.Collection<RawEvent> events) {
       all.addAll(events);
+    }
+
+    void add(RawEvent e) {
+      all.add(e);
     }
 
     @Override

@@ -110,6 +110,14 @@ class AiDashboardApiTest {
           nodeId, "vertical", cards, adoption, List.of(6.0, 6.5), List.of(10.0, 9.5));
     }
 
+    @Override
+    public AiCard impact(String nodeId, com.engperf.domain.metrics.Frequency frequency) {
+      return new AiCard(
+          MetricCatalog.AI_IMPACT,
+          MetricValue.of(40.0, null, Direction.HIGHER_BETTER),
+          new com.engperf.domain.metrics.Coverage(2, 4));
+    }
+
     private static com.engperf.domain.metrics.MetricDefinition sample(String key) {
       return new com.engperf.domain.metrics.MetricDefinition(
           key,

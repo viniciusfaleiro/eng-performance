@@ -48,7 +48,7 @@ public final class AiDashboardService implements AiDashboardUseCase {
         cards.add(new AiCard(def, c.current(), c.coverage()));
       }
     }
-    Impact impact = impact(nodeId, frequency, value(nodeCards, "throughput"));
+    Impact impact = computeImpact(nodeId, frequency);
     cards.add(new AiCard(MetricCatalog.AI_IMPACT, impact.value(), impact.coverage()));
 
     List<AdoptionRank> adoption = new ArrayList<>();
@@ -65,7 +65,13 @@ public final class AiDashboardService implements AiDashboardUseCase {
         nodeId, childType(nodeId), cards, adoption, impact.withAi(), impact.withoutAi());
   }
 
-  private Impact impact(String nodeId, Frequency frequency, double allPrs) {
+  @Override
+  public AiCard impact(String nodeId, Frequency frequency) {
+    Impact i = computeImpact(nodeId, frequency);
+    return new AiCard(MetricCatalog.AI_IMPACT, i.value(), i.coverage());
+  }
+
+  private Impact computeImpact(String nodeId, Frequency frequency) {
     List<Double> withAi = seriesValues(nodeId, frequency, true);
     List<Double> withoutAi = seriesValues(nodeId, frequency, false);
     int last = withAi.size() - 1;
@@ -82,11 +88,11 @@ public final class AiDashboardService implements AiDashboardUseCase {
       Double prev = (aiPrev == 0.0 || nonPrev == 0.0) ? null : fasterPct(nonPrev, aiPrev);
       value = MetricValue.of(fasterPct(nonNow, aiNow), prev, Direction.HIGHER_BETTER);
     }
-    // Coverage = share of the node's PRs that are AI-assisted.
-    double aiPrs = lastValue(metrics.cohortSeries("throughput", nodeId, frequency, true));
-    long ai = Math.round(aiPrs);
-    long all = Math.max(ai, Math.round(allPrs));
-    return new Impact(value, new Coverage(ai, all), withAi, withoutAi);
+    // Coverage = share of the node's PRs that are AI-assisted (AI PRs over all PRs; the two
+    // cohorts partition the population).
+    long ai = Math.round(lastValue(metrics.cohortSeries("throughput", nodeId, frequency, true)));
+    long non = Math.round(lastValue(metrics.cohortSeries("throughput", nodeId, frequency, false)));
+    return new Impact(value, new Coverage(ai, ai + non), withAi, withoutAi);
   }
 
   /** How much faster (%) the AI cohort's cycle time is than the non-AI cohort's. */

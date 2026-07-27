@@ -1,11 +1,13 @@
 package com.engperf.bootstrap.config;
 
 import com.engperf.application.metrics.AiDashboardService;
+import com.engperf.application.metrics.ComparisonHeatmapService;
 import com.engperf.application.metrics.DoraDashboardService;
 import com.engperf.application.metrics.FlowDashboardService;
 import com.engperf.application.metrics.MetricCatalog;
 import com.engperf.application.metrics.MetricsService;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
+import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.DoraDashboardUseCase;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
@@ -64,5 +66,14 @@ public class MetricsWiring {
   AiDashboardUseCase aiDashboardUseCase(
       MetricsQueryUseCase metrics, MetricCatalog catalog, StructureRepositoryPort structure) {
     return new AiDashboardService(metrics, catalog, structure);
+  }
+
+  @Bean
+  ComparisonHeatmapUseCase comparisonHeatmapUseCase(
+      MetricsQueryUseCase metrics,
+      MetricCatalog catalog,
+      StructureRepositoryPort structure,
+      AiDashboardUseCase ai) {
+    return new ComparisonHeatmapService(metrics, catalog, structure, ai);
   }
 }

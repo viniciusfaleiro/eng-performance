@@ -704,6 +704,32 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return {byNode,childType:d.childType,adoption:(d.adoption||[]).map(a=>a.nodeId),
       withAi:(d.cycleWithAi||[]),withoutAi:(d.cycleWithoutAi||[])};
   }
+  /* Comparativo heatmap wired to the real engine: /api/comparison/heatmap gives the node's
+     children (rows, already scope/coaching-filtered by the backend) × every catalog metric. Rows
+     carry the server label; values are normalised to the same display units as the dashboards. */
+  const CMP_CACHE={},CMP_LOADING=new Set();
+  const CMP_API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr",cycle_time:"ct",throughput:"tp",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
+  const cmpKey=()=>state.node+"|"+state.freq+"|"+(state.node==="all"?state.cmpScope:"-");
+  function ensureCmp(){
+    const k=cmpKey();
+    if(CMP_CACHE[k]||CMP_LOADING.has(k))return;
+    CMP_LOADING.add(k);
+    const scope=state.cmpScope==="verticais"?"verticais":"times";
+    jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+"&scope="+scope)
+      .then(d=>{CMP_CACHE[k]=indexCmp(d);})
+      .catch(()=>{CMP_CACHE[k]={error:true,byNode:{},rows:[]};})
+      .finally(()=>{CMP_LOADING.delete(k);render();});
+  }
+  function indexCmp(d){
+    const byNode={},rows=[];
+    (d.rows||[]).forEach(r=>{
+      const m={};
+      (d.metrics||[]).forEach((mc,ci)=>{const pk=CMP_API2PROTO[mc.key]||mc.key;let v=r.values[ci];
+        if(pk==="df")v=v/freqDays();else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
+      byNode[r.nodeId]=m;rows.push({id:r.nodeId,label:r.label,rowType:r.rowType});
+    });
+    return {byNode,rows};
+  }
   function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="linhas")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
   function tierOf(k,v){switch(k){case"df":return v>=1?"Elite":v>=0.25?"Alto":v>=0.06?"Médio":"Baixo";case"lt":return v<24?"Elite":v<72?"Alto":v<168?"Médio":"Baixo";case"cfr":return v<=5?"Elite":v<=10?"Alto":v<=20?"Médio":"Baixo";case"mttr":return v<1?"Elite":v<24?"Alto":v<72?"Médio":"Baixo";default:return"";}}
   const TC={"Elite":"tier-elite","Alto":"tier-alto","Médio":"tier-medio","Baixo":"tier-baixo"};
@@ -1023,20 +1049,33 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   function viewComparativo(){
+    ensureCmp();
     const node=NODES[state.node];
     const metrics=[...DORA,...FLUXO,...IA];
     const SHORT={df:"Deploy",lt:"Lead",cfr:"CFR",mttr:"MTTR",ct:"Cycle",tp:"Thru",wip:"WIP",rt:"Review",ps:"PR Size",fe:"Flow",aic:"% IA",aad:"Adoção",aim:"Impacto"};
-    // scope: compare the CHILDREN of the selected node
-    let ids,rowType,showToggle=false,scopeLabel;
+    // scope: compare the CHILDREN of the selected node (chrome: row type + toggle + caption)
+    let rowType,showToggle=state.node==="all",scopeLabel;
     if(state.node==="all"){
-      showToggle=true;
-      if(state.cmpScope==="verticais"){ids=ORG.map(v=>"v:"+slug(v.name));rowType="Vertical";scopeLabel="todas as verticais";}
-      else{ids=NODES["all"].teamIds;rowType="Time";scopeLabel="todos os times";}
-    } else if(node.level==="Vertical"){ids=node.teamIds;rowType="Time";scopeLabel="times de "+node.label;}
-    else if(node.level==="Time"){ids=node.people;rowType="Pessoa";scopeLabel="pessoas de "+node.label;}
-    else{ids=NODES[node.teamIds[0]].people;rowType="Pessoa";scopeLabel="colegas de "+node.team;}
-    const valOf=(id,m)=>{const nd=NODES[id];if(nd.level==="Vertical"){return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;}return snap(id,m,state.freq).cur;};
-    const matrix=ids.map(id=>({id,vals:metrics.map(m=>valOf(id,m))}));
+      rowType=(state.cmpScope==="verticais")?"Vertical":"Time";
+      scopeLabel=(state.cmpScope==="verticais")?"todas as verticais":"todos os times";
+    } else if(node.level==="Vertical"){rowType="Time";scopeLabel="times de "+node.label;}
+    else if(node.level==="Time"){rowType="Pessoa";scopeLabel="pessoas de "+node.label;}
+    else{rowType="Pessoa";scopeLabel="colegas de "+node.team;}
+    const subOf=(id)=>{const nd=NODES[id];return nd?(nd.level==="Time"?nd.vertical:nd.level==="Pessoa"?nd.team:""):"";};
+    // Real rows come scope/coaching-filtered from the backend; fall back to synthetic while loading.
+    const c=CMP_CACHE[cmpKey()];const real=c&&!c.error&&c.rows&&c.rows.length;
+    let rowDefs;
+    if(real){rowDefs=c.rows.map(r=>({id:r.id,label:r.label,sub:subOf(r.id)}));}
+    else{
+      let ids;
+      if(state.node==="all"){ids=(state.cmpScope==="verticais")?ORG.map(v=>"v:"+slug(v.name)):NODES["all"].teamIds;}
+      else if(node.level==="Vertical"){ids=node.teamIds;}
+      else if(node.level==="Time"){ids=node.people;}
+      else{ids=NODES[node.teamIds[0]].people;}
+      rowDefs=ids.map(id=>({id,label:(NODES[id]?NODES[id].label:id),sub:subOf(id)}));
+    }
+    const valOf=(id,m)=>{if(real&&c.byNode[id]&&c.byNode[id][m.key]!=null)return c.byNode[id][m.key];const nd=NODES[id];if(nd&&nd.level==="Vertical"){return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;}return snap(id,m,state.freq).cur;};
+    const matrix=rowDefs.map(r=>({id:r.id,label:r.label,sub:r.sub,vals:metrics.map(m=>valOf(r.id,m))}));
     const cols=metrics.map((m,ci)=>{const vs=matrix.map(r=>r.vals[ci]);const mn=Math.min(...vs),mx=Math.max(...vs);return {mn,span:(mx-mn)||1};});
     const statusRel=(ci,v,m)=>{const frac=(v-cols[ci].mn)/cols[ci].span;const good=m.higher?frac:1-frac;const cls=good>=0.6?"good":good>=0.34?"warn":"crit";return {cls,label:{good:"melhor",warn:"intermediário",crit:"pior"}[cls]};};
 
@@ -1046,9 +1085,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<tr><th class="rowh"></th><th class="grp" colspan="'+DORA.length+'">DORA</th><th class="grp" colspan="'+FLUXO.length+'">Fluxo</th><th class="grp" colspan="'+IA.length+'">IA</th></tr>';
     h+='<tr><th class="rowh">'+rowType+'</th>'+metrics.map(m=>'<th title="'+m.label+'">'+SHORT[m.key]+'</th>').join("")+'</tr></thead><tbody>';
     matrix.forEach(row=>{
-      const n=NODES[row.id];const sub=n.level==="Time"?n.vertical:n.level==="Pessoa"?n.team:"";
-      h+='<tr><td class="rowh">'+n.label+(sub?'<small>'+sub+'</small>':'')+'</td>';
-      row.vals.forEach((v,ci)=>{const m=metrics[ci];const s=statusRel(ci,v,m);h+='<td><div class="heat-cell '+s.cls+'" title="'+n.label+' · '+m.label+': '+fmt(v,m.unit)+' '+m.unit+' — '+s.label+' do grupo">'+fmt(v,m.unit)+'<small>'+m.unit+'</small></div></td>';});
+      h+='<tr><td class="rowh">'+row.label+(row.sub?'<small>'+row.sub+'</small>':'')+'</td>';
+      row.vals.forEach((v,ci)=>{const m=metrics[ci];const s=statusRel(ci,v,m);h+='<td><div class="heat-cell '+s.cls+'" title="'+row.label+' · '+m.label+': '+fmt(v,m.unit)+' '+m.unit+' — '+s.label+' do grupo">'+fmt(v,m.unit)+'<small>'+m.unit+'</small></div></td>';});
       h+='</tr>';
     });
     h+='</tbody></table></div>';
