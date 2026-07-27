@@ -6,10 +6,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.engperf.adapter.inbound.web.auth.AuthWeb;
+import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.application.structure.IdentityService;
 import com.engperf.application.structure.RepositoryService;
 import com.engperf.application.structure.StructureService;
+import com.engperf.domain.access.AccessScope;
+import com.engperf.domain.account.AccountStatus;
+import com.engperf.domain.account.Role;
+import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
 import com.engperf.domain.structure.Repository;
@@ -24,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -66,10 +73,18 @@ class StructureAdminApiTest {
 
   @Test
   void treeReturnsRoot() throws Exception {
-    mvc.perform(get("/api/structure/tree"))
+    mvc.perform(get("/api/structure/tree").requestAttr(AuthWeb.USER, admin()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.id").value("all"))
         .andExpect(jsonPath("$.children[0].id").value("v:pagamentos"));
+  }
+
+  private static AuthenticatedUser admin() {
+    UserAccount account =
+        new UserAccount(
+            "u:admin", "Admin", "admin@x.com", Role.ADMIN, AccountStatus.ACTIVE, null, "h:pw");
+    AccessScope scope = new AccessScope(true, true, Set.of(), Set.of(), Set.of());
+    return new AuthenticatedUser(account, scope);
   }
 
   @Test

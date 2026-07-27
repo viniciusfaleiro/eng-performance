@@ -368,7 +368,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     <div class="sidebar-scroll">
       <div class="rail-label">Estrutura</div>
       <nav id="nav"></nav>
-      <div class="divider"></div>
+      <div class="divider" id="railDivider"></div>
       <div id="rail"></div>
     </div>
   </aside>
@@ -465,41 +465,52 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const STATUS_PT={active:"Ativo",invited:"Convidado",disabled:"Desativado"};
   const ROLE_API={Admin:"admin",Exec:"exec",Gestor:"manager",Colaborador:"contributor"};
   const STATUS_API={Ativo:"active",Convidado:"invited",Desativado:"disabled"};
-  const jget=(u)=>fetch(u).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
-  async function jcheck(r){if(!r.ok){let d="";try{d=(await r.json()).detail||"";}catch(e){}const err=new Error(d||("HTTP "+r.status));err.status=r.status;throw err;}return r.status===204?null:r.json();}
-  const jsend=(m,u,b)=>fetch(u,{method:m,headers:{"Content-Type":"application/json"},body:JSON.stringify(b)}).then(jcheck);
+  let AUTH_TOKEN=localStorage.getItem("ep_token")||"";
+  let CURRENT_USER=null;
+  const authHeaders=(extra)=>{const h=Object.assign({},extra||{});if(AUTH_TOKEN)h["Authorization"]="Bearer "+AUTH_TOKEN;return h;};
+  function onUnauthorized(){AUTH_TOKEN="";localStorage.removeItem("ep_token");$("login").classList.remove("hidden");}
+  const jget=(u)=>fetch(u,{headers:authHeaders()}).then(r=>{if(r.status===401){onUnauthorized();throw new Error("HTTP 401");}if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
+  async function jcheck(r){if(r.status===401){onUnauthorized();const e=new Error("HTTP 401");e.status=401;throw e;}if(!r.ok){let d="";try{d=(await r.json()).detail||"";}catch(e){}const err=new Error(d||("HTTP "+r.status));err.status=r.status;throw err;}return r.status===204?null:r.json();}
+  const jsend=(m,u,b)=>fetch(u,{method:m,headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(b)}).then(jcheck);
   const jpost=(u,b)=>jsend("POST",u,b),jput=(u,b)=>jsend("PUT",u,b);
-  const jdel=(u)=>fetch(u,{method:"DELETE"}).then(jcheck);
+  const jdel=(u)=>fetch(u,{method:"DELETE",headers:authHeaders()}).then(jcheck);
   const apiErr=(e)=>{const m=(e&&e.message)||String(e);
     const pt=/email already registered/i.test(m)?"Email já cadastrado":/valid email required|email must contain/i.test(m)?"Email inválido":/password must not be blank/i.test(m)?"Senha obrigatória":/not found/i.test(m)?"Registro não encontrado":/manager is not a registered person/i.test(m)?"Gestor precisa ser uma pessoa cadastrada":m;
     toast("Erro: "+pt);};
   const today=()=>new Date().toISOString().slice(0,10);
   async function loadFromApi(){
     try{
-      const [tree,verts,teams,coms,repos,accts,ado,ai]=await Promise.all([
-        jget("/api/structure/tree"),jget("/api/admin/verticals"),jget("/api/admin/teams"),
-        jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
-        jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention")]);
+      CURRENT_USER=await jget("/api/auth/me");
+      // The org tree the backend returns is ALREADY pruned to this user's scope — it is the single
+      // source of truth for navigation. We never fall back to seed data, or a non-admin would see
+      // structures they cannot access.
+      const tree=await jget("/api/structure/tree");
       const nameById={},teamNameById={};
       NAME2ID={};VNAME2ID={};TNAME2ID={};
-      tree.children.forEach(v=>{VNAME2ID[v.label]=v.id;
-        v.children.forEach(t=>{teamNameById[t.id]=t.label;TNAME2ID[t.label]=t.id;
-          t.children.forEach(p=>{nameById[p.id]=p.label;NAME2ID[p.label]=p.id;});});});
+      (tree.children||[]).forEach(v=>{VNAME2ID[v.label]=v.id;
+        (v.children||[]).forEach(t=>{teamNameById[t.id]=t.label;TNAME2ID[t.label]=t.id;
+          (t.children||[]).forEach(p=>{nameById[p.id]=p.label;NAME2ID[p.label]=p.id;});});});
       ORG.length=0;
-      tree.children.forEach(v=>ORG.push({name:v.label,teams:v.children.map(t=>({id:t.id.replace(/^t:/,""),name:t.label,people:t.children.map(p=>p.label)}))}));
+      (tree.children||[]).forEach(v=>ORG.push({name:v.label,teams:(v.children||[]).map(t=>({id:t.id.replace(/^t:/,""),name:t.label,people:(t.children||[]).map(p=>p.label)}))}));
       Object.keys(VERT_MANAGER).forEach(k=>delete VERT_MANAGER[k]);
-      verts.forEach(v=>{if(v.managerId)VERT_MANAGER[v.name]=nameById[v.managerId]||v.managerId;});
       Object.keys(TEAM_MANAGER).forEach(k=>delete TEAM_MANAGER[k]);
-      teams.forEach(t=>{if(t.managerId)TEAM_MANAGER[t.id.replace(/^t:/,"")]=nameById[t.managerId]||t.managerId;});
-      COMMITTERS.length=0;
-      coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
-      REPOS.length=0;
-      repos.forEach(r=>REPOS.push({repo:r.key,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null}));
-      USERS.length=0;
-      accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
-      ADO_CFG=ado;AI_CFG=ai;
+      COMMITTERS.length=0;REPOS.length=0;USERS.length=0;
+      if(CURRENT_USER.admin){
+        // Config/admin data is admin-only on the backend (403 otherwise); fetch it only for admins.
+        const [verts,teams,coms,repos,accts,ado,ai]=await Promise.all([
+          jget("/api/admin/verticals"),jget("/api/admin/teams"),
+          jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
+          jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention")]);
+        verts.forEach(v=>{if(v.managerId)VERT_MANAGER[v.name]=nameById[v.managerId]||v.managerId;});
+        teams.forEach(t=>{if(t.managerId)TEAM_MANAGER[t.id.replace(/^t:/,"")]=nameById[t.managerId]||t.managerId;});
+        coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
+        repos.forEach(r=>REPOS.push({repo:r.key,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null}));
+        accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
+        ADO_CFG=ado;AI_CFG=ai;
+      }else if(state.mode==="admin"){state.mode="structure";}
       rebuildStructure();
-    }catch(e){/* offline: keep the seeded mock so the UI still renders */}
+      if(!NODES[state.node])state.node="all";
+    }catch(e){/* 401 is handled by onUnauthorized; other errors leave the current view intact */}
     render();
   }
   const findTeamById=(id)=>{for(const v of ORG)for(const t of v.teams)if(t.id===id)return t;return null;};
@@ -551,14 +562,113 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function hash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0)/4294967295;}
   const FMULT={"Diário":1,"Semanal":5,"Mensal":21};
   function raw(id,freq,key,base,count,salt){let v=base*(0.62+hash(id+"|"+freq+"|"+key+"|"+(salt||""))*0.76);if(count)v*=(FMULT[freq]||1);return v;}
-  function snap(id,m,freq){
+  function snapSyn(id,m,freq){
     const cur=raw(id,freq,m.key,m.base,m.count,"cur"),prev=raw(id,freq,m.key,m.base,m.count,"prev");
     const trend=[];for(let i=0;i<7;i++)trend.push(raw(id,freq,m.key,m.base,m.count,"t"+i));trend.push(cur);
     const delta=cur-prev,pct=prev===0?0:(delta/Math.abs(prev))*100;
     let dir="flat";if(Math.abs(pct)>=0.5)dir=(delta>0)===m.higher?"up":"down";
     return {cur,prev,trend,pct:Math.round(pct*10)/10,dir};
   }
-  function series(id,m,freq,n,salt){const a=[];for(let i=0;i<n;i++)a.push(raw(id,freq,m.key,m.base,m.count,(salt||"")+"s"+i));a[n-1]=snap(id,m,freq).cur;return a;}
+  /* Dispatcher: DORA metrics (df/lt/cfr/mttr) read the real engine value from the DORA cache for
+     the active node/freq; everything else stays synthetic (Fluxo/IA until S5-S6). The sparkline
+     trend shape stays synthetic (decorative); the headline value + evolution + tier are real. */
+  const FLOW_KEYS=new Set(["ct","tp","wip","rt","ps","fe"]);
+  function snap(id,m,freq){
+    if(m.dora){
+      const c=DORA_CACHE[state.node+"|"+state.freq];
+      if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]){
+        const e=c.byNode[id][m.key];
+        return {cur:e.cur,prev:e.cur,pct:e.pct,dir:e.dir,trend:snapSyn(id,m,freq).trend};
+      }
+    }else if(FLOW_KEYS.has(m.key)){
+      const c=FLOW_CACHE[state.node+"|"+state.freq];
+      if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
+        const e=c.byNode[id][m.key];
+        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
+      }
+    }
+    return snapSyn(id,m,freq);
+  }
+  function series(id,m,freq,n,salt){const a=[];for(let i=0;i<n;i++)a.push(raw(id,freq,m.key,m.base,m.count,(salt||"")+"s"+i));a[n-1]=snapSyn(id,m,freq).cur;return a;}
+  /* Tendências wired to the real metrics engine (S3). Prototype metric key → S3 catalog key; the
+     rest stay synthetic until their group slice (S4-S6). Only the single-series Tendências chart
+     + its tiles read real data; the dashboard card grids remain the mock until then. */
+  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",tp:"throughput",wip:"wip",rt:"pr_review_time",aic:"ai_share",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
+  const TREND={},TREND_LOADING=new Set();
+  const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq;
+  function ensureTrend(mk){
+    const k=trendKey(mk);
+    if(TREND[k]||TREND_LOADING.has(k))return;
+    TREND_LOADING.add(k);
+    jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+      .then(d=>{const pts=d.points.map(p=>p.value);const lp=d.points[d.points.length-1]||{};
+        TREND[k]={pts,cur:pts[pts.length-1],prev:pts[pts.length-2],
+          pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
+          dir:(lp.sentiment==="good"?"up":lp.sentiment==="bad"?"down":"flat")};})
+      .catch(()=>{TREND[k]={error:true};})
+      .finally(()=>{TREND_LOADING.delete(k);render();});
+  }
+  function trendPts(m){const mk=PROTO2METRIC[m.key];if(mk){ensureTrend(mk);const e=TREND[trendKey(mk)];if(e&&e.pts)return e.pts;}return series(state.node,m,state.freq,12);}
+  function trendSnap(m){const mk=PROTO2METRIC[m.key];if(mk){const e=TREND[trendKey(mk)];if(e&&e.pts)return {cur:e.cur,prev:e.prev,pct:e.pct,dir:e.dir};}return snap(state.node,m,state.freq);}
+  /* DORA dashboard wired to the real engine: /api/dashboards/dora gives the node's four cards
+     (value + tier + evolution + coverage) and the ranking of the node's children. Cached by
+     node+freq; the base node and each ranked child are indexed by prototype metric key so snap()
+     and the tier panel read real numbers. df is shown per-day and cfr as a percentage to match the
+     prototype units. */
+  const DORA_CACHE={},DORA_LOADING=new Set();
+  const API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr"};
+  const TIER_PT={elite:"Elite",alto:"Alto",medio:"Médio",baixo:"Baixo"};
+  const freqDays=()=>({"Diário":1,"Diario":1,"Semanal":7,"Mensal":30}[state.freq]||7);
+  function ensureDora(){
+    const k=state.node+"|"+state.freq;
+    if(DORA_CACHE[k]||DORA_LOADING.has(k))return;
+    DORA_LOADING.add(k);
+    const days=freqDays();
+    jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+      .then(d=>{DORA_CACHE[k]=indexDora(d,days);})
+      .catch(()=>{DORA_CACHE[k]={error:true,byNode:{},ranking:[]};})
+      .finally(()=>{DORA_LOADING.delete(k);render();});
+  }
+  function indexDora(d,days){
+    const byNode={};
+    const put=(nodeId,cards)=>{const m={};(cards||[]).forEach(c=>{const pk=API2PROTO[c.key]||c.key;
+      let cur=c.value;if(pk==="df")cur=c.value/days;else if(pk==="cfr")cur=c.value*100;
+      m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
+        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat"),tier:c.tier};});
+      byNode[nodeId]=m;};
+    put(d.nodeId,d.cards);
+    (d.ranking||[]).forEach(r=>put(r.nodeId,r.cards));
+    return {byNode,childType:d.childType,ranking:(d.ranking||[]).map(r=>r.nodeId)};
+  }
+  function doraTier(id,key){const c=DORA_CACHE[state.node+"|"+state.freq];
+    if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][key]&&c.byNode[id][key].tier)return TIER_PT[c.byNode[id][key].tier];
+    return null;}
+  /* Fluxo dashboard wired to the real engine: /api/dashboards/flow gives the node's six cards, the
+     4-phase breakdown, and the throughput×cycle scatter of the children. cfr-style unit fixes: fe
+     (flow efficiency) comes as a 0..1 ratio, shown as a percentage. */
+  const FLOW_CACHE={},FLOW_LOADING=new Set();
+  const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe"};
+  function ensureFlow(){
+    const k=state.node+"|"+state.freq;
+    if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
+    FLOW_LOADING.add(k);
+    jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+      .then(d=>{FLOW_CACHE[k]=indexFlow(d);})
+      .catch(()=>{FLOW_CACHE[k]={error:true,byNode:{},phases:[],children:[]};})
+      .finally(()=>{FLOW_LOADING.delete(k);render();});
+  }
+  function indexFlow(d){
+    const byNode={};
+    const m={};(d.cards||[]).forEach(c=>{const pk=FLOW_API2PROTO[c.key]||c.key;
+      let cur=c.value;if(pk==="fe")cur=c.value*100;
+      m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
+        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat")};});
+    byNode[d.nodeId]=m;
+    // Children carry only throughput (tp) + cycle time (ct) — enough for the rank/scatter panels.
+    (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
+    return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
+  }
+  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq];return (c&&c.phases&&c.phases.length===4)?c.phases:null;}
   function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="linhas")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
   function tierOf(k,v){switch(k){case"df":return v>=1?"Elite":v>=0.25?"Alto":v>=0.06?"Médio":"Baixo";case"lt":return v<24?"Elite":v<72?"Alto":v<168?"Médio":"Baixo";case"cfr":return v<=5?"Elite":v<=10?"Alto":v<=20?"Médio":"Baixo";case"mttr":return v<1?"Elite":v<24?"Alto":v<72?"Médio":"Baixo";default:return"";}}
   const TC={"Elite":"tier-elite","Alto":"tier-alto","Médio":"tier-medio","Baixo":"tier-baixo"};
@@ -579,7 +689,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   function metricCard(id,m,freq,hero){
     const s=snap(id,m,freq);let tier="";
-    if(m.dora){const t=tierOf(m.key,s.cur);tier='<span class="tier '+TC[t]+'">'+t+'</span>';}
+    if(m.dora){const t=doraTier(id,m.key)||tierOf(m.key,s.cur);tier='<span class="tier '+TC[t]+'">'+t+'</span>';}
     return '<div class="card click'+(hero?" hero":"")+'" data-metric="'+m.key+'" role="button" tabindex="0">'+
       '<div class="card-top"><div class="card-label">'+m.label+'</div>'+tier+'</div>'+
       '<div class="card-value"><span class="v num">'+fmt(s.cur,m.unit)+'</span><span class="u">'+m.unit+'</span></div>'+
@@ -606,7 +716,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Detailed dashboards (DORA / Fluxo / IA) ---------- */
   function nodeVal(id,m){const nd=NODES[id];if(nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
-  function areaTrend(title,m){const labels=periodLabels(state.freq,12);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+lineChart([{name:m.label,color:"var(--cat-1)",pts:series(state.node,m,state.freq,12)}],labels,m.unit,230)+'</div>';}
+  function areaTrend(title,m){const labels=periodLabels(state.freq,12);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+lineChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
     const rows=ids.map(id=>({n:NODES[id],val:nodeVal(id,m)})).sort((a,b)=>m.higher?b.val-a.val:a.val-b.val);
     const max=Math.max(...rows.map(r=>r.val))||1;
@@ -618,7 +728,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function tierPanel(ids){
     const cols=[["df","Deploy"],["lt","Lead"],["cfr","CFR"],["mttr","MTTR"]];
     let h='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:10px">Classificação DORA por time</div><div style="overflow-x:auto"><table class="heat"><thead><tr><th class="rowh">Time</th>'+cols.map(c=>'<th>'+c[1]+'</th>').join("")+'</tr></thead><tbody>';
-    ids.forEach(id=>{h+='<tr><td class="rowh">'+NODES[id].label+'</td>'+cols.map(c=>{const v=nodeVal(id,M(c[0]));const t=tierOf(c[0],v);return '<td style="text-align:center"><span class="tier '+TC[t]+'" title="'+fmt(v,M(c[0]).unit)+M(c[0]).unit+'">'+t+'</span></td>';}).join("")+'</tr>';});
+    ids.forEach(id=>{h+='<tr><td class="rowh">'+NODES[id].label+'</td>'+cols.map(c=>{const v=nodeVal(id,M(c[0]));const t=doraTier(id,c[0])||tierOf(c[0],v);return '<td style="text-align:center"><span class="tier '+TC[t]+'" title="'+fmt(v,M(c[0]).unit)+M(c[0]).unit+'">'+t+'</span></td>';}).join("")+'</tr>';});
     return h+'</tbody></table></div></div>';
   }
   function scatterPanel(title,ids,mx,my){
@@ -646,12 +756,16 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const bestEvo=(ids,m)=>ids.map(id=>{const s=snap(id,m,state.freq);return {n:NODES[id],pct:s.pct};}).sort((a,b)=>b.pct-a.pct)[0];
 
   function dashboardDORA(){
-    const {ids,type}=rankEntities();const et=type.toLowerCase();
+    ensureDora();
+    const c=DORA_CACHE[state.node+"|"+state.freq];
+    let ids,et;
+    if(c&&!c.error&&c.childType&&c.ranking.length){ids=c.ranking;et=(c.childType==="vertical")?"vertical":"time";}
+    else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
     let h='<div class="grid dora">'+DORA.map(m=>metricCard(state.node,m,state.freq,true)).join("")+'</div>';
     h+=areaTrend("Deployment Frequency — evolução",M("df"));
     h+='<div class="dash-grid">'+rankPanel("Lead Time por "+et+" (menor é melhor)",ids,M("lt"))+tierPanel(ids)+'</div>';
     const cfr=best(ids,M("cfr"),"max"),mttr=best(ids,M("mttr"),"min"),evo=bestEvo(ids,M("df"));
-    const elite=ids.filter(id=>tierOf("df",nodeVal(id,M("df")))==="Elite").length;
+    const elite=ids.filter(id=>(doraTier(id,"df")||tierOf("df",nodeVal(id,M("df"))))==="Elite").length;
     h+=statStrip([
       {label:"Deploys nível Elite",value:elite+"/"+ids.length,sub:et+"s classificados Elite",tone:"good"},
       {label:"Maior Change Failure Rate",value:fmt(cfr.v,"%")+"%",sub:cfr.n.label+" · atenção",tone:"crit"},
@@ -661,7 +775,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return h;
   }
   function dashboardFluxo(){
-    const {ids,type}=rankEntities();const et=type.toLowerCase();
+    ensureFlow();
+    const c=FLOW_CACHE[state.node+"|"+state.freq];
+    let ids,et;
+    if(c&&!c.error&&c.childType&&c.children.length){ids=c.children;et=(c.childType==="vertical")?"vertical":"time";}
+    else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
     let h='<div class="grid metrics">'+FLUXO.map(m=>metricCard(state.node,m,state.freq)).join("")+'</div>';
     h+=areaTrend("Cycle Time — evolução",M("ct"));
     h+='<div class="dash-grid">'+rankPanel("Cycle Time por "+et+" (menor é melhor)",ids,M("ct"))+scatterPanel("Throughput × Cycle Time por "+et,ids,M("tp"),M("ct"))+'</div>';
@@ -670,7 +788,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const fast=best(ids,M("ct"),"min"),wip=best(ids,M("wip"),"max"),fe=best(ids,M("fe"),"max");
     h+=statStrip([
       {label:"Maior gargalo",value:PHASES[pmax].n,sub:fmt(phases[pmax],"h")+" h em média",tone:"warn"},
-      {label:type+" mais rápido",value:fmt(fast.v,"h")+" h",sub:fast.n.label,tone:"good"},
+      {label:(et.charAt(0).toUpperCase()+et.slice(1))+" mais rápido",value:fmt(fast.v,"h")+" h",sub:fast.n.label,tone:"good"},
       {label:"Maior WIP",value:Math.round(wip.v)+" itens",sub:wip.n.label+" · atenção",tone:"crit"},
       {label:"Melhor Flow Efficiency",value:Math.round(fe.v)+"%",sub:fe.n.label,tone:"good"},
     ]);
@@ -727,8 +845,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const canAI=(m.key==="ct"||m.key==="tp"||m.key==="lt");
     let ser;
     if(state.trendAI&&canAI){ser=[{name:"com IA",color:"var(--cat-1)",pts:series(state.node,m,state.freq,12,"ia").map(v=>v*(m.higher?1.12:0.82))},{name:"sem IA",color:"var(--cat-5)",pts:series(state.node,m,state.freq,12,"noia").map(v=>v*(m.higher?0.9:1.12))}];}
-    else ser=[{name:m.label,color:"var(--cat-1)",pts:series(state.node,m,state.freq,12)}];
-    const s=snap(state.node,m,state.freq);
+    else ser=[{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}];
+    const s=(state.trendAI&&canAI)?snap(state.node,m,state.freq):trendSnap(m);
     let h='<p class="baseline-note"><span class="pill">'+n.label+' · '+n.level+'</span><span class="pill">'+state.freq+' · 12 períodos</span></p>';
     h+='<div class="chiprow">'+ALL.filter(x=>!x.note).map(x=>'<button class="toggle-chip'+(x.key===state.trendMetric?" on":"")+'" data-tm="'+x.key+'">'+x.label+'</button>').join("")+'</div>';
     h+='<div class="grid tiles" style="margin-bottom:16px">'+
@@ -747,7 +865,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function tile(k,v,foot){return '<div class="card"><div class="card-label">'+k+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+v+'</span></div>'+(foot||"")+'</div>';}
 
   function phaseBlock(id,m){
-    const total=snap(id,m,state.freq).cur;const parts=phaseSplit(id,state.freq,total);const sum=parts.reduce((a,b)=>a+b,0);
+    const total=snap(id,m,state.freq).cur;const parts=flowPhases()||phaseSplit(id,state.freq,total);const sum=parts.reduce((a,b)=>a+b,0)||1;
     let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div class="phaseseg" style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h"></div>';});bar+='</div>';
     let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div class="phase-item"><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b></div>';});leg+='</div>';
     return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Cycle Time — 4 fases</div>'+bar+leg+'</div>';
@@ -1122,6 +1240,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Chrome ---------- */
   function pathOf(id){const n=NODES[id];if(n.level==="Pessoa")return n.vertical+" › "+n.team;if(n.level==="Time")return n.vertical;return "";}
   function renderRail(){
+    const isAdmin=!!(CURRENT_USER&&CURRENT_USER.admin);
+    const div=$("railDivider");if(div)div.style.display=isAdmin?"":"none";
+    if(!isAdmin){$("rail").innerHTML="";return;}
     $("rail").innerHTML='<button class="rail-item'+(state.mode==="admin"?" active":"")+'" data-sec="admin"><span class="rail-ic">⚙</span>Admin</button>';
     $("rail").querySelector(".rail-item").addEventListener("click",()=>{state.mode="admin";closeNav();render();});
   }
@@ -1176,11 +1297,34 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   ns.addEventListener("click",closeNav);
 
   /* ---------- Login / logout ---------- */
-  $("loginForm").addEventListener("submit",e=>{e.preventDefault();$("login").classList.add("hidden");});
-  $("logoutBtn").addEventListener("click",()=>{closeNav();$("login").classList.remove("hidden");});
+  const loginHint=document.querySelector(".login-hint");
+  const loginHintText=loginHint?loginHint.textContent:"";
+  function loginError(msg){if(loginHint){loginHint.textContent=msg;loginHint.style.color="var(--crit)";}}
+  function loginReset(){if(loginHint){loginHint.textContent=loginHintText;loginHint.style.color="";}}
+  async function doLogin(email,pass){
+    const r=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email,password:pass})});
+    if(!r.ok)throw new Error("invalid");
+    const data=await r.json();
+    AUTH_TOKEN=data.token;localStorage.setItem("ep_token",AUTH_TOKEN);
+    return data;
+  }
+  $("loginForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    try{
+      await doLogin($("loginEmail").value.trim(),$("loginPass").value);
+      loginReset();$("login").classList.add("hidden");
+      await loadFromApi();
+    }catch(err){loginError("Email ou senha inválidos");}
+  });
+  $("logoutBtn").addEventListener("click",()=>{
+    closeNav();
+    fetch("/api/auth/logout",{method:"POST",headers:authHeaders()}).catch(()=>{});
+    AUTH_TOKEN="";CURRENT_USER=null;localStorage.removeItem("ep_token");
+    $("login").classList.remove("hidden");
+  });
   $("modal").addEventListener("click",e=>{if(e.target===$("modal"))closeModal();});
 
-  loadFromApi();
+  if(AUTH_TOKEN){$("login").classList.add("hidden");loadFromApi().catch(()=>onUnauthorized());}
 })();
 </script>
 

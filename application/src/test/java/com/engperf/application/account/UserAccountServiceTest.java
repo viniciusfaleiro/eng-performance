@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
@@ -25,8 +26,21 @@ class UserAccountServiceTest {
   @BeforeEach
   void setUp() {
     repo = new FakeRepo();
-    service = new UserAccountService(repo, raw -> "h:" + raw);
+    service = new UserAccountService(repo, HASHER);
   }
+
+  private static final PasswordHasher HASHER =
+      new PasswordHasher() {
+        @Override
+        public String hash(String raw) {
+          return "h:" + raw;
+        }
+
+        @Override
+        public boolean matches(String raw, String hash) {
+          return hash != null && hash.equals("h:" + raw);
+        }
+      };
 
   @Test
   void createsHashesAndDerivesId() {

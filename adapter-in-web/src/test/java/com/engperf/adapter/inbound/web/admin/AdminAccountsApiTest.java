@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.engperf.application.account.UserAccountService;
 import com.engperf.application.config.PlatformConfigService;
+import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.domain.account.UserAccount;
@@ -34,11 +35,24 @@ class AdminAccountsApiTest {
 
   private MockMvc mvc;
 
+  private static final PasswordHasher HASHER =
+      new PasswordHasher() {
+        @Override
+        public String hash(String raw) {
+          return "h:" + raw;
+        }
+
+        @Override
+        public boolean matches(String raw, String hash) {
+          return hash != null && hash.equals("h:" + raw);
+        }
+      };
+
   @BeforeEach
   void setUp() {
     var accountRepo = new FakeAccounts();
     var configPort = new FakeConfig();
-    var userService = new UserAccountService(accountRepo, raw -> "h:" + raw);
+    var userService = new UserAccountService(accountRepo, HASHER);
     var configService = new PlatformConfigService(configPort);
 
     ObjectMapper mapper =

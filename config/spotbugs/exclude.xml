@@ -29,4 +29,13 @@
             <Bug pattern="EI_EXPOSE_REP"/>
         </Or>
     </Match>
+
+    <!-- Application services store constructor-injected outbound ports; the stored
+         reference is effectively immutable (interfaces, DI-owned singletons). Only the
+         constructor-storing case (REP2) is excluded — REP (leaking internal state via a
+         getter) stays enforced. -->
+    <Match>
+        <Package name="~com\.engperf\.application.*"/>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
 </FindBugsFilter>
