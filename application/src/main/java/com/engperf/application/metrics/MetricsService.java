@@ -60,13 +60,33 @@ public final class MetricsService implements MetricsQueryUseCase {
 
   @Override
   public MetricSeries series(String metricKey, String nodeId, Frequency frequency) {
-    MetricDefinition def =
-        catalog
-            .find(metricKey)
-            .orElseThrow(() -> new NoSuchElementException("unknown metric: " + metricKey));
+    MetricDefinition def = definition(metricKey);
     LocalDate reference = LocalDate.now(clock);
     List<RawEvent> window = fetch(def, frequency, reference);
     return MetricsEngine.series(buildIndex(), window, def, nodeId, frequency, reference, BUCKETS);
+  }
+
+  @Override
+  public MetricSeries cohortSeries(
+      String metricKey, String nodeId, Frequency frequency, boolean aiAssisted) {
+    MetricDefinition def = definition(metricKey);
+    LocalDate reference = LocalDate.now(clock);
+    List<RawEvent> window = fetch(def, frequency, reference);
+    return MetricsEngine.series(
+        buildIndex(),
+        window,
+        def,
+        nodeId,
+        frequency,
+        reference,
+        BUCKETS,
+        e -> e.ai() == aiAssisted);
+  }
+
+  private MetricDefinition definition(String metricKey) {
+    return catalog
+        .find(metricKey)
+        .orElseThrow(() -> new NoSuchElementException("unknown metric: " + metricKey));
   }
 
   private StructureIndex buildIndex() {

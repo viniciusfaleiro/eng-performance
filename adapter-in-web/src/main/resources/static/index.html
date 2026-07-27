@@ -573,6 +573,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      the active node/freq; everything else stays synthetic (Fluxo/IA until S5-S6). The sparkline
      trend shape stays synthetic (decorative); the headline value + evolution + tier are real. */
   const FLOW_KEYS=new Set(["ct","tp","wip","rt","ps","fe"]);
+  const IA_KEYS=new Set(["aic","aad","aim"]);
   function snap(id,m,freq){
     if(m.dora){
       const c=DORA_CACHE[state.node+"|"+state.freq];
@@ -582,6 +583,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       }
     }else if(FLOW_KEYS.has(m.key)){
       const c=FLOW_CACHE[state.node+"|"+state.freq];
+      if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
+        const e=c.byNode[id][m.key];
+        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
+      }
+    }else if(IA_KEYS.has(m.key)){
+      const c=IA_CACHE[state.node+"|"+state.freq];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
@@ -608,8 +615,10 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       .catch(()=>{TREND[k]={error:true};})
       .finally(()=>{TREND_LOADING.delete(k);render();});
   }
-  function trendPts(m){const mk=PROTO2METRIC[m.key];if(mk){ensureTrend(mk);const e=TREND[trendKey(mk)];if(e&&e.pts)return e.pts;}return series(state.node,m,state.freq,12);}
-  function trendSnap(m){const mk=PROTO2METRIC[m.key];if(mk){const e=TREND[trendKey(mk)];if(e&&e.pts)return {cur:e.cur,prev:e.prev,pct:e.pct,dir:e.dir};}return snap(state.node,m,state.freq);}
+  // ai_share arrives as a 0..1 ratio; shown as a percentage like the prototype's aic axis.
+  const TREND_SCALE={aic:100};
+  function trendPts(m){const mk=PROTO2METRIC[m.key];if(mk){ensureTrend(mk);const e=TREND[trendKey(mk)];if(e&&e.pts){const sc=TREND_SCALE[m.key]||1;return sc===1?e.pts:e.pts.map(v=>v*sc);}}return series(state.node,m,state.freq,12);}
+  function trendSnap(m){const mk=PROTO2METRIC[m.key];if(mk){const e=TREND[trendKey(mk)];if(e&&e.pts){const sc=TREND_SCALE[m.key]||1;return {cur:e.cur*sc,prev:e.prev*sc,pct:e.pct,dir:e.dir};}}return snap(state.node,m,state.freq);}
   /* DORA dashboard wired to the real engine: /api/dashboards/dora gives the node's four cards
      (value + tier + evolution + coverage) and the ranking of the node's children. Cached by
      node+freq; the base node and each ranked child are indexed by prototype metric key so snap()
@@ -669,6 +678,32 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
   }
   function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq];return (c&&c.phases&&c.phases.length===4)?c.phases:null;}
+  /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
+     (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
+     with/without-AI cycle-time series. ai_share/ai_adoption arrive as 0..1 ratios, shown as %. */
+  const IA_CACHE={},IA_LOADING=new Set();
+  const IA_API2PROTO={ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
+  function ensureIA(){
+    const k=state.node+"|"+state.freq;
+    if(IA_CACHE[k]||IA_LOADING.has(k))return;
+    IA_LOADING.add(k);
+    jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+      .then(d=>{IA_CACHE[k]=indexIA(d);})
+      .catch(()=>{IA_CACHE[k]={error:true,byNode:{},adoption:[],withAi:[],withoutAi:[]};})
+      .finally(()=>{IA_LOADING.delete(k);render();});
+  }
+  function indexIA(d){
+    const byNode={};
+    const m={};(d.cards||[]).forEach(c=>{const pk=IA_API2PROTO[c.key]||c.key;
+      let cur=c.value;if(pk==="aic"||pk==="aad")cur=c.value*100;
+      m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
+        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat")};});
+    byNode[d.nodeId]=m;
+    // Children carry only adoption (aad) — enough for the adoption ranking panel.
+    (d.adoption||[]).forEach(a=>{byNode[a.nodeId]={aad:{cur:a.adoption*100}};});
+    return {byNode,childType:d.childType,adoption:(d.adoption||[]).map(a=>a.nodeId),
+      withAi:(d.cycleWithAi||[]),withoutAi:(d.cycleWithoutAi||[])};
+  }
   function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="linhas")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
   function tierOf(k,v){switch(k){case"df":return v>=1?"Elite":v>=0.25?"Alto":v>=0.06?"Médio":"Baixo";case"lt":return v<24?"Elite":v<72?"Alto":v<168?"Médio":"Baixo";case"cfr":return v<=5?"Elite":v<=10?"Alto":v<=20?"Médio":"Baixo";case"mttr":return v<1?"Elite":v<24?"Alto":v<72?"Médio":"Baixo";default:return"";}}
   const TC={"Elite":"tier-elite","Alto":"tier-alto","Médio":"tier-medio","Baixo":"tier-baixo"};
@@ -714,7 +749,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   /* ---------- Views ---------- */
   /* ---------- Detailed dashboards (DORA / Fluxo / IA) ---------- */
-  function nodeVal(id,m){const nd=NODES[id];if(nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
+  // Real cached value for the exact node — IA children (verticals/teams) come indexed by nodeId with
+  // their adoption, so the ranking shows real values instead of the team-average fallback.
+  function cachedVal(id,m){
+    if(!IA_KEYS.has(m.key))return null;
+    const c=IA_CACHE[state.node+"|"+state.freq];
+    if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null)return c.byNode[id][m.key].cur;
+    return null;}
+  function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
   function areaTrend(title,m){const labels=periodLabels(state.freq,12);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+lineChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
@@ -795,13 +837,18 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return h;
   }
   function dashboardIA(){
-    const {ids,type}=rankEntities();const et=type.toLowerCase();
+    ensureIA();
+    const c=IA_CACHE[state.node+"|"+state.freq];
+    let ids,et;
+    if(c&&!c.error&&c.childType&&c.adoption.length){ids=c.adoption;et=(c.childType==="vertical")?"vertical":"time";}
+    else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
     let h='<div class="grid metrics">'+IA.map(m=>metricCard(state.node,m,state.freq)).join("")+'</div>';
     h+=areaTrend("% de commits com IA — evolução",M("aic"));
     const aic=snap(state.node,M("aic"),state.freq).cur;
     h+='<div class="dash-grid">'+rankPanel("Adoção de IA por "+et,ids,M("aad"))+donutPanel("Commits com IA vs. sem IA",[{label:"Com IA",value:aic,color:"var(--cat-1)"},{label:"Sem IA",value:Math.max(0,100-aic),color:"var(--surface-4)"}])+'</div>';
     const labels=periodLabels(state.freq,12);
-    const comIA=series(state.node,M("ct"),state.freq,12,"ia").map(v=>v*0.82),semIA=series(state.node,M("ct"),state.freq,12,"noia").map(v=>v*1.08);
+    const comIA=(c&&c.withAi&&c.withAi.length===12)?c.withAi:series(state.node,M("ct"),state.freq,12,"ia").map(v=>v*0.82),
+          semIA=(c&&c.withoutAi&&c.withoutAi.length===12)?c.withoutAi:series(state.node,M("ct"),state.freq,12,"noia").map(v=>v*1.08);
     h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-head"><div class="chart-title">Cycle Time: PRs com IA vs. sem IA</div><div class="legend"><span><i style="background:var(--cat-1)"></i>com IA</span><span><i style="background:var(--cat-5)"></i>sem IA</span></div></div>'+lineChart([{name:"com IA",color:"var(--cat-1)",pts:comIA},{name:"sem IA",color:"var(--cat-5)",pts:semIA}],labels,"h",230)+'</div>';
     const topA=best(ids,M("aad"),"max"),lowA=best(ids,M("aad"),"min"),imp=best(ids,M("aim"),"max"),grew=bestEvo(ids,M("aic"));
     h+=statStrip([

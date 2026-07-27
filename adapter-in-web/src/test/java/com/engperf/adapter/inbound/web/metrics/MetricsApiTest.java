@@ -141,5 +141,12 @@ class MetricsApiTest {
       MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
     }
+
+    @Override
+    public MetricSeries cohortSeries(
+        String metricKey, String nodeId, Frequency frequency, boolean aiAssisted) {
+      MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
+      return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
+    }
   }
 }

@@ -28,6 +28,25 @@ public final class MetricCatalog {
   public static final List<String> PHASES =
       List.of("coding_time", "pickup_time", "pr_review_time", "deploy_time");
 
+  /** The IA metrics in dashboard-card order (impact is composed, not a raw engine metric). */
+  public static final List<String> IA = List.of("ai_share", "ai_adoption");
+
+  /**
+   * AI Impact is not a raw engine metric: it compares cycle time across the AI and non-AI cohorts.
+   * This definition carries only its label/unit/direction for the dashboard; the value is composed
+   * by {@link AiDashboardService} from the two cohort series.
+   */
+  public static final MetricDefinition AI_IMPACT =
+      new MetricDefinition(
+          "ai_impact",
+          "Cycle time mais rápido c/ IA",
+          "ia",
+          EventType.PR,
+          AttributionScope.PERSON,
+          Aggregation.RATIO,
+          "%",
+          Direction.HIGHER_BETTER);
+
   private static final List<MetricDefinition> DEFINITIONS =
       List.of(
           // ---- Fluxo / IA samples (no tiers) ----
@@ -56,6 +75,15 @@ public final class MetricCatalog {
               EventType.COMMIT,
               AttributionScope.PERSON,
               Aggregation.RATIO,
+              "%",
+              Direction.HIGHER_BETTER),
+          new MetricDefinition(
+              "ai_adoption",
+              "Adoção de IA (devs)",
+              "ia",
+              EventType.COMMIT,
+              AttributionScope.PERSON,
+              Aggregation.DISTINCT_RATIO,
               "%",
               Direction.HIGHER_BETTER),
           new MetricDefinition(
@@ -198,6 +226,11 @@ public final class MetricCatalog {
 
   public List<MetricDefinition> phases() {
     return byKeys(PHASES);
+  }
+
+  /** The IA metrics that come straight from the engine ({@code ai_share}, {@code ai_adoption}). */
+  public List<MetricDefinition> ia() {
+    return byKeys(IA);
   }
 
   private List<MetricDefinition> byKeys(List<String> keys) {

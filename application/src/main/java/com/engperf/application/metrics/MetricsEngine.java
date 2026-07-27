@@ -12,14 +12,19 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * On-read aggregation. Collects every event that attributes (as-of-event) to the queried node and
  * aggregates the population directly — median/ratio are never composed from children. Handles
- * bucketing, correct-polarity evolution, the partial current period, and coverage.
+ * bucketing, correct-polarity evolution, the partial current period, and coverage. A population
+ * predicate can restrict the metric to a cohort of events selected by an attribute (e.g. the AI
+ * flag), so the same metric can be evaluated over disjoint cohorts of the same node.
  */
 public final class MetricsEngine {
 
@@ -42,8 +47,21 @@ public final class MetricsEngine {
       Frequency freq,
       LocalDate reference,
       int bucketCount) {
+    return series(index, events, def, nodeId, freq, reference, bucketCount, e -> true);
+  }
 
-    List<Matched> matched = match(index, events, def, nodeId);
+  /** As {@link #series}, but only events matching {@code population} feed the metric. */
+  public static MetricSeries series(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Frequency freq,
+      LocalDate reference,
+      int bucketCount,
+      Predicate<RawEvent> population) {
+
+    List<Matched> matched = match(index, events, def, nodeId, population);
     List<Bucket> buckets = freq.lastBuckets(reference, bucketCount);
 
     double[] values = new double[buckets.size()];
@@ -76,7 +94,7 @@ public final class MetricsEngine {
               MetricValue.of(values[i], previous, def.direction())));
     }
 
-    return new MetricSeries(def, points, coverage(index, events, def));
+    return new MetricSeries(def, points, coverage(index, events, def, population));
   }
 
   public static MetricCard card(
@@ -94,15 +112,39 @@ public final class MetricsEngine {
 
   public static Coverage coverage(
       StructureIndex index, List<RawEvent> events, MetricDefinition def) {
-    long attributed =
-        events.stream().filter(e -> index.attribute(e, def.scope()).isPresent()).count();
-    return new Coverage(attributed, events.size());
+    return coverage(index, events, def, e -> true);
+  }
+
+  private static Coverage coverage(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      Predicate<RawEvent> population) {
+    long total = 0;
+    long attributed = 0;
+    for (RawEvent e : events) {
+      if (!population.test(e)) {
+        continue;
+      }
+      total++;
+      if (index.attribute(e, def.scope()).isPresent()) {
+        attributed++;
+      }
+    }
+    return new Coverage(attributed, total);
   }
 
   private static List<Matched> match(
-      StructureIndex index, List<RawEvent> events, MetricDefinition def, String nodeId) {
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Predicate<RawEvent> population) {
     List<Matched> matched = new ArrayList<>();
     for (RawEvent e : events) {
+      if (!population.test(e)) {
+        continue;
+      }
       Optional<Attribution> attr = index.attribute(e, def.scope());
       if (attr.isPresent() && attr.get().belongsTo(nodeId)) {
         Measure measure = measure(e, def.measure());
@@ -178,7 +220,22 @@ public final class MetricsEngine {
               ms.stream().mapToDouble(Matched::numerator).sum(),
               ms.stream().mapToDouble(Matched::denominator).sum());
       case SNAPSHOT -> snapshot(ms);
+      // DISTINCT_RATIO: distinct people with a matching event (numerator > 0) over distinct people
+      // with any event — each person counted once regardless of how many events they produced.
+      case DISTINCT_RATIO -> distinctRatio(ms);
     };
+  }
+
+  private static double distinctRatio(List<Matched> ms) {
+    Set<String> active = new HashSet<>();
+    Set<String> matching = new HashSet<>();
+    for (Matched m : ms) {
+      active.add(m.entity());
+      if (m.numerator() > 0) {
+        matching.add(m.entity());
+      }
+    }
+    return Aggregations.ratio(matching.size(), active.size());
   }
 
   /**

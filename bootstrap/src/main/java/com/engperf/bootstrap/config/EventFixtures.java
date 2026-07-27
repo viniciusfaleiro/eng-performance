@@ -73,7 +73,9 @@ class EventFixtures implements CommandLineRunner {
         double review = 1 + pick(identity + "|rev|" + d + i, 8); // 1..8h
         double deploy = 1 + pick(identity + "|dep|" + d + i, 4); // 1..4h
         int lines = 30 + pick(identity + "|lines|" + d + i, 400); // 30..429
-        batch.add(pr(identity, day, i, coding, pickup, review, deploy, lines));
+        // The PR is AI-assisted when its commits used AI (convention) — modelled deterministically.
+        boolean ai = pick(identity + "|prai|" + d + i, 2) == 1;
+        batch.add(pr(identity, day, i, new double[] {coding, pickup, review, deploy}, lines, ai));
       }
       int commits = pick(identity + "|c|" + d, 4); // 0..3 commits
       for (int i = 0; i < commits; i++) {
@@ -114,14 +116,11 @@ class EventFixtures implements CommandLineRunner {
   }
 
   private static RawEvent pr(
-      String identity,
-      LocalDate day,
-      int i,
-      double coding,
-      double pickup,
-      double review,
-      double deploy,
-      int lines) {
+      String identity, LocalDate day, int i, double[] phases, int lines, boolean ai) {
+    double coding = phases[0];
+    double pickup = phases[1];
+    double review = phases[2];
+    double deploy = phases[3];
     double cycle = coding + pickup + review + deploy;
     double active = coding + review; // coding + review; pickup + deploy are waiting
     Map<String, String> detail = new java.util.HashMap<>();
@@ -142,7 +141,7 @@ class EventFixtures implements CommandLineRunner {
         identity,
         review,
         "review",
-        false,
+        ai,
         detail);
   }
 

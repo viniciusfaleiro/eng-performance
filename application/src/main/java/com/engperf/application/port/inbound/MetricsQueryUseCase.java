@@ -18,4 +18,12 @@ public interface MetricsQueryUseCase {
   List<MetricCard> cards(String nodeId, Frequency frequency);
 
   MetricSeries series(String metricKey, String nodeId, Frequency frequency);
+
+  /**
+   * Series for a metric computed over only the AI-assisted ({@code aiAssisted=true}) or non-AI
+   * cohort of the node's population — the two cohorts partition the population by the event AI
+   * flag.
+   */
+  MetricSeries cohortSeries(
+      String metricKey, String nodeId, Frequency frequency, boolean aiAssisted);
 }
