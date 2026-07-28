@@ -12,10 +12,5 @@ import java.util.List;
  */
 public interface AdoEventSourcePort {
 
-  List<RawEvent> fetchSince(
-      String accessToken,
-      String organizationUrl,
-      String productionStage,
-      Instant since,
-      ProgressReporter progress);
+  List<RawEvent> fetchSince(String accessToken, Instant since, ProgressReporter progress);
 }

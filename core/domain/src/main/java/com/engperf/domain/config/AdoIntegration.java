@@ -1,29 +1,14 @@
 package com.engperf.domain.config;
 
-import com.engperf.domain.common.Text;
 import java.time.Instant;
 
 /**
- * Azure DevOps connection configuration. The PAT is stored only as a secret and never returned in
- * clear. Actually validating the connection and syncing is S9; here it is just persisted config.
+ * Azure DevOps integration marker. There is no org URL and no PAT: teams span many organizations,
+ * ingestion is driven by per-repository registration (each repo carries its own organization and
+ * production-stage rule), and auth is interactive device-code. This only records whether a real
+ * sync has run — so the dev seeder can stand down once ingestion is live.
  *
- * @param patSecret personal access token (secret), or {@code null}
- * @param lastValidatedAt when the connection was last confirmed, or {@code null}
+ * @param connected whether a real Azure DevOps sync has been run
+ * @param lastValidatedAt when the last sync completed, or {@code null}
  */
-public record AdoIntegration(
-    String organizationUrl,
-    String patSecret,
-    String productionStageRule,
-    boolean connected,
-    Instant lastValidatedAt) {
-
-  public AdoIntegration {
-    organizationUrl = Text.optional(organizationUrl);
-    patSecret = Text.optional(patSecret);
-    productionStageRule = Text.optional(productionStageRule);
-  }
-
-  public boolean hasSecret() {
-    return patSecret != null;
-  }
-}
+public record AdoIntegration(boolean connected, Instant lastValidatedAt) {}

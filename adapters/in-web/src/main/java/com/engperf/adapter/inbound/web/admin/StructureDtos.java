@@ -24,6 +24,9 @@ final class StructureDtos {
 
   record MapRepositoryRequest(String teamId) {}
 
+  record CreateRepositoryRequest(
+      String key, String organization, String project, String teamId, String productionStage) {}
+
   record PersonResponse(
       String id, String name, String email, String teamId, List<TeamMembership> memberships) {
 

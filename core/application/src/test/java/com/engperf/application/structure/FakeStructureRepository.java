@@ -101,6 +101,9 @@ final class FakeStructureRepository implements StructureRepositoryPort {
   }
 
   @Override
+  public void deleteRepository(String key) {}
+
+  @Override
   public CommitterIdentity saveIdentity(CommitterIdentity identity) {
     identities.put(identity.identity(), identity);
     return identity;

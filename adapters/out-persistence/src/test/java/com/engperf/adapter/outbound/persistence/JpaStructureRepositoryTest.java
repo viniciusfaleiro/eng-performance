@@ -39,7 +39,8 @@ class JpaStructureRepositoryTest {
     repo.saveTeam(new Team("t:checkout", "Checkout", "v:pagamentos", "p:ana", null));
     repo.savePerson(
         Person.create("p:ana", "Ana", "ana@x.com", "t:checkout", LocalDate.of(2026, 1, 1)));
-    repo.saveRepository(new Repository("checkout-service", "Pagamentos", "t:checkout"));
+    repo.saveRepository(
+        new Repository("checkout-service", "org", "Pagamentos", "t:checkout", null));
     repo.saveIdentity(new CommitterIdentity("ana@x.com", "Ana", "p:ana", 42));
 
     assertThat(repo.findVertical("v:pagamentos"))
@@ -81,7 +82,7 @@ class JpaStructureRepositoryTest {
 
   @Test
   void unmappedRepositoryAndIdentityHaveNoOwner() {
-    repo.saveRepository(new Repository("legacy", "Plataforma", null));
+    repo.saveRepository(new Repository("legacy", "org", "Plataforma", null, null));
     repo.saveIdentity(new CommitterIdentity("bot@ci", "bot", null, 10));
 
     assertThat(repo.findRepository("legacy"))

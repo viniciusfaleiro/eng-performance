@@ -510,7 +510,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         verts.forEach(v=>{if(v.managerId)VERT_MANAGER[v.name]=nameById[v.managerId]||v.managerId;});
         teams.forEach(t=>{if(t.managerId)TEAM_MANAGER[t.id.replace(/^t:/,"")]=nameById[t.managerId]||t.managerId;});
         coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
-        repos.forEach(r=>REPOS.push({repo:r.key,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null}));
+        repos.forEach(r=>REPOS.push({repo:r.key,org:r.organization,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null,stage:r.productionStage}));
         accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
         ADO_CFG=ado;AI_CFG=ai;
       }else if(state.mode==="admin"){state.mode="structure";}
@@ -1197,19 +1197,27 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const rows=REPOS.map((r,i)=>{
       const sel='<select class="admin-sel" data-aset="repo-team" data-i="'+i+'"><option'+(!r.team?" selected":"")+'>— sem time —</option>'+teamOpts(r.team)+'</select>';
       const st=r.team?'':' <span class="badge unmapped">Fora da DORA</span>';
-      return '<tr><td><span class="code">'+r.repo+'</span></td><td>'+r.project+'</td><td>'+sel+st+'</td></tr>';
+      const stage=r.stage||'<span style="color:var(--muted)">—</span>';
+      return '<tr><td><span class="code">'+r.repo+'</span></td><td>'+(r.org||'')+'</td><td>'+r.project+'</td><td>'+sel+st+'</td><td>'+stage+'</td><td><button class="btn ghost sm" data-aact="del-repo" data-i="'+i+'">Remover</button></td></tr>';
     }).join("");
-    return '<div class="callout">Vincule cada repositório/projeto do ADO a um time — regra <b>1 repositório → 1 time</b>. É esse vínculo que faz a <b>DORA</b> (deploys/pipelines) subir para o time; repos sem time não entram na DORA.</div>'+
-      '<div class="admin-bar"><button class="btn ghost" data-aact="rediscover">Redescobrir repos do ADO</button></div>'+
-      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Projeto ADO</th><th>Time</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    return '<div class="callout">Cadastre cada repositório do Azure DevOps <b>um a um</b> (organização · projeto · repo) e vincule a um time — regra <b>1 repositório → 1 time</b>. A sincronização percorre só os repos cadastrados, em <b>qualquer organização</b>. O <b>stage de produção</b> por repo classifica os deploys (DORA).</div>'+
+      '<div class="admin-bar"><button class="btn" data-aact="add-repo">+ Repositório</button></div>'+
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Organização</th><th>Projeto</th><th>Time</th><th>Stage prod.</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }
+  function repoModal(){
+    const body='<div class="modal-grid">'+fInput("mr_key","Repositório (nome no ADO)","")+fInput("mr_org","Organização (URL ou nome)","")+fInput("mr_project","Projeto ADO","")+fSelect("mr_team","Time",["—"].concat(ALL_TEAMS),"—")+fInput("mr_stage","Stage de produção","production")+'</div>';
+    openModal("Novo repositório",body,()=>{
+      if(!mval("mr_key")||!mval("mr_org")||!mval("mr_project")){toast("Informe repo, organização e projeto");return false;}
+      const team=$("mr_team").value==="—"?null:TNAME2ID[$("mr_team").value];
+      jpost("/api/admin/repositories",{key:mval("mr_key"),organization:mval("mr_org"),project:mval("mr_project"),teamId:team,productionStage:mval("mr_stage")})
+        .then(loadFromApi).then(()=>toast("Repositório cadastrado")).catch(apiErr);
+    });
   }
   function adminAdo(){
-    const org=ADO_CFG.organizationUrl||"",pat=ADO_CFG.patRedacted||"",stage=ADO_CFG.productionStageRule||"";
-    const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Desconectado</span>';
-    return '<div class="form-grid"><label>Organização ADO<input id="ado_org" value="'+org+'" /></label><label>Personal Access Token <span class="card-note">(não usado — login interativo)</span><input id="ado_pat" type="password" value="'+pat+'" /></label><label>Regra global do stage de produção<input id="ado_stage" value="'+stage+'" /></label></div>'+
-      '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn ghost" data-aact="save">Salvar</button>'+status+'</div>'+
-      '<div class="callout"><b>Sincronização interativa (sem PAT):</b> ao sincronizar, você faz login na Microsoft com MFA (device-code) e o app carrega os eventos como você. <b>Backfill:</b> 6 meses na 1ª vez, depois só o diff. Fontes: Repos+PRs, Boards, Pipelines. <b>Stage de produção:</b> a regra global acima classifica os deploys.</div>'+
-      '<div style="margin:14px 0"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button></div>'+
+    const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Ainda não sincronizado</span>';
+    return '<div class="callout"><b>Sincronização interativa (sem PAT, sem org fixa):</b> você faz login na Microsoft com MFA (device-code) e o app carrega os eventos dos <b>repositórios cadastrados</b> (aba Repositórios), em qualquer organização. <b>Backfill:</b> 6 meses na 1ª vez, depois só o diff. Fontes por repo: PRs+commits; por projeto: Pipelines e Boards.</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin:14px 0">'+status+'</div>'+
+      '<div style="margin:6px 0"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button></div>'+
       '<div id="ado_sync_box"></div>';
   }
   function adminIA(){
@@ -1327,15 +1335,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else if(act==="add-team")teamModal();
     else if(act==="add-person")personModal();
     else if(act==="move-person")movePersonModal(ds.t);
-    else if(act==="rediscover")toast("Sincronização disparada — reprocessando identidades…");
+    else if(act==="add-repo")repoModal();
+    else if(act==="del-repo"){const k=REPOS[+ds.i].repo;jdel("/api/admin/repositories/"+encodeURIComponent(k)).then(loadFromApi).then(()=>toast(k+" removido")).catch(apiErr);}
     else if(act==="ado-sync")startAdoSync();
-    else if(act==="test-ado")jpost("/api/admin/integrations/azure-devops/test",{}).then(loadFromApi).then(()=>toast("Conexão OK · última sync há 3 h")).catch(apiErr);
     else if(act==="save"){
-      if(state.adminTab==="ado"){
-        const pat=$("ado_pat").value,patToSend=(pat===ADO_CFG.patRedacted?null:pat);
-        jput("/api/admin/integrations/azure-devops",{organizationUrl:mval("ado_org"),personalAccessToken:patToSend,productionStageRule:mval("ado_stage")})
-          .then(loadFromApi).then(()=>toast("Configuração salva")).catch(apiErr);
-      } else if(state.adminTab==="ia"){
+      if(state.adminTab==="ia"){
         jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})
           .then(loadFromApi).then(()=>toast("Convenção salva")).catch(apiErr);
       } else toast("Configuração salva");

@@ -41,6 +41,8 @@ public interface StructureRepositoryPort {
 
   Optional<Repository> findRepository(String key);
 
+  void deleteRepository(String key);
+
   CommitterIdentity saveIdentity(CommitterIdentity identity);
 
   List<CommitterIdentity> findIdentities();

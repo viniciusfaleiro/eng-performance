@@ -122,7 +122,12 @@ public class JpaStructureRepository implements StructureRepositoryPort {
   @Override
   public Repository saveRepository(Repository repository) {
     repositories.save(
-        new RepositoryEntity(repository.key(), repository.project(), repository.teamId()));
+        new RepositoryEntity(
+            repository.key(),
+            repository.organization(),
+            repository.project(),
+            repository.teamId(),
+            repository.productionStage()));
     return repository;
   }
 
@@ -136,6 +141,11 @@ public class JpaStructureRepository implements StructureRepositoryPort {
   @Transactional(readOnly = true)
   public Optional<Repository> findRepository(String key) {
     return repositories.findById(key).map(JpaStructureRepository::toRepository);
+  }
+
+  @Override
+  public void deleteRepository(String key) {
+    repositories.deleteById(key);
   }
 
   @Override
@@ -183,7 +193,8 @@ public class JpaStructureRepository implements StructureRepositoryPort {
   }
 
   private static Repository toRepository(RepositoryEntity e) {
-    return new Repository(e.getRepoKey(), e.getProject(), e.getTeamId());
+    return new Repository(
+        e.getRepoKey(), e.getOrganization(), e.getProject(), e.getTeamId(), e.getProductionStage());
   }
 
   private static CommitterIdentity toIdentity(CommitterIdentityEntity e) {

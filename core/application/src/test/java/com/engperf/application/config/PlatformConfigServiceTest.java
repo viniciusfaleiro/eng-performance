@@ -14,20 +14,12 @@ class PlatformConfigServiceTest {
   private final PlatformConfigService service = new PlatformConfigService(port);
 
   @Test
-  void saveAdoKeepsSecretWhenPatBlank() {
-    service.saveAdoIntegration("https://dev.azure.com/org", "pat-1", "prod");
-    // update org but leave PAT blank -> keeps the stored secret
-    AdoIntegration after = service.saveAdoIntegration("https://dev.azure.com/org2", "  ", "prod2");
-    assertThat(after.organizationUrl()).isEqualTo("https://dev.azure.com/org2");
-    assertThat(after.patSecret()).isEqualTo("pat-1");
-  }
-
-  @Test
-  void testConnectionMarksConnected() {
-    service.saveAdoIntegration("https://dev.azure.com/org", "pat", "prod");
-    AdoIntegration tested = service.testAdoConnection();
-    assertThat(tested.connected()).isTrue();
-    assertThat(tested.lastValidatedAt()).isNotNull();
+  void markAdoConnectedSetsTheMarker() {
+    assertThat(service.adoIntegration().connected()).isFalse();
+    AdoIntegration marked = service.markAdoConnected();
+    assertThat(marked.connected()).isTrue();
+    assertThat(marked.lastValidatedAt()).isNotNull();
+    assertThat(service.adoIntegration().connected()).isTrue();
   }
 
   @Test
@@ -39,7 +31,7 @@ class PlatformConfigServiceTest {
   }
 
   private static final class FakeConfig implements PlatformConfigPort {
-    private AdoIntegration ado = new AdoIntegration(null, null, null, false, null);
+    private AdoIntegration ado = new AdoIntegration(false, null);
     private AiConvention ai =
         new AiConvention(AiStrategy.TRAILER, "Co-authored-by:", null, null, false);
 

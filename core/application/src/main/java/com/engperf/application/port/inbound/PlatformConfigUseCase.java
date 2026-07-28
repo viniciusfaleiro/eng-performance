@@ -4,15 +4,13 @@ import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
 
-/** Inbound port: read/save the platform configuration (ADO connection and AI convention). */
+/** Inbound port: read the ADO integration marker and read/save the AI convention. */
 public interface PlatformConfigUseCase {
 
   AdoIntegration adoIntegration();
 
-  AdoIntegration saveAdoIntegration(String organizationUrl, String pat, String productionStageRule);
-
-  /** Marks the connection as validated (real ADO check is S9). */
-  AdoIntegration testAdoConnection();
+  /** Records that a real Azure DevOps sync has run (so the dev seeder stands down). */
+  AdoIntegration markAdoConnected();
 
   AiConvention aiConvention();
 

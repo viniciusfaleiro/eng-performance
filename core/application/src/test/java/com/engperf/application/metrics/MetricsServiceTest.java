@@ -55,8 +55,8 @@ class MetricsServiceTest {
     structure.identities.add(new CommitterIdentity("id-bruno", "Bruno", "p:bruno", 0));
     structure.identities.add(new CommitterIdentity("id-diego", "Diego", "p:diego", 0));
     structure.identities.add(new CommitterIdentity("id-ghost", "Ghost", null, 0)); // unlinked
-    structure.repositories.add(new Repository("r:web", "Proj", "t:checkout"));
-    structure.repositories.add(new Repository("r:orphan", "Proj", null)); // unmapped
+    structure.repositories.add(new Repository("r:web", "org", "Proj", "t:checkout", null));
+    structure.repositories.add(new Repository("r:orphan", "org", "Proj", null, null)); // unmapped
   }
 
   @Test
@@ -284,6 +284,9 @@ class MetricsServiceTest {
     public Optional<Repository> findRepository(String key) {
       return repositories.stream().filter(r -> r.key().equals(key)).findFirst();
     }
+
+    @Override
+    public void deleteRepository(String key) {}
 
     @Override
     public CommitterIdentity saveIdentity(CommitterIdentity c) {

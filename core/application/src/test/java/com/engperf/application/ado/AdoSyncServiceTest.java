@@ -99,8 +99,7 @@ class AdoSyncServiceTest {
     Instant lastSince;
 
     @Override
-    public List<RawEvent> fetchSince(
-        String token, String org, String stage, Instant since, ProgressReporter progress) {
+    public List<RawEvent> fetchSince(String token, Instant since, ProgressReporter progress) {
       lastSince = since;
       progress.update("syncing", "commits", events.size());
       return events;
@@ -143,16 +142,11 @@ class AdoSyncServiceTest {
   private static final class FakeConfig implements PlatformConfigUseCase {
     @Override
     public AdoIntegration adoIntegration() {
-      return new AdoIntegration("https://dev.azure.com/org", null, "Production", true, null);
+      return new AdoIntegration(true, null);
     }
 
     @Override
-    public AdoIntegration saveAdoIntegration(String url, String pat, String rule) {
-      return adoIntegration();
-    }
-
-    @Override
-    public AdoIntegration testAdoConnection() {
+    public AdoIntegration markAdoConnected() {
       return adoIntegration();
     }
 

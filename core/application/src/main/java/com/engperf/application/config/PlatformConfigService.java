@@ -23,30 +23,8 @@ public final class PlatformConfigService implements PlatformConfigUseCase {
   }
 
   @Override
-  public AdoIntegration saveAdoIntegration(
-      String organizationUrl, String pat, String productionStageRule) {
-    AdoIntegration current = port.getAdoIntegration();
-    // Keep the stored secret when the PAT field is left blank (never overwrite with nothing).
-    String secret = (pat == null || pat.isBlank()) ? current.patSecret() : pat;
-    return port.saveAdoIntegration(
-        new AdoIntegration(
-            organizationUrl,
-            secret,
-            productionStageRule,
-            current.connected(),
-            current.lastValidatedAt()));
-  }
-
-  @Override
-  public AdoIntegration testAdoConnection() {
-    AdoIntegration current = port.getAdoIntegration();
-    return port.saveAdoIntegration(
-        new AdoIntegration(
-            current.organizationUrl(),
-            current.patSecret(),
-            current.productionStageRule(),
-            true,
-            Instant.now()));
+  public AdoIntegration markAdoConnected() {
+    return port.saveAdoIntegration(new AdoIntegration(true, Instant.now()));
   }
 
   @Override

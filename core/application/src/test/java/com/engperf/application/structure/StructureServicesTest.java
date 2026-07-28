@@ -93,7 +93,7 @@ class StructureServicesTest {
   void mapRepositoryToTeamAndReject() {
     structure.createVertical("Pagamentos", null);
     structure.createTeam("Checkout", "v:pagamentos", null);
-    repo.saveRepository(new Repository("checkout-service", "Pagamentos", null));
+    repo.saveRepository(new Repository("checkout-service", "org", "Pagamentos", null, null));
 
     assertThat(repositories.mapToTeam("checkout-service", "t:checkout").teamId())
         .isEqualTo("t:checkout");

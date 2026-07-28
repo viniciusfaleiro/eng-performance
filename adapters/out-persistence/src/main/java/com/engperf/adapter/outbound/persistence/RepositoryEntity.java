@@ -15,21 +15,34 @@ public class RepositoryEntity {
   private String repoKey;
 
   @Column(nullable = false)
+  private String organization;
+
+  @Column(nullable = false)
   private String project;
 
   @Column(name = "team_id")
   private String teamId;
 
+  @Column(name = "production_stage")
+  private String productionStage;
+
   protected RepositoryEntity() {}
 
-  public RepositoryEntity(String repoKey, String project, String teamId) {
+  public RepositoryEntity(
+      String repoKey, String organization, String project, String teamId, String productionStage) {
     this.repoKey = repoKey;
+    this.organization = organization;
     this.project = project;
     this.teamId = teamId;
+    this.productionStage = productionStage;
   }
 
   public String getRepoKey() {
     return repoKey;
+  }
+
+  public String getOrganization() {
+    return organization;
   }
 
   public String getProject() {
@@ -38,5 +51,9 @@ public class RepositoryEntity {
 
   public String getTeamId() {
     return teamId;
+  }
+
+  public String getProductionStage() {
+    return productionStage;
   }
 }

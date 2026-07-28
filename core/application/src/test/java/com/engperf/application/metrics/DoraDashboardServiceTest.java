@@ -44,9 +44,9 @@ class DoraDashboardServiceTest {
     structure.teams.add(new Team("t:core", "Core", "v:plat", null, null));
     structure.people.add(
         Person.create("p:ana", "Ana", null, "t:checkout", LocalDate.of(2026, 1, 1)));
-    structure.repositories.add(new Repository("r:checkout", "P", "t:checkout"));
-    structure.repositories.add(new Repository("r:core", "P", "t:core"));
-    structure.repositories.add(new Repository("r:orphan", "P", null));
+    structure.repositories.add(new Repository("r:checkout", "org", "P", "t:checkout", null));
+    structure.repositories.add(new Repository("r:core", "org", "P", "t:core", null));
+    structure.repositories.add(new Repository("r:orphan", "org", "P", null, null));
   }
 
   @Test
@@ -252,6 +252,9 @@ class DoraDashboardServiceTest {
     public Optional<Repository> findRepository(String key) {
       return repositories.stream().filter(r -> r.key().equals(key)).findFirst();
     }
+
+    @Override
+    public void deleteRepository(String key) {}
 
     @Override
     public CommitterIdentity saveIdentity(CommitterIdentity c) {

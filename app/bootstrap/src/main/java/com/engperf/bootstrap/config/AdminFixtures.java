@@ -34,7 +34,7 @@ class AdminFixtures implements CommandLineRunner {
     if (users.accounts().isEmpty()) {
       seedUsers();
     }
-    if (config.adoIntegration().organizationUrl() == null) {
+    if (config.aiConvention().trailer() == null && config.aiConvention().regex() == null) {
       seedConfig();
     }
   }
@@ -64,9 +64,7 @@ class AdminFixtures implements CommandLineRunner {
   }
 
   private void seedConfig() {
-    config.saveAdoIntegration(
-        "https://dev.azure.com/minhaorg", "seed-pat", "production, prod-release");
-    config.testAdoConnection();
+    // No ADO org/PAT to seed — ingestion is per-repository (device-code). Only the AI convention.
     config.saveAiConvention(AiStrategy.TRAILER, "Co-authored-by: Copilot", null, AI_REGEX, false);
   }
 }

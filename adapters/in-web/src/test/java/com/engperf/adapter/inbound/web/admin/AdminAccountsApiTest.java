@@ -115,19 +115,11 @@ class AdminAccountsApiTest {
   }
 
   @Test
-  void adoConfigRedactsPatAndTestsConnection() throws Exception {
-    mvc.perform(
-            put("/api/admin/integrations/azure-devops")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"organizationUrl\":\"https://dev.azure.com/org\","
-                        + "\"personalAccessToken\":\"pat\",\"productionStageRule\":\"prod\"}"))
-        .andExpect(status().isOk());
+  void adoIntegrationReportsConnectionStatus() throws Exception {
+    // No org/PAT config anymore — the endpoint only reports whether a real sync has run.
     mvc.perform(get("/api/admin/integrations/azure-devops"))
-        .andExpect(jsonPath("$.organizationUrl").value("https://dev.azure.com/org"))
-        .andExpect(jsonPath("$.patRedacted").isNotEmpty());
-    mvc.perform(post("/api/admin/integrations/azure-devops/test"))
-        .andExpect(jsonPath("$.connected").value(true));
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.connected").value(false));
   }
 
   @Test
@@ -170,25 +162,6 @@ class AdminAccountsApiTest {
         .andExpect(jsonPath("$.status").value("disabled"));
   }
 
-  @Test
-  void adoSaveKeepsSecretWhenPatBlank() throws Exception {
-    mvc.perform(
-            put("/api/admin/integrations/azure-devops")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"organizationUrl\":\"https://dev.azure.com/org\","
-                        + "\"personalAccessToken\":\"pat\",\"productionStageRule\":\"prod\"}"))
-        .andExpect(status().isOk());
-    mvc.perform(
-            put("/api/admin/integrations/azure-devops")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    "{\"organizationUrl\":\"https://dev.azure.com/org2\","
-                        + "\"personalAccessToken\":\"\",\"productionStageRule\":\"prod2\"}"))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.patRedacted").isNotEmpty());
-  }
-
   private static final class FakeAccounts implements UserAccountRepositoryPort {
     private final Map<String, UserAccount> byId = new LinkedHashMap<>();
 
@@ -220,7 +193,7 @@ class AdminAccountsApiTest {
   }
 
   private static final class FakeConfig implements PlatformConfigPort {
-    private AdoIntegration ado = new AdoIntegration(null, null, null, false, null);
+    private AdoIntegration ado = new AdoIntegration(false, null);
     private AiConvention ai = new AiConvention(AiStrategy.TRAILER, null, null, null, false);
 
     @Override

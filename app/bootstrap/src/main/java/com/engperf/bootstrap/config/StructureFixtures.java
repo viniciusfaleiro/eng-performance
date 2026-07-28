@@ -73,14 +73,19 @@ class StructureFixtures implements CommandLineRunner {
   }
 
   private void seedRepositories() {
-    repository.saveRepository(new Repository("checkout-service", "Pagamentos", "t:checkout"));
-    repository.saveRepository(new Repository("pix-gateway", "Pagamentos", "t:checkout"));
-    repository.saveRepository(new Repository("antifraude-api", "Pagamentos", "t:antifraude"));
-    repository.saveRepository(new Repository("core-banking", "Plataforma", "t:core-banking"));
-    repository.saveRepository(new Repository("sre-tooling", "Plataforma", "t:sre"));
-    repository.saveRepository(new Repository("growth-web", "Growth", "t:aquisicao"));
-    repository.saveRepository(new Repository("retention-jobs", "Growth", "t:retencao"));
-    repository.saveRepository(new Repository("legacy-batch", "Plataforma", null));
+    // Sample repos across a single org here, each registered with its org + production stage.
+    repo("checkout-service", "Pagamentos", "t:checkout");
+    repo("pix-gateway", "Pagamentos", "t:checkout");
+    repo("antifraude-api", "Pagamentos", "t:antifraude");
+    repo("core-banking", "Plataforma", "t:core-banking");
+    repo("sre-tooling", "Plataforma", "t:sre");
+    repo("growth-web", "Growth", "t:aquisicao");
+    repo("retention-jobs", "Growth", "t:retencao");
+    repo("legacy-batch", "Plataforma", null);
+  }
+
+  private void repo(String key, String project, String teamId) {
+    repository.saveRepository(new Repository(key, "minhaorg", project, teamId, "production"));
   }
 
   private void seedIdentities() {

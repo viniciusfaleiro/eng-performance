@@ -6,7 +6,6 @@ import com.engperf.application.port.outbound.AdoAuthPort;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.SyncStatePort;
-import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,15 +57,12 @@ public final class AdoSyncService implements AdoSyncUseCase {
 
   @Override
   public Session start() {
-    AdoIntegration ado = config.adoIntegration();
-    if (ado.organizationUrl() == null) {
-      throw new IllegalStateException("connect the Azure DevOps organization first");
-    }
+    // No org to configure: ingestion iterates the registered repositories (each with its own org).
     DeviceCodePrompt prompt = auth.beginDeviceCode();
     Job job = new Job();
     String sessionId = UUID.randomUUID().toString();
     jobs.put(sessionId, job);
-    executor.execute(() -> run(job, prompt, ado.organizationUrl(), ado.productionStageRule()));
+    executor.execute(() -> run(job, prompt));
     return new Session(sessionId, prompt);
   }
 
@@ -75,17 +71,18 @@ public final class AdoSyncService implements AdoSyncUseCase {
     return Optional.ofNullable(jobs.get(sessionId)).map(j -> j.snapshot(sessionId));
   }
 
-  private void run(Job job, DeviceCodePrompt prompt, String orgUrl, String productionStage) {
+  private void run(Job job, DeviceCodePrompt prompt) {
     try {
       String token = awaitToken(job, prompt);
       job.phase = "syncing";
       Instant since = watermarkOrBackfill();
-      List<RawEvent> events = source.fetchSince(token, orgUrl, productionStage, since, job::report);
+      List<RawEvent> events = source.fetchSince(token, since, job::report);
       store.saveAll(events);
       Instant now = clock.instant();
       Instant watermark =
           events.stream().map(RawEvent::occurredAt).max(Comparator.naturalOrder()).orElse(since);
       syncState.save(new SyncState(watermark, now, events.size()));
+      config.markAdoConnected(); // real ingestion is live → the dev seeder stands down
       job.finish(now, events.size());
     } catch (AdoAuthException e) {
       job.fail("login não concluído: " + e.getMessage());

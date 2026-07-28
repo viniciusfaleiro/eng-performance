@@ -28,19 +28,12 @@ public class JpaPlatformConfigRepository implements PlatformConfigPort {
   public AdoIntegration getAdoIntegration() {
     return ado.findById(ID)
         .map(JpaPlatformConfigRepository::toAdo)
-        .orElseGet(() -> new AdoIntegration(null, null, null, false, null));
+        .orElseGet(() -> new AdoIntegration(false, null));
   }
 
   @Override
   public AdoIntegration saveAdoIntegration(AdoIntegration integration) {
-    ado.save(
-        new AdoIntegrationEntity(
-            ID,
-            integration.organizationUrl(),
-            integration.patSecret(),
-            integration.productionStageRule(),
-            integration.connected(),
-            integration.lastValidatedAt()));
+    ado.save(new AdoIntegrationEntity(ID, integration.connected(), integration.lastValidatedAt()));
     return integration;
   }
 
@@ -66,12 +59,7 @@ public class JpaPlatformConfigRepository implements PlatformConfigPort {
   }
 
   private static AdoIntegration toAdo(AdoIntegrationEntity e) {
-    return new AdoIntegration(
-        e.getOrganizationUrl(),
-        e.getPatSecret(),
-        e.getProductionStageRule(),
-        e.isConnected(),
-        e.getLastValidatedAt());
+    return new AdoIntegration(e.isConnected(), e.getLastValidatedAt());
   }
 
   private static AiConvention toAi(AiConventionEntity e) {

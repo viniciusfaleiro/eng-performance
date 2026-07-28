@@ -53,7 +53,7 @@ class StructureAdminApiTest {
     structure.createTeam("Checkout", "v:pagamentos", null);
     structure.createTeam("Antifraude", "v:pagamentos", null);
     structure.createPerson("Ana Souza", null, "t:checkout", LocalDate.of(2026, 1, 1));
-    repo.saveRepository(new Repository("checkout-service", "Pagamentos", null));
+    repo.saveRepository(new Repository("checkout-service", "org", "Pagamentos", null, null));
     repo.saveIdentity(new CommitterIdentity("ana@x.com", "Ana", null, 50));
     repo.saveIdentity(new CommitterIdentity("bot@ci", "bot", null, 50));
 
@@ -233,6 +233,9 @@ class StructureAdminApiTest {
     public Optional<Repository> findRepository(String key) {
       return Optional.ofNullable(repositories.get(key));
     }
+
+    @Override
+    public void deleteRepository(String key) {}
 
     @Override
     public CommitterIdentity saveIdentity(CommitterIdentity c) {

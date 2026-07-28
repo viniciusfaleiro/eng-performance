@@ -12,25 +12,12 @@ final class ConfigDtos {
 
   private ConfigDtos() {}
 
-  record AdoView(
-      String organizationUrl,
-      boolean connected,
-      String patRedacted,
-      String productionStageRule,
-      Instant lastValidatedAt) {
+  record AdoView(boolean connected, Instant lastValidatedAt) {
 
     static AdoView from(AdoIntegration a) {
-      return new AdoView(
-          a.organizationUrl(),
-          a.connected(),
-          a.hasSecret() ? "••••••••••••" : null,
-          a.productionStageRule(),
-          a.lastValidatedAt());
+      return new AdoView(a.connected(), a.lastValidatedAt());
     }
   }
-
-  record AdoRequest(
-      String organizationUrl, String personalAccessToken, String productionStageRule) {}
 
   record AiView(String strategy, String trailer, String tag, String regex, boolean caseSensitive) {
 

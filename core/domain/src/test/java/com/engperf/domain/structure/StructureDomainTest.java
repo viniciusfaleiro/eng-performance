@@ -73,7 +73,7 @@ class StructureDomainTest {
 
   @Test
   void repositoryMapsToAtMostOneTeam() {
-    Repository unmapped = new Repository("checkout-service", "Pagamentos", null);
+    Repository unmapped = new Repository("checkout-service", "org", "Pagamentos", null, null);
     assertThat(unmapped.isMapped()).isFalse();
     Repository mapped = unmapped.assignTo("t:checkout");
     assertThat(mapped.isMapped()).isTrue();

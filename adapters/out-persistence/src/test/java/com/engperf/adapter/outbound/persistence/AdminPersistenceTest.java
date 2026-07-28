@@ -48,13 +48,10 @@ class AdminPersistenceTest {
 
   @Test
   void persistsSingletonConfig() {
-    config.saveAdoIntegration(
-        new AdoIntegration("https://dev.azure.com/org", "pat", "prod", true, null));
+    config.saveAdoIntegration(new AdoIntegration(true, null));
     config.saveAiConvention(new AiConvention(AiStrategy.TAG, null, "[ai]", null, true));
 
-    assertThat(config.getAdoIntegration())
-        .extracting(AdoIntegration::organizationUrl)
-        .isEqualTo("https://dev.azure.com/org");
+    assertThat(config.getAdoIntegration()).extracting(AdoIntegration::connected).isEqualTo(true);
     assertThat(config.getAiConvention()).extracting(AiConvention::tag).isEqualTo("[ai]");
   }
 }

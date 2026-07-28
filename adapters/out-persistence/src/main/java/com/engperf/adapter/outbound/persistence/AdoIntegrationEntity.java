@@ -6,21 +6,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
-/** JPA mapping for the singleton Azure DevOps connection configuration (id = "default"). */
+/** JPA mapping for the singleton Azure DevOps integration marker (id = "default"). */
 @Entity
 @Table(name = "ado_integration")
 public class AdoIntegrationEntity {
 
   @Id private String id;
-
-  @Column(name = "organization_url")
-  private String organizationUrl;
-
-  @Column(name = "pat_secret")
-  private String patSecret;
-
-  @Column(name = "production_stage_rule")
-  private String productionStageRule;
 
   @Column(nullable = false)
   private boolean connected;
@@ -30,31 +21,10 @@ public class AdoIntegrationEntity {
 
   protected AdoIntegrationEntity() {}
 
-  public AdoIntegrationEntity(
-      String id,
-      String organizationUrl,
-      String patSecret,
-      String productionStageRule,
-      boolean connected,
-      Instant lastValidatedAt) {
+  public AdoIntegrationEntity(String id, boolean connected, Instant lastValidatedAt) {
     this.id = id;
-    this.organizationUrl = organizationUrl;
-    this.patSecret = patSecret;
-    this.productionStageRule = productionStageRule;
     this.connected = connected;
     this.lastValidatedAt = lastValidatedAt;
-  }
-
-  public String getOrganizationUrl() {
-    return organizationUrl;
-  }
-
-  public String getPatSecret() {
-    return patSecret;
-  }
-
-  public String getProductionStageRule() {
-    return productionStageRule;
   }
 
   public boolean isConnected() {

@@ -242,6 +242,9 @@ class FlowDashboardServiceTest {
     }
 
     @Override
+    public void deleteRepository(String key) {}
+
+    @Override
     public CommitterIdentity saveIdentity(CommitterIdentity c) {
       return c;
     }
