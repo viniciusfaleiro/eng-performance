@@ -17,3 +17,6 @@ node_modules/
 
 # Logs / local
 *.log
+
+# Docker image staging (transient)
+app.jar

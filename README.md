@@ -128,6 +128,33 @@ On first start a deterministic, idempotent seeder fills `raw_event` with ~6 mont
 every dashboard has data. Connect a real Azure DevOps org in **Admin → Integração ADO** and the
 seeder stands down — the interactive sync fills the same table instead.
 
+### 🐳 One command to run everything (Docker)
+
+Prefer not to install a JDK toolchain locally? One script builds the app, packages it as a Docker
+image, and brings up **PostgreSQL + the app** together via docker compose. Only **Docker** (Docker
+Desktop on macOS/Windows) and a **JDK 21** on the `PATH` are needed.
+
+**Linux / macOS**
+
+```bash
+./scripts/run-local.sh          # build image + start db & app → http://localhost:8080
+./scripts/run-local.sh --logs   # follow the app logs
+./scripts/run-local.sh --down   # stop & remove the containers (the DB volume is kept)
+```
+
+**Windows (PowerShell)**
+
+```powershell
+.\scripts\run-local.ps1         # build image + start db & app → http://localhost:8080
+.\scripts\run-local.ps1 logs    # follow the app logs
+.\scripts\run-local.ps1 down    # stop & remove the containers (the DB volume is kept)
+```
+
+Under the hood: `gradlew :bootstrap:bootJar` builds the Spring Boot fat jar → a thin
+[`Dockerfile`](Dockerfile) packages it as `eng-performance:local` → `docker compose --profile full`
+starts the `db` and `app` services (the `full` profile keeps `docker compose up -d db` db-only for
+the Gradle workflow). The app reaches Postgres at `db:5432` inside the compose network.
+
 **Handy commands**
 
 ```bash
