@@ -486,6 +486,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       // structures they cannot access.
       const tree=await jget("/api/structure/tree");
       const nameById={},teamNameById={};
+      let peopleFull=[];
       NAME2ID={};VNAME2ID={};TNAME2ID={};
       (tree.children||[]).forEach(v=>{VNAME2ID[v.label]=v.id;
         (v.children||[]).forEach(t=>{teamNameById[t.id]=t.label;TNAME2ID[t.label]=t.id;
@@ -497,10 +498,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       COMMITTERS.length=0;REPOS.length=0;USERS.length=0;
       if(CURRENT_USER.admin){
         // Config/admin data is admin-only on the backend (403 otherwise); fetch it only for admins.
-        const [verts,teams,coms,repos,accts,ado,ai]=await Promise.all([
+        const [verts,teams,coms,repos,accts,ado,ai,people]=await Promise.all([
           jget("/api/admin/verticals"),jget("/api/admin/teams"),
           jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
-          jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention")]);
+          jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention"),
+          jget("/api/admin/people")]);
+        // The structure tree only lists people who are on a team; a vertical manager may have none.
+        // Merge the full people list so name resolution and the dropdown options cover everyone.
+        peopleFull=people||[];
+        peopleFull.forEach(p=>{nameById[p.id]=p.name;NAME2ID[p.name]=p.id;});
         verts.forEach(v=>{if(v.managerId)VERT_MANAGER[v.name]=nameById[v.managerId]||v.managerId;});
         teams.forEach(t=>{if(t.managerId)TEAM_MANAGER[t.id.replace(/^t:/,"")]=nameById[t.managerId]||t.managerId;});
         coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
@@ -509,6 +515,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         ADO_CFG=ado;AI_CFG=ai;
       }else if(state.mode==="admin"){state.mode="structure";}
       rebuildStructure();
+      // Add team-less people (rebuildStructure only sees the tree) so dropdown options include them.
+      peopleFull.forEach(p=>{if(!ALL_PEOPLE.includes(p.name))ALL_PEOPLE.push(p.name);});
       if(!NODES[state.node])state.node="all";
     }catch(e){/* 401 is handled by onUnauthorized; other errors leave the current view intact */}
     render();
@@ -561,7 +569,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Deterministic mock ---------- */
   function hash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0)/4294967295;}
   const FMULT={"Diário":1,"Semanal":5,"Mensal":21};
-  function raw(id,freq,key,base,count,salt){let v=base*(0.62+hash(id+"|"+freq+"|"+key+"|"+(salt||""))*0.76);if(count)v*=(FMULT[freq]||1);return v;}
+  // No synthetic data: when a metric has no real value (no events / not wired to an endpoint), it
+  // reads 0 instead of a fabricated number. Real values come from the DORA/Flow/IA/... caches.
+  function raw(id,freq,key,base,count,salt){return 0;}
   function snapSyn(id,m,freq){
     const cur=raw(id,freq,m.key,m.base,m.count,"cur"),prev=raw(id,freq,m.key,m.base,m.count,"prev");
     const trend=[];for(let i=0;i<7;i++)trend.push(raw(id,freq,m.key,m.base,m.count,"t"+i));trend.push(cur);
