@@ -40,6 +40,20 @@ class EventFixtures implements CommandLineRunner {
     "growth-web",
     "retention-jobs"
   };
+  private static final String ADO = "https://dev.azure.com/minhaorg";
+  private static final String[] MSGS = {
+    "fix: validação de CPF no checkout",
+    "feat: retry no gateway de pagamento",
+    "refactor: extrai serviço de antifraude",
+    "test: cobre cenários de timeout",
+    "chore: atualiza dependências",
+    "feat: cache de sessão no core banking",
+    "perf: reduz N+1 na listagem",
+    "fix: corrige flaky test de integração"
+  };
+
+  /** Work-item types (individual work distribution), in the panel's legend order. */
+  private static final String[] WORK_TYPES = {"feature", "bug", "tech_debt", "maintenance", "docs"};
 
   private final EventStorePort events;
 
@@ -65,7 +79,8 @@ class EventFixtures implements CommandLineRunner {
 
   private void seedPersonEvents(List<RawEvent> batch, LocalDate day) {
     String d = day.toString();
-    for (String identity : LINKED) {
+    for (int p = 0; p < LINKED.length; p++) {
+      String identity = LINKED[p];
       int prs = pick(identity + "|pr|" + d, 3); // 0..2 PRs
       for (int i = 0; i < prs; i++) {
         double coding = 2 + pick(identity + "|cod|" + d + i, 10); // 2..11h
@@ -75,15 +90,32 @@ class EventFixtures implements CommandLineRunner {
         int lines = 30 + pick(identity + "|lines|" + d + i, 400); // 30..429
         // The PR is AI-assisted when its commits used AI (convention) — modelled deterministically.
         boolean ai = pick(identity + "|prai|" + d + i, 2) == 1;
-        batch.add(pr(identity, day, i, new double[] {coding, pickup, review, deploy}, lines, ai));
+        boolean firstPass = pick(identity + "|fp|" + d + i, 3) != 0; // ~2/3 approved first pass
+        batch.add(
+            pr(
+                identity,
+                day,
+                i,
+                new double[] {coding, pickup, review, deploy},
+                lines,
+                ai,
+                firstPass));
       }
       int commits = pick(identity + "|c|" + d, 4); // 0..3 commits
       for (int i = 0; i < commits; i++) {
         boolean ai = pick(identity + "|ai|" + d + i, 2) == 1;
         batch.add(commit(identity, day, i, ai));
       }
-      // One WIP gauge per active person per day (snapshot metric).
-      batch.add(workitem(identity, day, 3 + pick(identity + "|wip|" + d, 8)));
+      // One work item per active person per day: WIP snapshot + a task type & effort hours.
+      batch.add(workitem(identity, day));
+      // Reviews the person gives on a colleague's PRs (drives reviews given/received).
+      int reviews = pick(identity + "|rv|" + d, 3); // 0..2 reviews given
+      for (int i = 0; i < reviews; i++) {
+        String author = LINKED[(p + 1 + i) % LINKED.length]; // always a colleague
+        boolean approved = pick(identity + "|rvd|" + d + i, 4) != 0; // ~3/4 approved
+        int comments = pick(identity + "|rvc|" + d + i, 6); // 0..5 comments
+        batch.add(review(identity, author, day, i, approved, comments));
+      }
     }
     // Unlinked identity (copilot) commits → unattributed, drops ai_share/commit coverage.
     int botCommits = pick("copilot|" + d, 3);
@@ -116,7 +148,13 @@ class EventFixtures implements CommandLineRunner {
   }
 
   private static RawEvent pr(
-      String identity, LocalDate day, int i, double[] phases, int lines, boolean ai) {
+      String identity,
+      LocalDate day,
+      int i,
+      double[] phases,
+      int lines,
+      boolean ai,
+      boolean firstPass) {
     double coding = phases[0];
     double pickup = phases[1];
     double review = phases[2];
@@ -132,6 +170,8 @@ class EventFixtures implements CommandLineRunner {
     detail.put("lines", Integer.toString(lines));
     detail.put("num", Double.toString(active)); // flow_efficiency numerator
     detail.put("den", Double.toString(cycle)); // flow_efficiency denominator
+    detail.put("first_pass", firstPass ? "1" : "0"); // PR assertiveness
+    addActivity(detail, "pr", identity, day, i);
     // numericValue = review hours so pr_review_time (measure=value) reads it directly.
     return new RawEvent(
         id("pr", identity, day, i),
@@ -146,6 +186,8 @@ class EventFixtures implements CommandLineRunner {
   }
 
   private static RawEvent commit(String identity, LocalDate day, int i, boolean ai) {
+    Map<String, String> detail = new java.util.HashMap<>();
+    addActivity(detail, "commit", identity, day, i);
     return new RawEvent(
         id("commit", identity, day, i),
         EventType.COMMIT,
@@ -155,10 +197,15 @@ class EventFixtures implements CommandLineRunner {
         null,
         null,
         ai,
-        Map.of());
+        detail);
   }
 
-  private static RawEvent workitem(String identity, LocalDate day, double wip) {
+  private static RawEvent workitem(String identity, LocalDate day) {
+    String d = day.toString();
+    double wip = 3 + pick(identity + "|wip|" + d, 8);
+    Map<String, String> detail = new java.util.HashMap<>();
+    detail.put("type", WORK_TYPES[pick(identity + "|wtype|" + d, WORK_TYPES.length)]);
+    detail.put("hours", Double.toString(2 + pick(identity + "|whrs|" + d, 8))); // 2..9h
     return new RawEvent(
         id("wip", identity, day, 0),
         EventType.WORKITEM,
@@ -168,7 +215,36 @@ class EventFixtures implements CommandLineRunner {
         wip,
         null,
         false,
-        Map.of());
+        detail);
+  }
+
+  private static RawEvent review(
+      String reviewer, String author, LocalDate day, int i, boolean approved, int comments) {
+    Map<String, String> detail = new java.util.HashMap<>();
+    detail.put("decision", approved ? "approved" : "changes_requested");
+    detail.put("comments", Integer.toString(comments));
+    detail.put("author", author);
+    return new RawEvent(
+        id("review", reviewer, day, i),
+        EventType.REVIEW,
+        at(day),
+        null,
+        reviewer,
+        null,
+        null,
+        false,
+        detail);
+  }
+
+  /** Adds the repo/summary/deep-link fields the activity drawer reads for a commit or PR. */
+  private static void addActivity(
+      Map<String, String> detail, String kind, String owner, LocalDate day, int i) {
+    String repo = MAPPED_REPOS[pick(owner + "|repo|" + day + i, MAPPED_REPOS.length)];
+    detail.put("repo", repo);
+    detail.put("summary", MSGS[pick(owner + "|msg|" + kind + day + i, MSGS.length)]);
+    String ref = kind.equals("pr") ? "pullrequest" : "commit";
+    String hex = Integer.toHexString((owner + kind + day + i).hashCode() & 0x7fffffff);
+    detail.put("url", ADO + "/" + repo + "/_git/" + repo + "/" + ref + "/" + hex);
   }
 
   private static RawEvent deploy(

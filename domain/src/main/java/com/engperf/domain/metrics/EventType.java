@@ -5,5 +5,6 @@ public enum EventType {
   COMMIT,
   PR,
   DEPLOY,
-  WORKITEM
+  WORKITEM,
+  REVIEW
 }

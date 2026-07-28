@@ -4,12 +4,14 @@ import com.engperf.application.metrics.AiDashboardService;
 import com.engperf.application.metrics.ComparisonHeatmapService;
 import com.engperf.application.metrics.DoraDashboardService;
 import com.engperf.application.metrics.FlowDashboardService;
+import com.engperf.application.metrics.IndividualDashboardService;
 import com.engperf.application.metrics.MetricCatalog;
 import com.engperf.application.metrics.MetricsService;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.DoraDashboardUseCase;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
+import com.engperf.application.port.inbound.IndividualDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
@@ -75,5 +77,14 @@ public class MetricsWiring {
       StructureRepositoryPort structure,
       AiDashboardUseCase ai) {
     return new ComparisonHeatmapService(metrics, catalog, structure, ai);
+  }
+
+  @Bean
+  IndividualDashboardUseCase individualDashboardUseCase(
+      StructureRepositoryPort structure,
+      EventStorePort events,
+      MetricsQueryUseCase metrics,
+      Clock metricsClock) {
+    return new IndividualDashboardService(structure, events, metrics, metricsClock);
   }
 }
