@@ -1,0 +1,14 @@
+{
+  "pullRequestId": 42,
+  "title": "feat: retry no gateway",
+  "status": "completed",
+  "createdBy": { "uniqueName": "ana@empresa.com", "displayName": "Ana" },
+  "creationDate": "2026-06-10T09:00:00Z",
+  "closedDate": "2026-06-10T15:00:00Z",
+  "repository": { "name": "checkout-service" },
+  "reviewers": [
+    { "uniqueName": "bruno@empresa.com", "vote": 10, "commentCount": 2 },
+    { "uniqueName": "carla@empresa.com", "vote": 0 }
+  ],
+  "_links": { "web": { "href": "https://dev.azure.com/org/_git/checkout/pullrequest/42" } }
+}

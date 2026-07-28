@@ -80,4 +80,14 @@ class HexagonalArchitectureTest {
   @ArchTest
   static final SliceRule noCycles =
       SlicesRuleDefinition.slices().matching("com.engperf.(*)..").should().beFreeOfCycles();
+
+  // Only the Azure DevOps outbound adapter may speak HTTP to the outside world.
+  @ArchTest
+  static final ArchRule onlyAdoAdapterTalksHttp =
+      com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses()
+          .that()
+          .resideOutsideOfPackage("com.engperf.adapter.outbound.ado..")
+          .should()
+          .dependOnClassesThat()
+          .resideInAnyPackage("java.net.http..");
 }

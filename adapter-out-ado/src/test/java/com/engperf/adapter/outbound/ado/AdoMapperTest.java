@@ -1,0 +1,93 @@
+package com.engperf.adapter.outbound.ado;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.engperf.domain.metrics.EventType;
+import com.engperf.domain.metrics.RawEvent;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.util.List;
+import java.util.Locale;
+import org.junit.jupiter.api.Test;
+
+/** Maps recorded Azure DevOps JSON to the RawEvent contract the metric groups consume. */
+class AdoMapperTest {
+
+  private static final ObjectMapper JSON = new ObjectMapper();
+
+  @Test
+  void pullRequestMapsCycleFirstPassAndLink() {
+    JsonNode pr = fixture("pr.json");
+    RawEvent e = AdoMapper.pullRequest(pr);
+
+    assertThat(e.id()).isEqualTo("pr:42");
+    assertThat(e.type()).isEqualTo(EventType.PR);
+    assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
+    assertThat(e.occurredAt().toString()).isEqualTo("2026-06-10T15:00:00Z"); // closedDate
+    assertThat(e.detail().get("cycle_h")).isEqualTo("6.0"); // 09:00 → 15:00
+    assertThat(e.detail().get("first_pass")).isEqualTo("1"); // approved, no changes requested
+    assertThat(e.detail().get("repo")).isEqualTo("checkout-service");
+    assertThat(e.detail().get("url")).contains("pullrequest/42");
+  }
+
+  @Test
+  void reviewsMapReviewerVotesAndSkipNoVote() {
+    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"));
+
+    assertThat(reviews).hasSize(1); // carla (vote 0) is skipped
+    RawEvent r = reviews.get(0);
+    assertThat(r.type()).isEqualTo(EventType.REVIEW);
+    assertThat(r.committerIdentity()).isEqualTo("bruno@empresa.com"); // reviewer
+    assertThat(r.detail().get("author")).isEqualTo("ana@empresa.com"); // reviewed PR's author
+    assertThat(r.detail().get("decision")).isEqualTo("approved");
+    assertThat(r.detail().get("comments")).isEqualTo("2");
+  }
+
+  @Test
+  void commitMapsIdentityAiFlagAndLink() {
+    RawEvent e =
+        AdoMapper.commit(
+            fixture("commit.json"),
+            "checkout-service",
+            msg -> msg.toLowerCase(Locale.ROOT).contains("copilot"));
+
+    assertThat(e.id()).isEqualTo("commit:abc123");
+    assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
+    assertThat(e.ai()).isTrue(); // Co-authored-by: Copilot
+    assertThat(e.detail().get("summary")).isEqualTo("fix: cpf no checkout");
+    assertThat(e.detail().get("url")).contains("commit/abc123");
+  }
+
+  @Test
+  void buildMapsToDeployOnlyForTheProductionStage() {
+    JsonNode run = fixture("build.json");
+    assertThat(AdoMapper.deploy(run, "Production")).isPresent();
+    assertThat(AdoMapper.deploy(run, "Staging")).isEmpty(); // stageName "Production" != rule
+
+    RawEvent e = AdoMapper.deploy(run, "Production").orElseThrow();
+    assertThat(e.type()).isEqualTo(EventType.DEPLOY);
+    assertThat(e.detail().get("outcome")).isEqualTo("success");
+    assertThat(e.detail().get("num")).isEqualTo("0"); // not failed → CFR numerator 0
+    assertThat(e.value()).isEqualTo(0.5); // lead 10:00 → 10:30
+  }
+
+  @Test
+  void workItemMapsTypeAndHours() {
+    RawEvent e = AdoMapper.workItem(fixture("workitem.json"));
+    assertThat(e.id()).isEqualTo("wi:555");
+    assertThat(e.type()).isEqualTo(EventType.WORKITEM);
+    assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
+    assertThat(e.detail().get("type")).isEqualTo("bug");
+    assertThat(e.detail().get("hours")).isEqualTo("6.0");
+  }
+
+  private static JsonNode fixture(String name) {
+    try {
+      return JSON.readTree(AdoMapperTest.class.getResourceAsStream("/ado/" + name));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+}

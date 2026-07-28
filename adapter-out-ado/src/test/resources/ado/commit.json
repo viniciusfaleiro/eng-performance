@@ -1,0 +1,6 @@
+{
+  "commitId": "abc123",
+  "comment": "fix: cpf no checkout\n\nCo-authored-by: Copilot <copilot@github.com>",
+  "author": { "email": "ana@empresa.com", "date": "2026-06-10T10:00:00Z" },
+  "remoteUrl": "https://dev.azure.com/org/_git/checkout/commit/abc123"
+}

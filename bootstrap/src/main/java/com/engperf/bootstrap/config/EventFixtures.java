@@ -56,14 +56,19 @@ class EventFixtures implements CommandLineRunner {
   private static final String[] WORK_TYPES = {"feature", "bug", "tech_debt", "maintenance", "docs"};
 
   private final EventStorePort events;
+  private final com.engperf.application.port.inbound.PlatformConfigUseCase config;
 
-  EventFixtures(EventStorePort events) {
+  EventFixtures(
+      EventStorePort events, com.engperf.application.port.inbound.PlatformConfigUseCase config) {
     this.events = events;
+    this.config = config;
   }
 
   @Override
   public void run(String... args) {
-    if (events.count() > 0) {
+    // Dev-only seed: once the real Azure DevOps integration is connected (S9), the sync fills
+    // raw_event instead, so the seeder stands down.
+    if (config.adoIntegration().connected() || events.count() > 0) {
       return;
     }
     List<RawEvent> batch = new ArrayList<>();

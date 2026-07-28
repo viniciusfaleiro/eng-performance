@@ -8,6 +8,7 @@ dependencies {
     implementation(project(":application"))
     implementation(project(":adapter-in-web"))
     implementation(project(":adapter-out-persistence"))
+    implementation(project(":adapter-out-ado"))
 
     implementation("org.springframework.boot:spring-boot-starter")
 

@@ -4,6 +4,7 @@ dependencies {
     testImplementation(project(":application"))
     testImplementation(project(":adapter-in-web"))
     testImplementation(project(":adapter-out-persistence"))
+    testImplementation(project(":adapter-out-ado"))
     testImplementation(project(":bootstrap"))
 
     testImplementation("com.tngtech.archunit:archunit-junit5:1.3.0")

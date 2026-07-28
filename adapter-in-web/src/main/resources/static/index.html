@@ -1195,10 +1195,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function adminAdo(){
     const org=ADO_CFG.organizationUrl||"",pat=ADO_CFG.patRedacted||"",stage=ADO_CFG.productionStageRule||"";
-    const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado · última sync há 3 h</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Desconectado</span>';
-    return '<div class="form-grid"><label>Organização ADO<input id="ado_org" value="'+org+'" /></label><label>Personal Access Token<input id="ado_pat" type="password" value="'+pat+'" /></label><label>Regra global do stage de produção<input id="ado_stage" value="'+stage+'" /></label></div>'+
-      '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn" data-aact="test-ado">Testar conexão</button><button class="btn ghost" data-aact="save">Salvar</button>'+status+'</div>'+
-      '<div class="callout"><b>Stage de produção:</b> regra global acima, com <b>override por time</b> na aba Estrutura quando o pipeline foge do padrão. <b>Sincronização:</b> batch diário. <b>Backfill:</b> 6–12 meses. Fontes: Repos+PRs, Boards, Pipelines.</div>';
+    const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Desconectado</span>';
+    return '<div class="form-grid"><label>Organização ADO<input id="ado_org" value="'+org+'" /></label><label>Personal Access Token <span class="card-note">(não usado — login interativo)</span><input id="ado_pat" type="password" value="'+pat+'" /></label><label>Regra global do stage de produção<input id="ado_stage" value="'+stage+'" /></label></div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin:6px 0 16px"><button class="btn ghost" data-aact="save">Salvar</button>'+status+'</div>'+
+      '<div class="callout"><b>Sincronização interativa (sem PAT):</b> ao sincronizar, você faz login na Microsoft com MFA (device-code) e o app carrega os eventos como você. <b>Backfill:</b> 6 meses na 1ª vez, depois só o diff. Fontes: Repos+PRs, Boards, Pipelines. <b>Stage de produção:</b> a regra global acima classifica os deploys.</div>'+
+      '<div style="margin:14px 0"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button></div>'+
+      '<div id="ado_sync_box"></div>';
   }
   function adminIA(){
     return '<div class="callout">No MVP, um commit é considerado assistido por IA via <b>convenção de trailer</b> no commit — sem integração externa. Documente a convenção como pré-requisito de adoção do time.</div>'+
@@ -1206,6 +1208,27 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div style="display:flex;flex-direction:column;gap:8px"><span class="code">Co-authored-by: Copilot &lt;...&gt;</span><span class="code">Co-authored-by: Claude &lt;...&gt;</span><span class="code">Assisted-by: Cursor</span><span class="code">[ai] no início da mensagem</span></div></div>'+
       '<div class="form-grid"><label>Regex de detecção<input id="ia_regex" value="'+(AI_CFG.regex||"")+'" /></label><label>Janela de backfill (meses)<input id="ia_backfill" value="6" /></label></div>'+
       '<button class="btn" data-aact="save">Salvar convenção</button>';
+  }
+
+  /* Interactive Azure DevOps sync (S9): device-code login (no PAT), then a polled progress view. */
+  const ADO_PHASE={"awaiting-login":"Aguardando login…","syncing":"Sincronizando…","done":"Concluído","failed":"Falhou"};
+  function startAdoSync(){
+    const box=$("ado_sync_box");if(!box)return;
+    box.innerHTML='<div class="callout">Iniciando…</div>';
+    jpost("/api/admin/ado/sync",{}).then(d=>{
+      box.innerHTML='<div class="callout"><b>Faça login na Microsoft</b><br>1. Abra <a href="'+d.verificationUri+'" target="_blank" rel="noopener">'+d.verificationUri+'</a><br>2. Código: <span class="code">'+d.userCode+'</span> <button class="btn ghost sm" id="ado_copy">copiar</button></div><div id="ado_prog"></div>';
+      const c=$("ado_copy");if(c)c.addEventListener("click",()=>{if(navigator.clipboard)navigator.clipboard.writeText(d.userCode);toast("Código copiado");});
+      adoPoll(d.sessionId,Math.max(2,(d.intervalSeconds||5)));
+    }).catch(apiErr);
+  }
+  function adoPoll(sid,interval){
+    jget("/api/admin/ado/sync/status?sessionId="+encodeURIComponent(sid)).then(s=>{
+      const prog=$("ado_prog");
+      if(prog){const counts=Object.entries(s.counts||{}).map(([k,v])=>k+': '+v).join(' · ');
+        prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title">'+(ADO_PHASE[s.phase]||s.phase)+'</div><div class="card-note">'+(counts||'—')+'</div></div>';}
+      if(s.done){if(s.failed)toast('Falha: '+s.message);else{toast(s.message||'Sincronização concluída');loadFromApi();}return;}
+      setTimeout(()=>adoPoll(sid,interval),interval*1000);
+    }).catch(apiErr);
   }
 
   /* ---------- Admin: modal, toast & actions ---------- */
@@ -1295,6 +1318,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else if(act==="add-person")personModal();
     else if(act==="move-person")movePersonModal(ds.t);
     else if(act==="rediscover")toast("Sincronização disparada — reprocessando identidades…");
+    else if(act==="ado-sync")startAdoSync();
     else if(act==="test-ado")jpost("/api/admin/integrations/azure-devops/test",{}).then(loadFromApi).then(()=>toast("Conexão OK · última sync há 3 h")).catch(apiErr);
     else if(act==="save"){
       if(state.adminTab==="ado"){
