@@ -7,7 +7,7 @@ precedência é: pedido explícito do usuário → este arquivo → README.md.
 
 Plataforma que mede performance de times de engenharia a partir do **Azure DevOps**
 (métricas **DORA**, **Fluxo** e **IA**). O PRD do produto está em
-[`initial-spec/initial-spec.md`](initial-spec/initial-spec.md) — é a fonte de verdade
+[`docs/initial-spec.md`](docs/initial-spec.md) — é a fonte de verdade
 do **o quê** medimos. O protótipo navegável de UX está em `prototype/`.
 
 Hoje o repo tem o **harness de engenharia completo** + uma fatia **"echo" trivial**

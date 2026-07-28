@@ -2,7 +2,7 @@ schema: spec-driven
 
 context: |
   Produto: plataforma que mede performance de times de engenharia a partir do
-  Azure DevOps (métricas DORA, Fluxo e IA). PRD em initial-spec/initial-spec.md.
+  Azure DevOps (métricas DORA, Fluxo e IA). PRD em docs/initial-spec.md.
 
   Stack: Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) multi-módulo.
   Arquitetura hexagonal (ports & adapters) imposta por ArchUnit. Módulos:
@@ -22,7 +22,7 @@ context: |
 rules:
   proposal:
     - Sempre incluir uma seção "Non-goals".
-    - Referenciar as métricas/decisões do PRD (initial-spec/initial-spec.md) quando aplicável.
+    - Referenciar as métricas/decisões do PRD (docs/initial-spec.md) quando aplicável.
   tasks:
     - A última tarefa de toda change é rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL.
     - Respeitar as fronteiras hexagonais; domínio não conhece Spring.

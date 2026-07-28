@@ -33,7 +33,7 @@ A core product decision runs through the whole platform: **measure to improve th
 surveil people.** There is no public leaderboard and no cross-team person comparison — the only
 individual view is a manager coaching their **own** reports.
 
-The **[PRD](initial-spec/initial-spec.md)** is the source of truth for *what* is measured; the
+The **[PRD](docs/initial-spec.md)** is the source of truth for *what* is measured; the
 **[navigable prototype](prototype/)** is the visual spec the UI reuses pixel-for-pixel.
 
 ## 🚀 Features
@@ -171,16 +171,21 @@ npm --prefix frontend ci         # enable the frontend gate (once)
 
 ## 🗂 Project layout
 
+The Gradle modules are grouped by hexagon layer on disk; their logical names stay flat
+(`:domain`, `:adapter-in-web`, …), so dependencies are unaffected.
+
 ```
-domain/ application/ adapter-in-web/ adapter-out-persistence/ adapter-out-ado/ bootstrap/
-architecture-tests/     # the modules (above)
-initial-spec/           # the product PRD (what we measure)
-prototype/              # the navigable UX prototype = the visual spec
-openspec/               # spec-driven change history (proposals, specs, archive)
-config/                 # checkstyle + spotbugs configuration
-hooks/                  # version-controlled git hooks
-frontend/               # npm workspace for the served-asset gate
-scripts/                # dev helpers (docker API floor, ADO auth test)
+core/          domain · application            # inner layers (no framework)
+adapters/      in-web · out-persistence · out-ado
+app/           bootstrap                        # executable / composition root
+test/          architecture-tests              # ArchUnit boundary rules
+docs/          initial-spec.md · api/openapi.yaml · …   # product PRD + API contract
+prototype/     the navigable UX prototype = the visual spec
+openspec/      spec-driven change history (proposals, specs, archive)
+config/        checkstyle + spotbugs configuration
+hooks/         version-controlled git hooks
+frontend/      npm workspace for the served-asset gate
+scripts/       dev helpers (run-local, docker API floor, ADO auth test)
 ```
 
 ## 🧭 Spec-driven development

@@ -25,9 +25,9 @@ esac
 echo "==> [1/4] Building the boot jar (./gradlew :bootstrap:bootJar)…"
 ./gradlew :bootstrap:bootJar -q
 
-JAR="$(ls bootstrap/build/libs/bootstrap-*-SNAPSHOT.jar | grep -v -- '-plain' | head -1)"
+JAR="$(ls app/bootstrap/build/libs/bootstrap-*-SNAPSHOT.jar | grep -v -- '-plain' | head -1)"
 if [[ -z "${JAR}" ]]; then
-  echo "!! boot jar not found under bootstrap/build/libs" >&2
+  echo "!! boot jar not found under app/bootstrap/build/libs" >&2
   exit 1
 fi
 
