@@ -47,13 +47,9 @@ Fixtures são semeadas no banco por um seeder **idempotente**.
 
 ## Gates de qualidade
 
-**Backend (todos em `./gradlew build`):** Spotless (google-java-format) · Checkstyle ·
+**Todos em `./gradlew build`:** Spotless (google-java-format) · Checkstyle ·
 SpotBugs+FindSecBugs · JaCoCo (**pisos de 70% de linha e 60% de branch** em
-`domain`+`application`) · ArchUnit.
-
-**Frontend (`frontend/`, npm):** ESLint + Prettier + build do bundle de assets, via
-`npm run verify`. Aplicados pelos git hooks (pre-commit = lint+format quando há
-mudança em `frontend/`; pre-push = `verify` completo). Requer `npm --prefix frontend ci` uma vez.
+`domain`+`application`) · ArchUnit. A UI é vanilla JS/CSS inline (sem build de frontend).
 
 Fora de escopo por decisão do produto: **scanning de segurança** (vulnerabilidades de
 dependências, secrets) — não faz parte deste harness. SpotBugs+FindSecBugs cobre análise

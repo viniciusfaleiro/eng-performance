@@ -8,8 +8,7 @@ build/
 *.iml
 .vscode/
 
-# Node (frontend build tooling)
-frontend/node_modules/
+# Node (not used — the UI is inline vanilla JS)
 node_modules/
 
 # OS

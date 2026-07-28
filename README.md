@@ -105,13 +105,13 @@ Everything below runs inside **`./gradlew build`** and must be green:
 - **JaCoCo** — coverage everywhere; **70% line + 60% branch floor** enforced on `domain` + `application`.
 - **ArchUnit** — hexagonal boundaries + "only `adapter-out-ado` may talk HTTP".
 
-The frontend (`frontend/`) has its own gate — **ESLint + Prettier + asset bundle** via
-`npm run verify`. Supply-chain scanning (dependency CVEs, secrets) is intentionally out of scope for
-this harness; SpotBugs+FindSecBugs covers static security of the code itself.
+The UI is inline vanilla JS + CSS (no build step, no bundler). Supply-chain scanning (dependency
+CVEs, secrets) is intentionally out of scope for this harness; SpotBugs+FindSecBugs covers static
+security of the code itself.
 
 ## ⚡ Getting started
 
-**Prerequisites:** JDK 21, Docker (for PostgreSQL + Testcontainers), Node 18+ (for the frontend gate).
+**Prerequisites:** JDK 21 and Docker (for PostgreSQL + Testcontainers).
 
 ```bash
 # 1. Start PostgreSQL (data persists in a Docker volume)
@@ -160,7 +160,6 @@ the Gradle workflow). The app reaches Postgres at `db:5432` inside the compose n
 ```bash
 ./gradlew spotlessApply          # auto-format
 ./gradlew :bootstrap:bootRun     # run at http://localhost:8080
-npm --prefix frontend ci         # enable the frontend gate (once)
 ```
 
 > This host's Docker daemon is very new (API floor 1.40); `scripts/fix-docker-min-api.sh` lowers it
@@ -184,7 +183,6 @@ prototype/     the navigable UX prototype = the visual spec
 openspec/      spec-driven change history (proposals, specs, archive)
 config/        checkstyle + spotbugs configuration
 hooks/         version-controlled git hooks
-frontend/      npm workspace for the served-asset gate
 scripts/       dev helpers (run-local, docker API floor, ADO auth test)
 ```
 
@@ -205,7 +203,7 @@ Behavior changes go through **[OpenSpec](openspec/)** — never hand-edit `opens
    ```bash
    git config core.hooksPath hooks && chmod +x hooks/*
    ```
-   `pre-commit` runs format + Checkstyle (fast); `pre-push` runs the full `./gradlew build` + `npm run verify`.
+   `pre-commit` runs format + Checkstyle (fast); `pre-push` runs the full `./gradlew build`.
 3. **Respect the boundaries** — dependencies point inward; `domain`/`application` stay framework-free.
    ArchUnit will fail the build otherwise.
 4. **Keep the gates green** — never disable a rule, suppress a warning, or lower the coverage floor to

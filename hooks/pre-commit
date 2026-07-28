@@ -10,19 +10,4 @@ if ! ./gradlew --quiet --console=plain spotlessCheck checkstyleMain checkstyleTe
   exit 1
 fi
 
-# Frontend fast gate — only when frontend files are staged.
-if git diff --cached --name-only | grep -q '^frontend/'; then
-  if [ -d frontend/node_modules ]; then
-    echo "[pre-commit] frontend eslint + prettier ..."
-    if ! ( cd frontend && npm run --silent lint && npm run --silent format:check ); then
-      echo ""
-      echo "[pre-commit] FAILED. Fix with: ( cd frontend && npm run lint; npm run format )"
-      exit 1
-    fi
-  else
-    echo "[pre-commit] WARN: frontend/ changed but node_modules absent —"
-    echo "             run 'npm --prefix frontend ci' to enable the frontend gate."
-  fi
-fi
-
 echo "[pre-commit] OK"
