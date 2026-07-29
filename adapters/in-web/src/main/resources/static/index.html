@@ -242,14 +242,37 @@ table.tbl td{padding:9px 10px;border-bottom:1px solid var(--outline-var);}
 .conv-ico{font-size:14px;line-height:1.5;font-weight:700;}
 .conv-item.warn .conv-ico{color:var(--crit);}
 .conv-item.info .conv-ico{color:var(--warn);}
-.conv-title{font-size:13.5px;font-weight:650;color:var(--on-surface);margin-bottom:3px;}
+.conv-item.ok{border-left-color:var(--good);}
+.conv-item.manual{border-left-color:var(--outline-var);}
+.conv-title{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13.5px;font-weight:650;color:var(--on-surface);margin-bottom:3px;}
 .conv-item.warn .conv-title{color:var(--on-crit-c);}
 .conv-item.info .conv-title{color:var(--on-warn-c);}
 .conv-detail{font-size:12.5px;line-height:1.55;color:var(--on-surface-var);}
 .conv-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px;}
+.conv-foot:empty{display:none;}
 .conv-ref{font-size:11px;font-family:var(--mono);color:var(--on-surface-var);opacity:.85;margin-right:4px;}
 .conv-metric{background:var(--surface-2);border:1px solid var(--outline-var);border-radius:999px;padding:2px 9px;font-size:10.5px;font-family:var(--mono);color:var(--on-surface-var);}
 .conv-ok{background:var(--good-c);border:1px solid var(--outline-var);border-left:3px solid var(--good);border-radius:10px;padding:12px 15px;font-size:13px;color:var(--on-good-c);line-height:1.5;}
+.conv-num{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--on-surface-var);min-width:20px;text-align:center;opacity:.8;}
+.conv-badge{flex-shrink:0;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;border-radius:999px;padding:2px 9px;}
+.conv-badge.warn,.conv-badge.info{background:var(--crit);color:#fff;}
+.conv-badge.ok{background:var(--good);color:var(--on-good-c);}
+.conv-badge.manual{background:var(--surface-2);color:var(--on-surface-var);border:1px solid var(--outline-var);}
+.conv-group{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--on-surface-var);margin:18px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--outline-var);}
+.conv-summary{display:flex;align-items:flex-start;gap:12px;background:var(--surface-1);border:1px solid var(--outline-var);border-left:3px solid var(--outline-var);border-radius:10px;padding:13px 15px;}
+.conv-summary.warn{border-left-color:var(--crit);background:var(--crit-c);}
+.conv-summary.ok{border-left-color:var(--good);background:var(--good-c);}
+.conv-summary .conv-ico{font-size:15px;}
+.conv-summary.warn .conv-ico{color:var(--crit);}
+.conv-summary.ok .conv-ico{color:var(--good);}
+.conv-summary-body{flex:1;min-width:0;display:flex;flex-direction:column;}
+.conv-summary-body b{font-size:13.5px;}
+.conv-summary.warn b{color:var(--on-crit-c);}
+.conv-summary.ok b{color:var(--on-good-c);}
+.conv-summary .btn{flex-shrink:0;align-self:center;}
+.conv-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;}
+.conv-chip{font-size:11px;border-radius:999px;padding:2px 10px;background:var(--surface-2);border:1px solid var(--outline-var);color:var(--on-surface-var);}
+.conv-chip.warn{border-color:var(--crit);color:var(--on-crit-c);}
 
 .gauge-card{display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:center;}
 .gauge-card svg{width:200px;max-width:100%;height:auto;}
@@ -1115,7 +1138,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const labels=periodLabels(freq,12);
     let h='<p class="baseline-note"><span class="pill">'+n.vertical+' › '+n.team+'</span><span class="pill">'+freq+' · vs. '+bw+'</span><span class="pill">visão de contribuição individual</span></p>';
 
-    if(c&&c.conventions){h+=conventionBlock(c.conventions);}
+    if(c&&c.conventions){h+=conventionBlock(c.conventions,id);}
 
     const firstPass=c?Math.round(c.assertivenessPct):Math.round(58+hash(id+"fp")*36);
     h+=sectionHead("Atividade de commits");
@@ -1151,24 +1174,82 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return h;
   }
   // Coaching flags: agreed conventions this contributor may not be following (docs/convenções).
-  function conventionBlock(flags){
+  function conventionBlock(flags,id){
+    let out=sectionHead("Aderência às convenções");
+    const btn='<button class="btn ghost sm" data-conventions="'+id+'">Ver todas as convenções ›</button>';
     if(!flags.length){
-      return sectionHead("Aderência às convenções")+
-        '<div class="conv-ok">✔ Nenhum ponto de atenção — a atividade deste contribuidor bate com as convenções combinadas.</div>';
+      out+='<div class="conv-summary ok"><div class="conv-ico">✔</div>'+
+        '<div class="conv-summary-body"><b>Nenhum ponto de atenção</b><span class="conv-note" style="margin:2px 0 0">A atividade deste contribuidor bate com as convenções que o sistema avalia automaticamente.</span></div>'+
+        btn+'</div>';
+      return out;
     }
-    let out=sectionHead("Pontos de atenção — convenções");
-    out+='<div class="conv-note">Sinais de que uma convenção combinada pode não estar de pé. Cada um distorce as métricas listadas — verifique com o dev antes de cobrar o número.</div>';
-    out+='<div class="conv-list">';
-    flags.forEach(f=>{
-      const metrics=(f.metrics||[]).map(m=>'<span class="conv-metric">'+escHtml(m)+'</span>').join('');
-      out+='<div class="conv-item '+(f.severity==="warn"?"warn":"info")+'">'+
-        '<div class="conv-ico">'+(f.severity==="warn"?"▲":"ℹ")+'</div>'+
-        '<div class="conv-body"><div class="conv-title">'+escHtml(f.title)+'</div>'+
-        '<div class="conv-detail">'+escHtml(f.detail)+'</div>'+
-        '<div class="conv-foot"><span class="conv-ref">'+escHtml(f.reference)+'</span>'+metrics+'</div>'+
-        '</div></div>';
+    const chips=flags.map(f=>'<span class="conv-chip '+(f.severity==="warn"?"warn":"info")+'">'+escHtml(f.title)+'</span>').join('');
+    out+='<div class="conv-summary warn"><div class="conv-ico">▲</div>'+
+      '<div class="conv-summary-body"><b>'+flags.length+' ponto'+(flags.length>1?'s':'')+' de atenção</b>'+
+      '<div class="conv-chips">'+chips+'</div></div>'+btn+'</div>';
+    return out;
+  }
+  // Full agreed-conventions checklist (docs/convencoes-adocao-times.xlsx), grouped A–F. AUTO codes
+  // are the ones the system evaluates per person from ADO activity; the rest are manual checks.
+  const CONV_AUTO=new Set(["1","10","13","16","20","21"]);
+  const CONV_CATALOG=[
+    {g:"A · Identidade e estrutura",items:[
+      {n:"1",t:"E-mail de commit corporativo, sempre o mesmo",need:"git user.email = e-mail da conta ADO em toda máquina; e-mails alternativos declarados ao Admin.",m:["throughput","cycle_time","ai_share","painel individual"]},
+      {n:"2",t:"Toda identidade vinculada a uma Pessoa no Admin",need:"Nenhuma identidade do time sem mapeamento; varredura a cada onboarding e uma vez por sprint.",m:["todas as métricas de pessoa","cobertura"]},
+      {n:"3",t:"Bots e automações com identidade própria e declarada",need:"Dependabot, release bots e pipelines commitam com service account, nunca o e-mail de uma pessoa.",m:["throughput","pr_size","ai_share","cobertura"]},
+      {n:"4",t:"Vertical → Time → Pessoa com gestor definido",need:"Time sob a vertical, gestores definidos, contas vinculadas às Pessoas.",m:["roll-up","rankings","heatmap","RBAC"]},
+      {n:"5",t:"Mudança de time registrada com a data efetiva",need:"Movimentação lançada com a data real: vínculo anterior fechado, novo aberto na data.",m:["séries históricas","tendências","comparativos"]}]},
+    {g:"B · Repositórios e deploy",items:[
+      {n:"6",t:"Cada repositório pertence a exatamente um time",need:"Todos os repos vinculados em Admin → Repositórios (1 repo → 1 time). Arquivados desvinculados.",m:["deploy_freq","lead_time","cfr","mttr"]},
+      {n:"7",t:"Stage de produção nomeado pelo padrão",need:"Pipelines de release usam o nome padrão (production / prd) ou têm override registrado.",m:["deploy_freq","lead_time","cfr","mttr","tier DORA"]},
+      {n:"8",t:"Produção só recebe deploy pelo pipeline",need:"Sem deploy manual ou hotfix direto no servidor. Rollback também é pipeline.",m:["deploy_freq","lead_time","cfr","mttr"]},
+      {n:"9",t:"Falha e recuperação explícitas no pipeline",need:"Deploy termina com resultado claro (success/failed/recovery); release quebrada não é apagada.",m:["cfr","mttr"]}]},
+    {g:"C · Fluxo de código",items:[
+      {n:"10",t:"Todo código entra na main por pull request",need:"Branch policy bloqueia push direto; merge só via PR. PR abandonado é fechado.",m:["throughput","cycle_time","pr_size","assertividade"]},
+      {n:"11",t:"Branch curta, criada a partir da main atual",need:"Branch vive dias, não meses. Nada de ressuscitar branch antiga — o 1º commit ancora o lead time.",m:["lead_time","coding_time","cycle_time"]},
+      {n:"12",t:"PR em rascunho até estar pronto para review",need:"Trabalho em andamento fica como draft; ao sair do rascunho, reviewers são atribuídos na hora.",m:["pickup_time","cycle_time","flow_efficiency"]},
+      {n:"13",t:"A review acontece dentro do PR",need:"Reviewers atribuídos; comentários, ajustes, aprovações e rejeições registrados no PR — não no chat.",m:["pr_review_time","% PRs sem review","assertividade"]},
+      {n:"14",t:"PR pequeno, com um propósito só",need:"Refactor amplo, formatação em massa e código gerado em PRs separados.",m:["pr_size","pr_review_time","cycle_time"]},
+      {n:"15",t:"Histórico não é reescrito depois do merge",need:"Force-push na main bloqueado. Rebase/squash antes do merge, nunca depois.",m:["lead_time","mapa de contribuição","ai_share"]}]},
+    {g:"D · Assistência de IA",items:[
+      {n:"16",t:"Commit assistido por IA carrega o trailer padrão",need:"Trailer 'Co-authored-by: Copilot' (ou o regex central) na mensagem do commit.",m:["ai_share","ai_adoption","ai_impact"]},
+      {n:"17",t:"O merge preserva o trailer (atenção ao squash)",need:"Estratégia de merge padronizada por repo; no squash, o trailer entra na mensagem final.",m:["ai_share","ai_impact","série com/sem IA"]},
+      {n:"18",t:"A IA é co-autora, nunca a autora do commit",need:"Author/committer é sempre a pessoa; a IA só aparece no trailer.",m:["ai_share","ai_adoption","throughput","cobertura"]},
+      {n:"19",t:"Convenção de IA única, publicada no Admin",need:"Sem variação local ([copilot], #ai, emoji). Novo assistente ⇒ Admin atualiza o regex antes.",m:["ai_share","ai_adoption","ai_impact"]}]},
+    {g:"E · Boards",items:[
+      {n:"20",t:"Work item tipado e ligado ao PR",need:"PR referencia o work item (AB#1234); tipo preenchido de verdade. Não planejado também vira work item.",m:["distribuição por tipo","cycle time de WI","wip"]},
+      {n:"21",t:"Estados do board separam ativo de espera",need:"Board distingue fazendo de esperando; card movido no dia, não em lote na véspera da review.",m:["flow_efficiency","wip","cycle time de WI"]}]},
+    {g:"F · Operação",items:[
+      {n:"22",t:"Conexão ADO válida e com escopo suficiente",need:"Leitura de Code, Work Items, Build e Release; renovação agendada; repos novos no escopo.",m:["todas"]},
+      {n:"23",t:"Cobertura de atribuição acompanhada",need:"Rotina quinzenal: zerar identidades não mapeadas e repos sem time.",m:["cobertura","confiabilidade de todos os cards"]}]}];
+  function openConventionsDrawer(id){
+    const n=NODES[id],c=indData();
+    const byCode={};(c&&c.conventions?c.conventions:[]).forEach(f=>{byCode[f.code]=f;});
+    const raised=(c&&c.conventions)?c.conventions.length:0;
+    let h='<div class="drawer-head"><div><div class="crumb-level">'+n.vertical+' › '+n.team+'</div><h2 style="font-size:20px;margin-top:2px">Convenções · '+escHtml(n.label)+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
+    h+='<div class="drawer-body"><div class="conv-note" style="margin-bottom:14px">Checklist completo das convenções combinadas ('+CONV_CATALOG.reduce((a,g)=>a+g.items.length,0)+'). '+
+      (raised?('<b style="color:var(--crit)">'+raised+' em atenção</b> para este contribuidor. '):'')+
+      'Itens marcados <b>Auto</b> o sistema avalia a partir da atividade no ADO; os demais são verificação manual.</div>';
+    CONV_CATALOG.forEach(grp=>{
+      h+='<div class="conv-group">'+escHtml(grp.g)+'</div>';
+      grp.items.forEach(it=>{
+        const f=byCode[it.n];
+        const auto=CONV_AUTO.has(it.n);
+        const status=f?(f.severity==="warn"?"warn":"info"):(auto?"ok":"manual");
+        const badge=f?(f.severity==="warn"?'<span class="conv-badge warn">Atenção</span>':'<span class="conv-badge info">Atenção</span>')
+          :(auto?'<span class="conv-badge ok">OK</span>':'<span class="conv-badge manual">Manual</span>');
+        const metrics=(it.m||[]).map(m=>'<span class="conv-metric">'+escHtml(m)+'</span>').join('');
+        h+='<div class="conv-item '+status+'">'+
+          '<div class="conv-num">'+it.n+'</div>'+
+          '<div class="conv-body"><div class="conv-title">'+escHtml(it.t)+badge+'</div>'+
+          '<div class="conv-detail">'+escHtml(f?f.detail:it.need)+'</div>'+
+          '<div class="conv-foot">'+metrics+'</div>'+
+          '</div></div>';
+      });
     });
-    return out+'</div>';
+    h+='</div>';
+    $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
+    $("drawerClose").addEventListener("click",closeDrawer);
   }
   // Real work-type distribution (% stacked bar + hours per type), matching taskEffortBlock's chrome.
   function workTypeBlock(types){
@@ -1596,6 +1677,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     document.querySelectorAll("[data-metric]").forEach(el=>{const open=()=>openDrawer(el.dataset.metric);el.addEventListener("click",open);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});});
     document.querySelectorAll("[data-im]").forEach(el=>{const go=()=>{state.indMetric=el.dataset.im;render();};el.addEventListener("click",go);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}});});
     document.querySelectorAll("[data-activity]").forEach(el=>{const go=()=>openActivityDrawer(el.dataset.activity);el.addEventListener("click",go);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}});});
+    document.querySelectorAll("[data-conventions]").forEach(el=>el.addEventListener("click",()=>openConventionsDrawer(el.dataset.conventions)));
     document.querySelectorAll("[data-tm]").forEach(b=>b.addEventListener("click",()=>{state.trendMetric=b.dataset.tm;render();}));
     const ai=$("aiToggle");if(ai)ai.addEventListener("click",()=>{state.trendAI=!state.trendAI;render();});
     document.querySelectorAll("[data-scope]").forEach(b=>b.addEventListener("click",()=>{state.cmpScope=b.dataset.scope;render();}));

@@ -62,25 +62,55 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     Set<String> identities = identitiesOf(personNodeId);
 
     LocalDate reference = LocalDate.now(clock);
-    Instant from = reference.minusDays(CALENDAR_DAYS - 1L).atStartOfDay(ZoneOffset.UTC).toInstant();
-    Instant to = reference.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+    // The contribution calendar is a fixed rolling 12-month map (GitHub-style), intentionally
+    // independent of the selected frequency — it always shows the trailing year.
+    Instant calFrom = startOf(reference.minusDays(CALENDAR_DAYS - 1L));
+    Instant calTo = startOf(reference.plusDays(1));
+    // Everything else tracks the SELECTED period = the current bucket of `frequency`, matching the
+    // delivery tiles' current value and the panel's "vs. período anterior" framing.
+    LocalDate periodStart = frequency.bucketStart(reference);
+    Instant periodFrom = startOf(periodStart);
+    Instant periodTo = startOf(frequency.nextBucketStart(periodStart));
+    Instant fetchTo = periodTo.isAfter(calTo) ? periodTo : calTo;
 
-    List<RawEvent> commits = mine(EventType.COMMIT, from, to, identities);
-    List<RawEvent> prs = mine(EventType.PR, from, to, identities);
-    List<RawEvent> workItems = mine(EventType.WORKITEM, from, to, identities);
-    List<RawEvent> reviewsGiven = mine(EventType.REVIEW, from, to, identities);
-    List<RawEvent> reviewsReceived = authoredReviews(from, to, identities);
+    // One query per type over the widest window (calendar), then slice in memory.
+    List<RawEvent> commits = mine(EventType.COMMIT, calFrom, fetchTo, identities);
+    List<RawEvent> prs = mine(EventType.PR, calFrom, fetchTo, identities);
+    List<RawEvent> workItems = mine(EventType.WORKITEM, calFrom, fetchTo, identities);
+    List<RawEvent> reviewsGiven = mine(EventType.REVIEW, calFrom, fetchTo, identities);
+    List<RawEvent> reviewsReceived = authoredReviews(calFrom, fetchTo, identities);
+
+    List<RawEvent> commitsP = within(commits, periodFrom, periodTo);
+    List<RawEvent> prsP = within(prs, periodFrom, periodTo);
 
     return new IndividualDashboard(
         personNodeId,
         label,
-        assertiveness(prs),
+        assertiveness(prsP),
         calendar(commits, reference),
         delivery(personNodeId, frequency),
-        reviewStats(reviewsGiven, reviewsReceived),
-        workTypes(workItems),
-        activity(commits, prs),
-        conventions(commits, prs, workItems, reviewsReceived));
+        reviewStats(
+            within(reviewsGiven, periodFrom, periodTo),
+            within(reviewsReceived, periodFrom, periodTo)),
+        workTypes(within(workItems, periodFrom, periodTo), periodFrom, periodTo),
+        activity(commitsP, prsP),
+        // Coaching flags look at the trailing 12 months, not the selected bucket, so a quiet day
+        // does not read as "no activity / unmapped identity".
+        conventions(
+            within(commits, calFrom, calTo),
+            within(prs, calFrom, calTo),
+            within(workItems, calFrom, calTo),
+            within(reviewsReceived, calFrom, calTo)));
+  }
+
+  private static Instant startOf(LocalDate date) {
+    return date.atStartOfDay(ZoneOffset.UTC).toInstant();
+  }
+
+  private static List<RawEvent> within(List<RawEvent> all, Instant from, Instant to) {
+    return all.stream()
+        .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
+        .toList();
   }
 
   /**
@@ -97,6 +127,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     if (commits.isEmpty() && prs.isEmpty() && workItems.isEmpty() && reviewsReceived.isEmpty()) {
       return List.of(
           new ConventionFlag(
+              "1",
               "warn",
               "Convenções 1–2 · Identidade e estrutura",
               "Sem atividade atribuída no período",
@@ -125,6 +156,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       return null;
     }
     return new ConventionFlag(
+        "16",
         "warn",
         "Convenção 16 · Assistência de IA",
         "Nenhum commit marca uso de IA",
@@ -142,6 +174,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       return null;
     }
     return new ConventionFlag(
+        "10",
         "warn",
         "Convenção 10 · Fluxo de código",
         "Commits sem pull request",
@@ -155,6 +188,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   private static ConventionFlag boardFlag(List<RawEvent> commits, List<RawEvent> workItems) {
     if (!commits.isEmpty() && workItems.isEmpty()) {
       return new ConventionFlag(
+          "20",
           "warn",
           "Convenção 20 · Boards",
           "Commits sem work item",
@@ -165,6 +199,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     if (!workItems.isEmpty()
         && workItems.stream().noneMatch(w -> w.detail().containsKey("hours"))) {
       return new ConventionFlag(
+          "21",
           "info",
           "Convenção 21 · Boards",
           "Board sem transição de estado utilizável",
@@ -184,6 +219,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       return null;
     }
     return new ConventionFlag(
+        "13",
         "warn",
         "Convenção 13 · Fluxo de código",
         "PRs sem review registrada",
@@ -252,18 +288,18 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return new ReviewStats(comments, approvals, rejections, given.size(), received.size());
   }
 
-  private static List<WorkTypeSlice> workTypes(List<RawEvent> workItems) {
+  private static List<WorkTypeSlice> workTypes(List<RawEvent> workItems, Instant from, Instant to) {
     Map<String, Double> hoursByType = new LinkedHashMap<>();
     for (Map.Entry<String, String> t : WORK_TYPES) {
       hoursByType.put(t.getKey(), 0.0);
     }
     for (RawEvent w : workItems) {
-      if (!w.detail().containsKey("hours")) {
+      Double hours = itemHours(w, from, to);
+      if (hours == null) {
         continue; // no usable state history → "no data", excluded from the distribution (not zero)
       }
       String type = w.detail().getOrDefault("type", "docs");
-      hoursByType.merge(
-          hoursByType.containsKey(type) ? type : "docs", doubleDetail(w, "hours"), Double::sum);
+      hoursByType.merge(hoursByType.containsKey(type) ? type : "docs", hours, Double::sum);
     }
     double total = hoursByType.values().stream().mapToDouble(Double::doubleValue).sum();
     List<WorkTypeSlice> slices = new ArrayList<>();
@@ -273,6 +309,43 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       slices.add(new WorkTypeSlice(t.getKey(), t.getValue(), hours, share));
     }
     return slices;
+  }
+
+  /**
+   * The item's in-progress hours <b>within</b> {@code [from, to)} — clipped from its stored {@code
+   * spans} so a long-open item counts only its overlap with the period, not its whole life. Falls
+   * back to the unclipped total for legacy events with no spans; {@code null} when the item has no
+   * usable state history (excluded from the distribution as "no data", never a silent zero).
+   */
+  private static Double itemHours(RawEvent w, Instant from, Instant to) {
+    String spans = w.detail().get("spans");
+    if (spans != null) {
+      return clippedHours(spans, from, to);
+    }
+    return w.detail().containsKey("hours") ? doubleDetail(w, "hours") : null;
+  }
+
+  /**
+   * Sums the overlap of each {@code from:to} epoch-milli span with {@code [windowFrom, windowTo)}.
+   */
+  private static double clippedHours(String spans, Instant windowFrom, Instant windowTo) {
+    long lo0 = windowFrom.toEpochMilli();
+    long hi0 = windowTo.toEpochMilli();
+    double millis = 0;
+    for (String part : spans.split(",")) {
+      int c = part.indexOf(':');
+      if (c < 0) {
+        continue; // empty (transitioned but no in-progress time) → contributes zero
+      }
+      long a = Long.parseLong(part.substring(0, c));
+      long b = Long.parseLong(part.substring(c + 1));
+      long lo = Math.max(a, lo0);
+      long hi = Math.min(b, hi0);
+      if (hi > lo) {
+        millis += hi - lo;
+      }
+    }
+    return millis / 3_600_000.0;
   }
 
   private static List<ActivityItem> activity(List<RawEvent> commits, List<RawEvent> prs) {

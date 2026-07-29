@@ -120,6 +120,10 @@ class AdoMapperTest {
     assertThat(e.value()).isEqualTo(2.0); // in Active 11:00 → Closed 13:00 = 2h in progress
     assertThat(e.detail().get("hours"))
         .isEqualTo("2.0"); // same value on the type-distribution channel
+    long a = Instant.parse("2026-06-10T11:00:00Z").toEpochMilli();
+    long b = Instant.parse("2026-06-10T13:00:00Z").toEpochMilli();
+    assertThat(e.detail().get("spans"))
+        .isEqualTo(a + ":" + b); // in-progress interval, for period-clipped views
   }
 
   @Test

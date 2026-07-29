@@ -106,6 +106,43 @@ class IndividualDashboardServiceTest {
   }
 
   @Test
+  void workTypeHoursClipToTheSelectedPeriodNotItemLifetime() {
+    baseStructure();
+    // One long-open item (in-progress the whole year) whose ChangedDate falls in the current
+    // day/week/month (2026-06-30). Its clipped hours must scale with the selected period.
+    events.add(
+        workItemSpan(
+            "id-ana", "2026-06-30", "feature", "2026-01-01T00:00:00Z", "2026-12-31T00:00:00Z"));
+
+    assertThat(featureHours(individual.dashboard("p:ana", Frequency.DAILY))).isEqualTo(24.0);
+    assertThat(featureHours(individual.dashboard("p:ana", Frequency.WEEKLY))).isEqualTo(168.0);
+    double monthly = featureHours(individual.dashboard("p:ana", Frequency.MONTHLY));
+    assertThat(monthly).isEqualTo(720.0); // 30 days of June, not the item's ~8736h whole life
+    assertThat(monthly).isLessThan(1000.0);
+  }
+
+  private static double featureHours(IndividualDashboard d) {
+    return d.workTypes().stream().filter(t -> t.type().equals("feature")).findFirst().get().hours();
+  }
+
+  private RawEvent workItemSpan(
+      String identity, String changedDate, String type, String spanFrom, String spanTo) {
+    long a = Instant.parse(spanFrom).toEpochMilli();
+    long b = Instant.parse(spanTo).toEpochMilli();
+    double h = (b - a) / 3_600_000.0;
+    return new RawEvent(
+        "w" + (seq++),
+        EventType.WORKITEM,
+        at(changedDate),
+        null,
+        identity,
+        h,
+        null,
+        false,
+        Map.of("type", type, "hours", Double.toString(h), "spans", a + ":" + b));
+  }
+
+  @Test
   void activityCarriesTheAdoLink() {
     baseStructure();
     events.add(pr("id-ana", "2026-06-10", true));
@@ -128,6 +165,7 @@ class IndividualDashboardServiceTest {
     assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 10"));
     assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 20"));
     assertThat(flags).allMatch(f -> f.severity().equals("warn"));
+    assertThat(flags).extracting(ConventionFlag::code).contains("16", "10", "20");
   }
 
   @Test

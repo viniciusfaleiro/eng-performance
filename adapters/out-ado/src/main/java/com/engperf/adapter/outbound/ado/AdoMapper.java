@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.function.Predicate;
 
 /**
@@ -163,28 +164,80 @@ final class AdoMapper {
     JsonNode f = wi.path("fields");
     Map<String, String> detail = new HashMap<>();
     detail.put("type", workType(f.path("System.WorkItemType").asText("")));
-    Optional<Double> hours = inProgressHours(updates, inProgress, now);
-    hours.ifPresent(h -> detail.put("hours", num(h)));
+    List<long[]> spans = inProgressSpans(updates, inProgress, now);
+    Double measure = null;
+    if (spans != null) {
+      // Store the raw in-progress intervals (epoch-milli from:to) so period-scoped views can clip
+      // each item's duration to the window asked, instead of always counting its whole life.
+      double hours = 0;
+      StringJoiner sj = new StringJoiner(",");
+      for (long[] s : spans) {
+        hours += (s[1] - s[0]) / 3_600_000.0;
+        sj.add(s[0] + ":" + s[1]);
+      }
+      detail.put("hours", num(hours));
+      detail.put("spans", sj.toString());
+      measure = hours;
+    }
     return new RawEvent(
         "wi:" + wi.path("id").asText(),
         EventType.WORKITEM,
         instant(f, "System.ChangedDate"),
         null,
         identity(f.path("System.AssignedTo")),
-        hours.orElse(null), // WIP measure; null = no usable state history → excluded from the value
+        measure, // WIP measure; null = no usable state history → excluded from the value
         null,
         false,
         detail);
   }
 
   /**
-   * Hours the item spent in in-progress states, from its {@code System.State} transitions (each
-   * update's revised timestamp + new value). Empty when there is no usable transition — fewer than
-   * two state changes, or all at the same instant (e.g. created and closed together). The last
-   * state runs to {@code now}; sentinel/future revisions are ignored.
+   * Hours the item spent in in-progress states, from its {@code System.State} transitions. Empty
+   * when there is no usable transition — fewer than two state changes, or all at the same instant.
+   * Kept as the total (whole-life) measure the WIP metric reads; period-scoped views instead clip
+   * the {@code spans} detail. The last state runs to {@code now}; sentinel/future revisions
+   * ignored.
    */
   static Optional<Double> inProgressHours(
       JsonNode updates, Predicate<String> inProgress, Instant now) {
+    List<long[]> spans = inProgressSpans(updates, inProgress, now);
+    if (spans == null) {
+      return Optional.empty();
+    }
+    double hours = 0;
+    for (long[] s : spans) {
+      hours += (s[1] - s[0]) / 3_600_000.0;
+    }
+    return Optional.of(hours);
+  }
+
+  /**
+   * The in-progress intervals (epoch-milli {@code [from, to)}) from the item's state history, or
+   * {@code null} when there is no usable transition. An empty list means the item transitioned but
+   * spent no time in an in-progress state (data, but zero hours).
+   */
+  private static List<long[]> inProgressSpans(
+      JsonNode updates, Predicate<String> inProgress, Instant now) {
+    List<StateAt> states = collectStates(updates, now);
+    if (states.size() < 2) {
+      return null; // never transitioned → no data
+    }
+    states.sort(Comparator.comparing(StateAt::at));
+    if (!states.get(0).at().isBefore(states.get(states.size() - 1).at())) {
+      return null; // all transitions at one instant → no measurable data
+    }
+    List<long[]> spans = new ArrayList<>();
+    for (int i = 0; i < states.size(); i++) {
+      Instant from = states.get(i).at();
+      Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
+      if (inProgress.test(states.get(i).state()) && from.isBefore(to)) {
+        spans.add(new long[] {from.toEpochMilli(), to.toEpochMilli()});
+      }
+    }
+    return spans;
+  }
+
+  private static List<StateAt> collectStates(JsonNode updates, Instant now) {
     List<StateAt> states = new ArrayList<>();
     for (JsonNode u : updates.path("value")) {
       JsonNode sv = u.path("fields").path("System.State");
@@ -197,22 +250,7 @@ final class AdoMapper {
       }
       states.add(new StateAt(at, sv.path("newValue").asText("")));
     }
-    if (states.size() < 2) {
-      return Optional.empty(); // never transitioned → no data
-    }
-    states.sort(Comparator.comparing(StateAt::at));
-    if (!states.get(0).at().isBefore(states.get(states.size() - 1).at())) {
-      return Optional.empty(); // all transitions at one instant → no measurable data
-    }
-    double hours = 0;
-    for (int i = 0; i < states.size(); i++) {
-      Instant from = states.get(i).at();
-      Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
-      if (inProgress.test(states.get(i).state())) {
-        hours += hoursBetween(from, to);
-      }
-    }
-    return Optional.of(hours);
+    return states;
   }
 
   private record StateAt(Instant at, String state) {}

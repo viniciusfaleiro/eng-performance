@@ -49,9 +49,15 @@ public final class IndividualDtos {
   }
 
   public record ConventionFlagDto(
-      String severity, String reference, String title, String detail, List<String> metrics) {
+      String code,
+      String severity,
+      String reference,
+      String title,
+      String detail,
+      List<String> metrics) {
     public static ConventionFlagDto from(ConventionFlag f) {
-      return new ConventionFlagDto(f.severity(), f.reference(), f.title(), f.detail(), f.metrics());
+      return new ConventionFlagDto(
+          f.code(), f.severity(), f.reference(), f.title(), f.detail(), f.metrics());
     }
   }
 
