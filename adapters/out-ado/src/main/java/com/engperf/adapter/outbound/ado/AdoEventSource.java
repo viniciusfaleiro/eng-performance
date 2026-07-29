@@ -11,9 +11,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -38,6 +41,10 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   private static final Logger LOG = LoggerFactory.getLogger(AdoEventSource.class);
   private static final String API = "api-version=7.1";
+  // WIQL returns at most 20000 rows and cannot page; query one month at a time to stay under it.
+  private static final int WIQL_WINDOW_MONTHS = 1;
+  // ADO's workitems batch GET accepts at most 200 ids per request.
+  private static final int WORKITEM_ID_BATCH = 200;
 
   private final AdoRestClient client;
   private final PlatformConfigUseCase config;
@@ -195,33 +202,53 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   private int fetchWorkItems(
       String org, String proj, String sinceIso, String token, List<RawEvent> events) {
-    // WIQL compares [System.ChangedDate] at day precision and rejects a time component; pass only
-    // the date (yyyy-MM-dd). This widens the window to the whole day, which idempotent upsert
-    // absorbs. ISO-8601 always begins yyyy-MM-dd, so the first 10 chars are the date.
-    String sinceDate = sinceIso.substring(0, 10);
-    String wiql =
-        "{\"query\":\"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '"
-            + sinceDate
-            + "' ORDER BY [System.ChangedDate] DESC\"}";
-    JsonNode ids = client.post(org + "/" + proj + "/_apis/wit/wiql?" + API, token, wiql);
-    StringJoiner batch = new StringJoiner(",");
-    for (JsonNode wi : ids.path("workItems")) {
-      batch.add(wi.path("id").asText());
-    }
-    if (batch.length() == 0) {
+    List<String> ids = collectChangedWorkItemIds(org, proj, sinceIso.substring(0, 10), token);
+    if (ids.isEmpty()) {
       return 0;
     }
     String fields =
         "System.WorkItemType,System.ChangedDate,System.AssignedTo,Microsoft.VSTS.Scheduling.CompletedWork";
-    JsonNode items =
-        client.get(
-            org + "/_apis/wit/workitems?ids=" + batch + "&fields=" + fields + "&" + API, token);
     int n = 0;
-    for (JsonNode wi : arr(items)) {
-      events.add(AdoMapper.workItem(wi));
-      n++;
+    // ADO caps the workitems batch GET at 200 ids per request — page the id list.
+    for (int i = 0; i < ids.size(); i += WORKITEM_ID_BATCH) {
+      StringJoiner batch = new StringJoiner(",");
+      ids.subList(i, Math.min(i + WORKITEM_ID_BATCH, ids.size())).forEach(batch::add);
+      JsonNode items =
+          client.get(
+              org + "/_apis/wit/workitems?ids=" + batch + "&fields=" + fields + "&" + API, token);
+      for (JsonNode wi : arr(items)) {
+        events.add(AdoMapper.workItem(wi));
+        n++;
+      }
     }
     return n;
+  }
+
+  /**
+   * WIQL caps a result at 20000 rows and cannot be paged (no skip); query month-by-month over
+   * {@code [sinceDate, today]} and merge the ids so a busy project's backfill stays under the cap.
+   * The column has day precision, so bounds are dates and each id lands in exactly one chunk.
+   */
+  private List<String> collectChangedWorkItemIds(
+      String org, String proj, String sinceDate, String token) {
+    LinkedHashSet<String> ids = new LinkedHashSet<>();
+    LocalDate today = LocalDate.now(ZoneOffset.UTC);
+    for (LocalDate from = LocalDate.parse(sinceDate);
+        !from.isAfter(today);
+        from = from.plusMonths(WIQL_WINDOW_MONTHS)) {
+      LocalDate to = from.plusMonths(WIQL_WINDOW_MONTHS);
+      String wiql =
+          "{\"query\":\"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '"
+              + from
+              + "' AND [System.ChangedDate] < '"
+              + to
+              + "' ORDER BY [System.ChangedDate] ASC\"}";
+      JsonNode res = client.post(org + "/" + proj + "/_apis/wit/wiql?" + API, token, wiql);
+      for (JsonNode wi : res.path("workItems")) {
+        ids.add(wi.path("id").asText());
+      }
+    }
+    return new ArrayList<>(ids);
   }
 
   private static Predicate<String> aiDetector(AiConvention c) {

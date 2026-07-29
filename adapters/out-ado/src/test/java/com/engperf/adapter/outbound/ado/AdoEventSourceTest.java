@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.StringJoiner;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -54,6 +55,27 @@ class AdoEventSourceTest {
     assertThat(deploys).extracting(RawEvent::repoKey).containsExactly("repoA");
   }
 
+  @Test
+  void chunksWorkItemQueryByMonthAndBatchesIdsUnderTheLimit() {
+    FakeStructure structure =
+        new FakeStructure(List.of(new Repository("repoA", "orgX", "ProjP", "t:1", "Production")));
+    PagingClient client = new PagingClient();
+    AdoEventSource source = new AdoEventSource(client, new FakeConfig(), structure);
+
+    List<RawEvent> events =
+        source.fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {});
+
+    // WIQL is queried month-by-month (several calls) with date-only bounds (no time component).
+    long wiqlCalls = client.urls.stream().filter(u -> u.contains("/wit/wiql")).count();
+    assertThat(wiqlCalls).isGreaterThan(1);
+    assertThat(client.wiqlBodies).allMatch(b -> !b.contains("T00:00:00"));
+
+    // 250 distinct ids → batch GETs of at most 200 ids each, covering all of them exactly once.
+    assertThat(client.batchSizes).isNotEmpty().allMatch(size -> size <= 200);
+    assertThat(client.batchSizes.stream().mapToInt(Integer::intValue).sum()).isEqualTo(250);
+    assertThat(events.stream().filter(e -> e.type() == EventType.WORKITEM).count()).isEqualTo(250);
+  }
+
   private static JsonNode json(String s) {
     try {
       return JSON.readTree(s);
@@ -85,6 +107,44 @@ class AdoEventSourceTest {
     public JsonNode post(String url, String token, String body) {
       urls.add(url);
       return json("{\"workItems\":[]}");
+    }
+  }
+
+  /** Returns 250 work-item ids for every WIQL chunk and echoes back items for each batched GET. */
+  private static final class PagingClient implements AdoRestClient {
+    final List<String> urls = new ArrayList<>();
+    final List<String> wiqlBodies = new ArrayList<>();
+    final List<Integer> batchSizes = new ArrayList<>();
+
+    @Override
+    public JsonNode get(String url, String token) {
+      urls.add(url);
+      if (!url.contains("/wit/workitems?ids=")) {
+        return json("{\"value\":[]}"); // no PRs, commits or builds in this scenario
+      }
+      String idsParam = url.substring(url.indexOf("ids=") + 4, url.indexOf("&fields="));
+      String[] ids = idsParam.split(",");
+      batchSizes.add(ids.length);
+      StringJoiner items = new StringJoiner(",", "{\"value\":[", "]}");
+      for (String id : ids) {
+        items.add(
+            "{\"id\":"
+                + id
+                + ",\"fields\":{\"System.WorkItemType\":\"Bug\","
+                + "\"System.ChangedDate\":\"2026-03-01T10:00:00Z\"}}");
+      }
+      return json(items.toString());
+    }
+
+    @Override
+    public JsonNode post(String url, String token, String body) {
+      urls.add(url);
+      wiqlBodies.add(body);
+      StringJoiner ids = new StringJoiner(",", "{\"workItems\":[", "]}");
+      for (int i = 1; i <= 250; i++) {
+        ids.add("{\"id\":" + i + "}");
+      }
+      return json(ids.toString());
     }
   }
 
