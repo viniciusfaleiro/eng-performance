@@ -4,11 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import com.engperf.application.port.outbound.EventStorePort;
+import com.engperf.application.port.outbound.UserAccountRepositoryPort;
+import com.engperf.domain.account.UserAccount;
+import com.engperf.domain.metrics.EventType;
+import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
 import com.engperf.domain.structure.Repository;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,8 +36,50 @@ class StructureServicesTest {
     repo = new FakeStructureRepository();
     structure = new StructureService(repo);
     repositories = new RepositoryService(repo);
-    identities = new IdentityService(repo);
+    identities = new IdentityService(repo, NO_EVENTS, NO_ACCOUNTS);
   }
+
+  private static final EventStorePort NO_EVENTS =
+      new EventStorePort() {
+        @Override
+        public void saveAll(Collection<RawEvent> batch) {}
+
+        @Override
+        public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
+          return List.of();
+        }
+
+        @Override
+        public long count() {
+          return 0;
+        }
+      };
+
+  private static final UserAccountRepositoryPort NO_ACCOUNTS =
+      new UserAccountRepositoryPort() {
+        @Override
+        public UserAccount save(UserAccount account) {
+          return account;
+        }
+
+        @Override
+        public List<UserAccount> findAll() {
+          return List.of();
+        }
+
+        @Override
+        public Optional<UserAccount> findById(String id) {
+          return Optional.empty();
+        }
+
+        @Override
+        public Optional<UserAccount> findByEmail(String email) {
+          return Optional.empty();
+        }
+
+        @Override
+        public void deleteById(String id) {}
+      };
 
   @Test
   void buildsTreeFromRegisteredStructure() {

@@ -1,6 +1,7 @@
 package com.engperf.application.ado;
 
 import com.engperf.application.port.inbound.AdoSyncUseCase;
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.AdoAuthPort;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
@@ -36,6 +37,7 @@ public final class AdoSyncService implements AdoSyncUseCase {
   private final EventStorePort store;
   private final SyncStatePort syncState;
   private final PlatformConfigUseCase config;
+  private final IdentityUseCase identities;
   private final Executor executor;
   private final Clock clock;
 
@@ -47,6 +49,7 @@ public final class AdoSyncService implements AdoSyncUseCase {
       EventStorePort store,
       SyncStatePort syncState,
       PlatformConfigUseCase config,
+      IdentityUseCase identities,
       Executor executor,
       Clock clock) {
     this.auth = Objects.requireNonNull(auth, "auth must not be null");
@@ -54,6 +57,7 @@ public final class AdoSyncService implements AdoSyncUseCase {
     this.store = Objects.requireNonNull(store, "store must not be null");
     this.syncState = Objects.requireNonNull(syncState, "syncState must not be null");
     this.config = Objects.requireNonNull(config, "config must not be null");
+    this.identities = Objects.requireNonNull(identities, "identities must not be null");
     this.executor = Objects.requireNonNull(executor, "executor must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
@@ -84,13 +88,19 @@ public final class AdoSyncService implements AdoSyncUseCase {
           "ADO sync iniciando: modo={}, desde={}", incremental ? "incremental" : "backfill", since);
       List<RawEvent> events = source.fetchSince(token, since, job::report);
       store.saveAll(events);
+      // Discover committer identities from the ingested events and auto-link them to people.
+      IdentityUseCase.Reload reload = identities.reload();
       Instant now = clock.instant();
       Instant watermark =
           events.stream().map(RawEvent::occurredAt).max(Comparator.naturalOrder()).orElse(since);
       syncState.save(new SyncState(watermark, now, events.size()));
       config.markAdoConnected(); // real ingestion is live → the dev seeder stands down
       LOG.info(
-          "ADO sync concluída: {} eventos persistidos, watermark={}", events.size(), watermark);
+          "ADO sync concluída: {} eventos, {} identidade(s) descoberta(s), {} auto-vinculada(s), watermark={}",
+          events.size(),
+          reload.discovered(),
+          reload.linked(),
+          watermark);
       job.finish(now, events.size());
     } catch (AdoAuthException e) {
       // Login problems are expected/user-driven — the message is enough, no stack trace.

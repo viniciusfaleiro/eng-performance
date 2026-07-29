@@ -4,12 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
+import com.engperf.application.structure.Coverage;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.common.ConflictException;
+import com.engperf.domain.structure.CommitterIdentity;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,8 +29,36 @@ class UserAccountServiceTest {
   @BeforeEach
   void setUp() {
     repo = new FakeRepo();
-    service = new UserAccountService(repo, HASHER);
+    service = new UserAccountService(repo, HASHER, NOOP_IDENTITIES);
   }
+
+  private static final IdentityUseCase NOOP_IDENTITIES =
+      new IdentityUseCase() {
+        @Override
+        public List<CommitterIdentity> identities() {
+          return List.of();
+        }
+
+        @Override
+        public CommitterIdentity assign(String identity, String personId) {
+          return null;
+        }
+
+        @Override
+        public Coverage coverage() {
+          return Coverage.of(0, 0);
+        }
+
+        @Override
+        public Reload reload() {
+          return new Reload(0, 0);
+        }
+
+        @Override
+        public int autoLink() {
+          return 0;
+        }
+      };
 
   private static final PasswordHasher HASHER =
       new PasswordHasher() {

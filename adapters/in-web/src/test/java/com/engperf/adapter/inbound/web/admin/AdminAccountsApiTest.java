@@ -9,13 +9,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.engperf.application.account.UserAccountService;
 import com.engperf.application.config.PlatformConfigService;
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
+import com.engperf.application.structure.Coverage;
 import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.structure.CommitterIdentity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -35,6 +38,34 @@ class AdminAccountsApiTest {
 
   private MockMvc mvc;
 
+  private static final IdentityUseCase NOOP_IDENTITIES =
+      new IdentityUseCase() {
+        @Override
+        public List<CommitterIdentity> identities() {
+          return List.of();
+        }
+
+        @Override
+        public CommitterIdentity assign(String identity, String personId) {
+          return null;
+        }
+
+        @Override
+        public Coverage coverage() {
+          return Coverage.of(0, 0);
+        }
+
+        @Override
+        public Reload reload() {
+          return new Reload(0, 0);
+        }
+
+        @Override
+        public int autoLink() {
+          return 0;
+        }
+      };
+
   private static final PasswordHasher HASHER =
       new PasswordHasher() {
         @Override
@@ -52,7 +83,7 @@ class AdminAccountsApiTest {
   void setUp() {
     var accountRepo = new FakeAccounts();
     var configPort = new FakeConfig();
-    var userService = new UserAccountService(accountRepo, HASHER);
+    var userService = new UserAccountService(accountRepo, HASHER, NOOP_IDENTITIES);
     var configService = new PlatformConfigService(configPort);
 
     ObjectMapper mapper =

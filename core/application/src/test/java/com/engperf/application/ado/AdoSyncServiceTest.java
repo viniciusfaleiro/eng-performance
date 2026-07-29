@@ -3,16 +3,19 @@ package com.engperf.application.ado;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.engperf.application.port.inbound.AdoSyncUseCase.Session;
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.AdoAuthPort;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.SyncStatePort;
+import com.engperf.application.structure.Coverage;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.structure.CommitterIdentity;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -34,8 +37,9 @@ class AdoSyncServiceTest {
   private final FakeStore store = new FakeStore();
   private final FakeSyncState syncState = new FakeSyncState();
   private final FakeConfig config = new FakeConfig();
+  private final FakeIdentities identities = new FakeIdentities();
   private final AdoSyncService service =
-      new AdoSyncService(auth, source, store, syncState, config, Runnable::run, CLOCK);
+      new AdoSyncService(auth, source, store, syncState, config, identities, Runnable::run, CLOCK);
 
   @Test
   void firstRunBackfillsThenSecondRunFetchesTheDiff() {
@@ -159,6 +163,36 @@ class AdoSyncServiceTest {
     public AiConvention saveAiConvention(
         AiStrategy strategy, String trailer, String tag, String regex, boolean caseSensitive) {
       return aiConvention();
+    }
+  }
+
+  private static final class FakeIdentities implements IdentityUseCase {
+    int reloadCalls;
+
+    @Override
+    public IdentityUseCase.Reload reload() {
+      reloadCalls++;
+      return new IdentityUseCase.Reload(0, 0);
+    }
+
+    @Override
+    public int autoLink() {
+      return 0;
+    }
+
+    @Override
+    public List<CommitterIdentity> identities() {
+      return List.of();
+    }
+
+    @Override
+    public CommitterIdentity assign(String identity, String personId) {
+      return null;
+    }
+
+    @Override
+    public Coverage coverage() {
+      return Coverage.of(0, 0);
     }
   }
 }

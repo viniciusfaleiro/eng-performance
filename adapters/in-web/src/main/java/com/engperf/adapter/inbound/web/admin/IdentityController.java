@@ -30,6 +30,12 @@ public class IdentityController {
     return identities.assign(request.identity(), request.personId());
   }
 
+  /** Reload identities from the ingested events and auto-link them to people by e-mail. */
+  @PostMapping("/api/admin/ado/committers/reload")
+  public IdentityUseCase.Reload reload() {
+    return identities.reload();
+  }
+
   @GetMapping("/api/admin/coverage")
   public Coverage coverage() {
     return identities.coverage();

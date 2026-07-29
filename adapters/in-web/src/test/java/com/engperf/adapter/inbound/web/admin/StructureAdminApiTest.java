@@ -8,7 +8,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.application.auth.AuthenticatedUser;
+import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.application.structure.IdentityService;
 import com.engperf.application.structure.RepositoryService;
 import com.engperf.application.structure.StructureService;
@@ -16,6 +18,8 @@ import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
+import com.engperf.domain.metrics.EventType;
+import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
 import com.engperf.domain.structure.Repository;
@@ -24,8 +28,10 @@ import com.engperf.domain.structure.Vertical;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,12 +48,54 @@ class StructureAdminApiTest {
 
   private MockMvc mvc;
 
+  private static final EventStorePort NO_EVENTS =
+      new EventStorePort() {
+        @Override
+        public void saveAll(Collection<RawEvent> batch) {}
+
+        @Override
+        public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
+          return List.of();
+        }
+
+        @Override
+        public long count() {
+          return 0;
+        }
+      };
+
+  private static final UserAccountRepositoryPort NO_ACCOUNTS =
+      new UserAccountRepositoryPort() {
+        @Override
+        public UserAccount save(UserAccount account) {
+          return account;
+        }
+
+        @Override
+        public List<UserAccount> findAll() {
+          return List.of();
+        }
+
+        @Override
+        public Optional<UserAccount> findById(String id) {
+          return Optional.empty();
+        }
+
+        @Override
+        public Optional<UserAccount> findByEmail(String email) {
+          return Optional.empty();
+        }
+
+        @Override
+        public void deleteById(String id) {}
+      };
+
   @BeforeEach
   void setUp() {
     FakeRepo repo = new FakeRepo();
     StructureService structure = new StructureService(repo);
     RepositoryService repositories = new RepositoryService(repo);
-    IdentityService identities = new IdentityService(repo);
+    IdentityService identities = new IdentityService(repo, NO_EVENTS, NO_ACCOUNTS);
 
     structure.createVertical("Pagamentos", null);
     structure.createTeam("Checkout", "v:pagamentos", null);

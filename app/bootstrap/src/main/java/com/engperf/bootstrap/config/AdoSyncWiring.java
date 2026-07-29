@@ -4,6 +4,7 @@ import com.engperf.application.ado.AdoStatsService;
 import com.engperf.application.ado.AdoSyncService;
 import com.engperf.application.port.inbound.AdoStatsUseCase;
 import com.engperf.application.port.inbound.AdoSyncUseCase;
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.AdoAuthPort;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
@@ -42,9 +43,10 @@ public class AdoSyncWiring {
       EventStorePort store,
       SyncStatePort syncState,
       PlatformConfigUseCase config,
+      IdentityUseCase identities,
       Executor adoSyncExecutor) {
     return new AdoSyncService(
-        auth, source, store, syncState, config, adoSyncExecutor, Clock.systemUTC());
+        auth, source, store, syncState, config, identities, adoSyncExecutor, Clock.systemUTC());
   }
 
   @Bean

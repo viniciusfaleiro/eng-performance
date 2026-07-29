@@ -1186,15 +1186,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function adminIdentities(){
     const total=COMMITTERS.reduce((a,c)=>a+c.commits,0);
     const mapped=COMMITTERS.filter(c=>c.person).reduce((a,c)=>a+c.commits,0);
-    const pct=Math.round(mapped/total*100);
+    const pct=total?Math.round(mapped/total*100):0;
     const rows=COMMITTERS.map((c,i)=>{
       const sel='<select class="admin-sel" data-aset="identity-person" data-i="'+i+'"><option'+(!c.person?" selected":"")+'>— não atribuído —</option>'+peopleOpts(c.person)+'</select>';
       const st=c.person?'<span class="badge on">Vinculado</span>':'<span class="badge unmapped">Não atribuído</span>';
       return '<tr><td><span class="code">'+c.identity+'</span></td><td>'+c.name+'</td><td style="font-family:var(--mono)">'+c.commits+'</td><td>'+sel+'</td><td>'+st+'</td></tr>';
     }).join("");
-    return '<div class="callout">Identidades de committer <b>descobertas na sincronização</b>. Vincule cada uma à Pessoa correta; bots, service accounts e emails pessoais não mapeados ficam no balde <b>"Não atribuído"</b>.</div>'+
+    const empty=COMMITTERS.length?'':'<div class="card-note" style="padding:14px 4px">Nenhuma identidade carregada. Clique em <b>Recarregar e associar</b> para descobrir os committers dos eventos já ingeridos e vinculá-los automaticamente pelas contas.</div>';
+    return '<div class="callout">Identidades de committer <b>descobertas dos eventos ingeridos</b>. O sistema <b>associa automaticamente</b> a identidade à Pessoa quando o e-mail do commit bate com o e-mail de uma conta de usuário; ajuste manualmente o restante. Bots e e-mails sem conta ficam em <b>"Não atribuído"</b>.</div>'+
+      '<div class="admin-bar"><button class="btn" data-aact="reload-identities">Recarregar e associar</button></div>'+
       '<div class="cov-wrap"><span style="font-size:12px;color:var(--on-surface-var)">Cobertura de atribuição</span><div class="cov-bar"><div class="cov-fill" style="width:'+pct+'%"></div></div><span class="cov-pct">'+pct+'%</span></div>'+
-      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Identidade (ADO)</th><th>Nome</th><th>Commits</th><th>Pessoa</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Identidade (ADO)</th><th>Nome</th><th>Commits</th><th>Pessoa</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+empty;
   }
   function adminRepos(){
     const rows=REPOS.map((r,i)=>{
@@ -1387,6 +1389,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else if(act==="move-person")movePersonModal(ds.t);
     else if(act==="add-repo")repoModal();
     else if(act==="del-repo"){const k=REPOS[+ds.i].repo;jdel("/api/admin/repositories/"+encodeURIComponent(k)).then(loadFromApi).then(()=>toast(k+" removido")).catch(apiErr);}
+    else if(act==="reload-identities")jpost("/api/admin/ado/committers/reload",{}).then(r=>loadFromApi().then(()=>toast(r.discovered+" identidade(s) carregada(s) · "+r.linked+" associada(s)"))).catch(apiErr);
     else if(act==="ado-sync")startAdoSync();
     else if(act==="save"){
       if(state.adminTab==="ia"){

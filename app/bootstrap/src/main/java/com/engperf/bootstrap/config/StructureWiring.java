@@ -3,7 +3,9 @@ package com.engperf.bootstrap.config;
 import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.RepositoryUseCase;
 import com.engperf.application.port.inbound.StructureUseCase;
+import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.application.structure.IdentityService;
 import com.engperf.application.structure.RepositoryService;
 import com.engperf.application.structure.StructureService;
@@ -25,7 +27,10 @@ public class StructureWiring {
   }
 
   @Bean
-  IdentityUseCase identityUseCase(StructureRepositoryPort repository) {
-    return new IdentityService(repository);
+  IdentityUseCase identityUseCase(
+      StructureRepositoryPort repository,
+      EventStorePort events,
+      UserAccountRepositoryPort accounts) {
+    return new IdentityService(repository, events, accounts);
   }
 }

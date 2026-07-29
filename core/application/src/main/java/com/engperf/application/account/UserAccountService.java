@@ -1,5 +1,6 @@
 package com.engperf.application.account;
 
+import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.UserAccountUseCase;
 import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
@@ -18,10 +19,15 @@ public final class UserAccountService implements UserAccountUseCase {
 
   private final UserAccountRepositoryPort repository;
   private final PasswordHasher passwordHasher;
+  private final IdentityUseCase identities;
 
-  public UserAccountService(UserAccountRepositoryPort repository, PasswordHasher passwordHasher) {
+  public UserAccountService(
+      UserAccountRepositoryPort repository,
+      PasswordHasher passwordHasher,
+      IdentityUseCase identities) {
     this.repository = Objects.requireNonNull(repository, "repository must not be null");
     this.passwordHasher = Objects.requireNonNull(passwordHasher, "passwordHasher must not be null");
+    this.identities = Objects.requireNonNull(identities, "identities must not be null");
   }
 
   @Override
@@ -50,14 +56,18 @@ public final class UserAccountService implements UserAccountUseCase {
             status == null ? AccountStatus.ACTIVE : status,
             personId,
             hash(rawPassword));
-    return repository.save(account);
+    UserAccount saved = repository.save(account);
+    identities.autoLink(); // a new account e-mail may match an existing committer identity
+    return saved;
   }
 
   @Override
   public UserAccount update(
       String id, String name, Role role, AccountStatus status, String personId) {
     UserAccount current = load(id);
-    return repository.save(current.withProfile(name, role, status, personId));
+    UserAccount saved = repository.save(current.withProfile(name, role, status, personId));
+    identities.autoLink(); // a changed person link may now match a committer identity
+    return saved;
   }
 
   @Override
