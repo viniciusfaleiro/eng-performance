@@ -61,16 +61,26 @@ class AdoMapperTest {
   }
 
   @Test
-  void buildMapsToDeployOnlyForTheProductionStage() {
-    JsonNode run = fixture("build.json");
-    assertThat(AdoMapper.deploy(run, "Production")).isPresent();
-    assertThat(AdoMapper.deploy(run, "Staging")).isEmpty(); // stageName "Production" != rule
+  void buildStageMapsToDeployOnlyForTheProductionStage() {
+    JsonNode build = fixture("build.json");
+    JsonNode prod =
+        json(
+            "{\"id\":\"s1\",\"type\":\"Stage\",\"name\":\"Production\",\"result\":\"succeeded\","
+                + "\"finishTime\":\"2026-06-10T10:30:00Z\"}");
+    JsonNode pending =
+        json("{\"id\":\"s2\",\"type\":\"Stage\",\"name\":\"Production\",\"result\":\"\"}");
 
-    RawEvent e = AdoMapper.deploy(run, "Production").orElseThrow();
+    assertThat(AdoMapper.deploy(build, prod, "Production")).isPresent();
+    assertThat(AdoMapper.deploy(build, prod, "Staging")).isEmpty(); // stage "Production" != rule
+    assertThat(AdoMapper.deploy(build, pending, "Production")).isEmpty(); // no result yet
+
+    RawEvent e = AdoMapper.deploy(build, prod, "Production").orElseThrow();
     assertThat(e.type()).isEqualTo(EventType.DEPLOY);
+    assertThat(e.id()).isEqualTo("deploy:77:s1"); // build id + stage record id
+    assertThat(e.repoKey()).isEqualTo("checkout-service");
     assertThat(e.detail().get("outcome")).isEqualTo("success");
     assertThat(e.detail().get("num")).isEqualTo("0"); // not failed → CFR numerator 0
-    assertThat(e.value()).isEqualTo(0.5); // lead 10:00 → 10:30
+    assertThat(e.value()).isEqualTo(0.5); // lead: queue 10:00 → stage finish 10:30
   }
 
   @Test
@@ -86,6 +96,14 @@ class AdoMapperTest {
   private static JsonNode fixture(String name) {
     try {
       return JSON.readTree(AdoMapperTest.class.getResourceAsStream("/ado/" + name));
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private static JsonNode json(String raw) {
+    try {
+      return JSON.readTree(raw);
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

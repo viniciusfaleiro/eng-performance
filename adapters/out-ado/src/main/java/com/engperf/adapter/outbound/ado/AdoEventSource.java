@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Predicate;
@@ -157,19 +158,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
       String proj = enc(repo.project());
       Map<String, String> stageBySourceRepo = productionStages(repos, repo);
       try {
-        for (JsonNode run :
-            arr(
-                client.get(
-                    org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
-                    token))) {
-          String sourceRepo = run.path("repository").path("name").asText("");
-          String stage = stageBySourceRepo.get(sourceRepo);
-          if (stage == null) {
-            continue; // a run whose source repository is not registered → skipped
-          }
-          AdoMapper.deploy(run, stage).ifPresent(events::add);
-          deploys++;
-        }
+        deploys += fetchDeploys(org, proj, sinceIso, stageBySourceRepo, token, events);
         progress.update("syncing", "deploys", deploys);
         workItems += fetchWorkItems(org, proj, sinceIso, token, events);
         progress.update("syncing", "workitems", workItems);
@@ -178,6 +167,53 @@ public final class AdoEventSource implements AdoEventSourcePort {
       }
     }
     LOG.info("ADO sync: {} deploy(s) e {} work item(s) coletados", deploys, workItems);
+  }
+
+  /**
+   * Deploys for one project. A YAML pipeline's stages live only in each build's Timeline, so for
+   * every build whose source repo is registered we fetch its Timeline and emit a DEPLOY for the
+   * production-stage record. Builds of unregistered source repos are skipped.
+   */
+  private int fetchDeploys(
+      String org,
+      String proj,
+      String sinceIso,
+      Map<String, String> stageBySourceRepo,
+      String token,
+      List<RawEvent> events) {
+    int deploys = 0;
+    for (JsonNode run :
+        arr(
+            client.get(
+                org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
+                token))) {
+      String sourceRepo = run.path("repository").path("name").asText("");
+      String stageRule = stageBySourceRepo.get(sourceRepo);
+      if (stageRule == null) {
+        continue; // a run whose source repository is not registered → skipped
+      }
+      JsonNode timeline =
+          client.get(
+              org
+                  + "/"
+                  + proj
+                  + "/_apis/build/builds/"
+                  + enc(run.path("id").asText())
+                  + "/timeline?"
+                  + API,
+              token);
+      for (JsonNode record : timeline.path("records")) {
+        if (!"Stage".equalsIgnoreCase(record.path("type").asText(""))) {
+          continue;
+        }
+        Optional<RawEvent> deploy = AdoMapper.deploy(run, record, stageRule);
+        if (deploy.isPresent()) {
+          events.add(deploy.get());
+          deploys++;
+        }
+      }
+    }
+    return deploys;
   }
 
   /** Prefix an error with the repo/project being processed so the failure is self-locating. */

@@ -103,30 +103,47 @@ final class AdoMapper {
         detail);
   }
 
-  /** A pipeline run for the production stage → one DEPLOY event (empty otherwise). */
-  static Optional<RawEvent> deploy(JsonNode run, String productionStage) {
-    String stage = run.path("stageName").asText(run.path("environment").asText(""));
+  /**
+   * A build's Timeline "Stage" record matching the production rule → one DEPLOY event. A
+   * multi-stage YAML pipeline exposes its stages only in the Timeline (not the Build object), so
+   * the stage name, result and timing come from {@code stageRecord}; repository and trigger time
+   * come from {@code build}. Empty when the stage isn't production or hasn't finished with a
+   * result.
+   */
+  static Optional<RawEvent> deploy(JsonNode build, JsonNode stageRecord, String productionStage) {
+    String stage = stageRecord.path("name").asText(stageRecord.path("identifier").asText(""));
     if (!matchesProduction(stage, productionStage)) {
       return Optional.empty();
     }
-    boolean failed = !"succeeded".equalsIgnoreCase(run.path("result").asText(""));
+    String result = stageRecord.path("result").asText("");
+    if (result.isBlank()) {
+      return Optional.empty(); // stage skipped/pending/still running → not a deploy yet
+    }
+    boolean failed = !"succeeded".equalsIgnoreCase(result);
     Instant queued =
-        run.hasNonNull("queueTime") ? instant(run, "queueTime") : instant(run, "finishTime");
-    Instant finished = instant(run, "finishTime");
+        build.hasNonNull("queueTime")
+            ? instant(build, "queueTime")
+            : instant(stageRecord, "startTime");
+    Instant finished =
+        stageRecord.hasNonNull("finishTime")
+            ? instant(stageRecord, "finishTime")
+            : instant(build, "finishTime");
     Map<String, String> detail = new HashMap<>();
     detail.put("outcome", failed ? "failed" : "success");
     detail.put("num", failed ? "1" : "0"); // CFR numerator
     detail.put("den", "1");
+    detail.put("stage", stage);
     return Optional.of(
         new RawEvent(
-            "deploy:" + run.path("id").asText(),
+            "deploy:" + build.path("id").asText() + ":" + stageRecord.path("id").asText(),
             EventType.DEPLOY,
             finished,
-            run.path("repository")
+            build
+                .path("repository")
                 .path("name")
-                .asText(run.path("pipeline").path("name").asText("")),
+                .asText(build.path("pipeline").path("name").asText("")),
             null,
-            hoursBetween(queued, finished), // lead time
+            hoursBetween(queued, finished), // lead time: trigger → production finish
             null,
             false,
             detail));

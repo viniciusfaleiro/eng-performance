@@ -94,14 +94,18 @@ class AdoEventSourceTest {
     @Override
     public JsonNode get(String url, String token) {
       urls.add(url);
+      if (url.contains("/timeline")) {
+        // The production stage lives in the build Timeline, not the Build object.
+        return json(
+            "{\"records\":[{\"id\":\"st\",\"type\":\"Stage\",\"name\":\"Production\","
+                + "\"result\":\"succeeded\",\"finishTime\":\"2026-06-10T10:30:00Z\"}]}");
+      }
       if (url.contains("/build/builds") && url.contains("orgX")) {
         return json(
             "{\"value\":["
-                + "{\"id\":1,\"result\":\"succeeded\",\"stageName\":\"Production\","
-                + "\"queueTime\":\"2026-06-10T10:00:00Z\",\"finishTime\":\"2026-06-10T10:30:00Z\","
+                + "{\"id\":1,\"queueTime\":\"2026-06-10T10:00:00Z\","
                 + "\"repository\":{\"name\":\"repoA\"}},"
-                + "{\"id\":2,\"result\":\"succeeded\",\"stageName\":\"Production\","
-                + "\"queueTime\":\"2026-06-10T10:00:00Z\",\"finishTime\":\"2026-06-10T10:30:00Z\","
+                + "{\"id\":2,\"queueTime\":\"2026-06-10T10:00:00Z\","
                 + "\"repository\":{\"name\":\"ghost\"}}]}");
       }
       return json("{\"value\":[]}");

@@ -23,9 +23,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Composition root for the metrics engine. The reference "today" is a fixed {@link Clock} anchored
- * to the end of the seed window (env {@code METRICS_REFERENCE_DATE}) so trends and screenshots are
- * deterministic; the real ADO sync (S9) will move to a live clock.
+ * Composition root for the metrics engine. The reference "today" follows the real wall clock so
+ * continuously-ingested ADO data stays visible; an optional {@code METRICS_REFERENCE_DATE} pins it
+ * to a fixed day for deterministic demos/screenshots. (Tests inject their own {@link Clock}.)
  */
 @Configuration
 public class MetricsWiring {
@@ -36,7 +36,10 @@ public class MetricsWiring {
   }
 
   @Bean
-  Clock metricsClock(@Value("${METRICS_REFERENCE_DATE:2026-06-30}") String referenceDate) {
+  Clock metricsClock(@Value("${METRICS_REFERENCE_DATE:}") String referenceDate) {
+    if (referenceDate == null || referenceDate.isBlank()) {
+      return Clock.systemUTC(); // follow real time — live ADO events must not fall past a fixed day
+    }
     return Clock.fixed(Instant.parse(referenceDate + "T12:00:00Z"), ZoneOffset.UTC);
   }
 
