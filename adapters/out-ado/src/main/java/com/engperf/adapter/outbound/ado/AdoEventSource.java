@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,8 +42,6 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   private static final Logger LOG = LoggerFactory.getLogger(AdoEventSource.class);
   private static final String API = "api-version=7.1";
-  // WIQL returns at most 20000 rows and cannot page; query one month at a time to stay under it.
-  private static final int WIQL_WINDOW_MONTHS = 1;
   // ADO's workitems batch GET accepts at most 200 ids per request.
   private static final int WORKITEM_ID_BATCH = 200;
 
@@ -225,18 +224,28 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   /**
-   * WIQL caps a result at 20000 rows and cannot be paged (no skip); query month-by-month over
-   * {@code [sinceDate, today]} and merge the ids so a busy project's backfill stays under the cap.
-   * The column has day precision, so bounds are dates and each id lands in exactly one chunk.
+   * WIQL caps a result at 20000 rows and cannot be paged (no skip); collect the ids over {@code
+   * [sinceDate, today]} by adaptive bisection — a window that exceeds the cap is split in half and
+   * retried until each half fits. The column has day precision, so bounds are dates.
    */
   private List<String> collectChangedWorkItemIds(
       String org, String proj, String sinceDate, String token) {
     LinkedHashSet<String> ids = new LinkedHashSet<>();
-    LocalDate today = LocalDate.now(ZoneOffset.UTC);
-    for (LocalDate from = LocalDate.parse(sinceDate);
-        !from.isAfter(today);
-        from = from.plusMonths(WIQL_WINDOW_MONTHS)) {
-      LocalDate to = from.plusMonths(WIQL_WINDOW_MONTHS);
+    LocalDate start = LocalDate.parse(sinceDate);
+    LocalDate end = LocalDate.now(ZoneOffset.UTC).plusDays(1); // exclusive → includes today
+    collectRange(org, proj, start, end, token, ids);
+    return new ArrayList<>(ids);
+  }
+
+  /**
+   * Query {@code [from, to)}; if ADO refuses the window for exceeding its cap, bisect and retry.
+   */
+  private void collectRange(
+      String org, String proj, LocalDate from, LocalDate to, String token, Set<String> ids) {
+    if (!from.isBefore(to)) {
+      return;
+    }
+    try {
       String wiql =
           "{\"query\":\"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '"
               + from
@@ -247,8 +256,23 @@ public final class AdoEventSource implements AdoEventSourcePort {
       for (JsonNode wi : res.path("workItems")) {
         ids.add(wi.path("id").asText());
       }
+    } catch (RuntimeException e) {
+      long days = ChronoUnit.DAYS.between(from, to);
+      if (!exceedsWiqlLimit(e) || days <= 1) {
+        throw e; // a different failure, or a single day we can no longer subdivide
+      }
+      LocalDate mid = from.plusDays(days / 2);
+      LOG.info(
+          "ADO sync: janela {}..{} excede o limite do WIQL; bisseccionando em {}", from, to, mid);
+      collectRange(org, proj, from, mid, token, ids);
+      collectRange(org, proj, mid, to, token, ids);
     }
-    return new ArrayList<>(ids);
+  }
+
+  /** The VS402337 "result exceeds 20000 items" refusal — the signal to narrow the window. */
+  private static boolean exceedsWiqlLimit(RuntimeException e) {
+    String m = e.getMessage();
+    return m != null && (m.contains("VS402337") || m.contains("exceeds the size limit"));
   }
 
   private static Predicate<String> aiDetector(AiConvention c) {

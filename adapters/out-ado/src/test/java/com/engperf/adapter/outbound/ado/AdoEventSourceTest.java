@@ -17,6 +17,9 @@ import com.engperf.domain.structure.Vertical;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -56,24 +59,25 @@ class AdoEventSourceTest {
   }
 
   @Test
-  void chunksWorkItemQueryByMonthAndBatchesIdsUnderTheLimit() {
+  void bisectsWorkItemWindowsThatExceedTheWiqlLimitAndBatchesIds() {
     FakeStructure structure =
         new FakeStructure(List.of(new Repository("repoA", "orgX", "ProjP", "t:1", "Production")));
-    PagingClient client = new PagingClient();
+    BisectingClient client = new BisectingClient();
     AdoEventSource source = new AdoEventSource(client, new FakeConfig(), structure);
+    LocalDate start = LocalDate.parse("2026-01-01");
+    long expectedDays =
+        ChronoUnit.DAYS.between(start, LocalDate.now(ZoneOffset.UTC).plusDays(1)); // one id/day
 
     List<RawEvent> events =
         source.fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {});
 
-    // WIQL is queried month-by-month (several calls) with date-only bounds (no time component).
-    long wiqlCalls = client.urls.stream().filter(u -> u.contains("/wit/wiql")).count();
-    assertThat(wiqlCalls).isGreaterThan(1);
-    assertThat(client.wiqlBodies).allMatch(b -> !b.contains("T00:00:00"));
-
-    // 250 distinct ids → batch GETs of at most 200 ids each, covering all of them exactly once.
+    // The over-limit windows were split until each accepted window fit under the cap (no VS402337
+    // propagated — the sync completed).
+    assertThat(client.acceptedSpanDays).isNotEmpty().allMatch(days -> days <= BisectingClient.CAP);
+    // Every day's work item was collected exactly once (bisection is lossless), then batched ≤200.
+    assertThat(events.stream().filter(e -> e.type() == EventType.WORKITEM).count())
+        .isEqualTo(expectedDays);
     assertThat(client.batchSizes).isNotEmpty().allMatch(size -> size <= 200);
-    assertThat(client.batchSizes.stream().mapToInt(Integer::intValue).sum()).isEqualTo(250);
-    assertThat(events.stream().filter(e -> e.type() == EventType.WORKITEM).count()).isEqualTo(250);
   }
 
   private static JsonNode json(String s) {
@@ -110,15 +114,18 @@ class AdoEventSourceTest {
     }
   }
 
-  /** Returns 250 work-item ids for every WIQL chunk and echoes back items for each batched GET. */
-  private static final class PagingClient implements AdoRestClient {
-    final List<String> urls = new ArrayList<>();
-    final List<String> wiqlBodies = new ArrayList<>();
+  /**
+   * Models ADO's WIQL cap: a window wider than {@link #CAP} days is refused with VS402337; a
+   * fitting window returns one id per day (its epoch-day), so bisection converges and coverage is
+   * lossless. The batched GET echoes a work item per requested id.
+   */
+  private static final class BisectingClient implements AdoRestClient {
+    static final long CAP = 45; // days a single WIQL window may span before ADO refuses it
+    final List<Long> acceptedSpanDays = new ArrayList<>();
     final List<Integer> batchSizes = new ArrayList<>();
 
     @Override
     public JsonNode get(String url, String token) {
-      urls.add(url);
       if (!url.contains("/wit/workitems?ids=")) {
         return json("{\"value\":[]}"); // no PRs, commits or builds in this scenario
       }
@@ -138,13 +145,25 @@ class AdoEventSourceTest {
 
     @Override
     public JsonNode post(String url, String token, String body) {
-      urls.add(url);
-      wiqlBodies.add(body);
+      LocalDate from = LocalDate.parse(between(body, ">= '", "'"));
+      LocalDate to = LocalDate.parse(between(body, "< '", "'"));
+      long span = ChronoUnit.DAYS.between(from, to);
+      if (span > CAP) {
+        throw new IllegalStateException(
+            "Azure DevOps wiql -> HTTP 400 — VS402337: The number of work items returned exceeds the"
+                + " size limit of 20000.");
+      }
+      acceptedSpanDays.add(span);
       StringJoiner ids = new StringJoiner(",", "{\"workItems\":[", "]}");
-      for (int i = 1; i <= 250; i++) {
-        ids.add("{\"id\":" + i + "}");
+      for (LocalDate d = from; d.isBefore(to); d = d.plusDays(1)) {
+        ids.add("{\"id\":" + d.toEpochDay() + "}"); // one distinct id per day
       }
       return json(ids.toString());
+    }
+
+    private static String between(String s, String open, String close) {
+      int a = s.indexOf(open) + open.length();
+      return s.substring(a, s.indexOf(close, a));
     }
   }
 
