@@ -245,7 +245,10 @@ public final class AdoEventSource implements AdoEventSourcePort {
     return listResponse.path("value");
   }
 
+  // URLEncoder targets application/x-www-form-urlencoded (space -> "+"), but this encodes URL
+  // *path segments* — ADO does not decode "+" there, so a space-containing project name (e.g.
+  // "Core Card") 404s. Space must be "%20" in a path segment.
   private static String enc(String s) {
-    return URLEncoder.encode(s, StandardCharsets.UTF_8);
+    return URLEncoder.encode(s, StandardCharsets.UTF_8).replace("+", "%20");
   }
 }
