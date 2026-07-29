@@ -3,6 +3,7 @@ package com.engperf.adapter.inbound.web.metrics;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
 import com.engperf.application.metrics.ActivityItem;
 import com.engperf.application.metrics.CalendarDay;
+import com.engperf.application.metrics.ConventionFlag;
 import com.engperf.application.metrics.IndividualDashboard;
 import com.engperf.application.metrics.ReviewStats;
 import com.engperf.application.metrics.WorkTypeSlice;
@@ -47,6 +48,13 @@ public final class IndividualDtos {
     }
   }
 
+  public record ConventionFlagDto(
+      String severity, String reference, String title, String detail, List<String> metrics) {
+    public static ConventionFlagDto from(ConventionFlag f) {
+      return new ConventionFlagDto(f.severity(), f.reference(), f.title(), f.detail(), f.metrics());
+    }
+  }
+
   public record IndividualDashboardDto(
       String nodeId,
       String label,
@@ -55,7 +63,8 @@ public final class IndividualDtos {
       List<SeriesDto> delivery,
       ReviewStatsDto reviews,
       List<WorkTypeDto> workTypes,
-      List<ActivityDto> activity) {
+      List<ActivityDto> activity,
+      List<ConventionFlagDto> conventions) {
 
     public static IndividualDashboardDto from(IndividualDashboard d) {
       return new IndividualDashboardDto(
@@ -66,7 +75,8 @@ public final class IndividualDtos {
           d.delivery().stream().map(SeriesDto::from).toList(),
           ReviewStatsDto.from(d.reviews()),
           d.workTypes().stream().map(WorkTypeDto::from).toList(),
-          d.activity().stream().map(ActivityDto::from).toList());
+          d.activity().stream().map(ActivityDto::from).toList(),
+          d.conventions().stream().map(ConventionFlagDto::from).toList());
     }
   }
 }

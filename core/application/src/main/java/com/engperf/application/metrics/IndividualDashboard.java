@@ -5,7 +5,8 @@ import java.util.List;
 /**
  * The composed individual (person) contribution panel: the commit calendar, PR assertiveness, the
  * reused delivery series (throughput, cycle time, %-with-AI), the code-review contribution, the
- * work-type distribution, and recent activity for the drawer. Coaching-only — never aggregated.
+ * work-type distribution, recent activity for the drawer, and convention-adherence flags.
+ * Coaching-only — never aggregated.
  */
 public record IndividualDashboard(
     String nodeId,
@@ -15,12 +16,14 @@ public record IndividualDashboard(
     List<MetricSeries> delivery,
     ReviewStats reviews,
     List<WorkTypeSlice> workTypes,
-    List<ActivityItem> activity) {
+    List<ActivityItem> activity,
+    List<ConventionFlag> conventions) {
 
   public IndividualDashboard {
     calendar = List.copyOf(calendar);
     delivery = List.copyOf(delivery);
     workTypes = List.copyOf(workTypes);
     activity = List.copyOf(activity);
+    conventions = List.copyOf(conventions);
   }
 }

@@ -116,6 +116,52 @@ class IndividualDashboardServiceTest {
     assertThat(activity.get(0).kind()).isEqualTo("pr");
   }
 
+  @Test
+  void flagsCommitsWithoutAiPrOrWorkItem() {
+    baseStructure();
+    events.add(commit("id-ana", "2026-06-10")); // ai=false, no PR, no work item
+
+    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    assertThat(flags)
+        .extracting(ConventionFlag::reference)
+        .contains("Convenção 16 · Assistência de IA");
+    assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 10"));
+    assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 20"));
+    assertThat(flags).allMatch(f -> f.severity().equals("warn"));
+  }
+
+  @Test
+  void flagsPrsWithoutReviewReceived() {
+    baseStructure();
+    events.add(aiCommit("id-ana", "2026-06-10")); // AI present, so no IA flag
+    events.add(pr("id-ana", "2026-06-10", true)); // authored PR, but nobody reviewed it
+
+    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 13"));
+    assertThat(flags).noneMatch(f -> f.reference().startsWith("Convenção 16"));
+  }
+
+  @Test
+  void flagsNoActivityAsUnmappedIdentity() {
+    baseStructure(); // Ana has an identity but no events at all
+
+    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    assertThat(flags).hasSize(1);
+    assertThat(flags.get(0).reference()).startsWith("Convenções 1");
+  }
+
+  @Test
+  void cleanContributorHasNoFlags() {
+    baseStructure();
+    events.add(aiCommit("id-ana", "2026-06-10"));
+    events.add(pr("id-ana", "2026-06-10", true));
+    events.add(workItem("id-ana", "2026-06-11", "feature", 6));
+    events.add(review("id-bruno", "id-ana", "2026-06-10", true, 2)); // Ana's PR got reviewed
+
+    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    assertThat(flags).isEmpty();
+  }
+
   private static int day(IndividualDashboard d, String date) {
     return d.calendar().stream()
         .filter(c -> c.date().equals(date))
@@ -127,6 +173,11 @@ class IndividualDashboardServiceTest {
   private RawEvent commit(String identity, String date) {
     return new RawEvent(
         "c" + (seq++), EventType.COMMIT, at(date), null, identity, null, null, false, Map.of());
+  }
+
+  private RawEvent aiCommit(String identity, String date) {
+    return new RawEvent(
+        "c" + (seq++), EventType.COMMIT, at(date), null, identity, null, null, true, Map.of());
   }
 
   private RawEvent pr(String identity, String date, boolean firstPass) {

@@ -79,6 +79,7 @@ class IndividualDashboardApiTest {
           List.of(),
           new ReviewStats(40, 3, 1, 5, 2),
           List.of(new WorkTypeSlice("feature", "Feature", 10.0, 50.0)),
+          List.of(),
           List.of());
     }
   }
