@@ -195,9 +195,13 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   private int fetchWorkItems(
       String org, String proj, String sinceIso, String token, List<RawEvent> events) {
+    // WIQL compares [System.ChangedDate] at day precision and rejects a time component; pass only
+    // the date (yyyy-MM-dd). This widens the window to the whole day, which idempotent upsert
+    // absorbs. ISO-8601 always begins yyyy-MM-dd, so the first 10 chars are the date.
+    String sinceDate = sinceIso.substring(0, 10);
     String wiql =
         "{\"query\":\"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '"
-            + sinceIso
+            + sinceDate
             + "' ORDER BY [System.ChangedDate] DESC\"}";
     JsonNode ids = client.post(org + "/" + proj + "/_apis/wit/wiql?" + API, token, wiql);
     StringJoiner batch = new StringJoiner(",");
