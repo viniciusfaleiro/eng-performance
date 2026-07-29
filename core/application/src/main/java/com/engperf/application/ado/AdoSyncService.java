@@ -17,6 +17,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Orchestrates an admin-triggered Azure DevOps sync as a background job: begin device-code auth →
@@ -26,6 +28,7 @@ import java.util.concurrent.Executor;
  */
 public final class AdoSyncService implements AdoSyncUseCase {
 
+  private static final Logger LOG = LoggerFactory.getLogger(AdoSyncService.class);
   private static final int BACKFILL_MONTHS = 6;
 
   private final AdoAuthPort auth;
@@ -72,10 +75,13 @@ public final class AdoSyncService implements AdoSyncUseCase {
   }
 
   private void run(Job job, DeviceCodePrompt prompt) {
+    boolean incremental = syncState.load().isPresent();
     try {
       String token = awaitToken(job, prompt);
       job.phase = "syncing";
       Instant since = watermarkOrBackfill();
+      LOG.info(
+          "ADO sync iniciando: modo={}, desde={}", incremental ? "incremental" : "backfill", since);
       List<RawEvent> events = source.fetchSince(token, since, job::report);
       store.saveAll(events);
       Instant now = clock.instant();
@@ -83,10 +89,16 @@ public final class AdoSyncService implements AdoSyncUseCase {
           events.stream().map(RawEvent::occurredAt).max(Comparator.naturalOrder()).orElse(since);
       syncState.save(new SyncState(watermark, now, events.size()));
       config.markAdoConnected(); // real ingestion is live → the dev seeder stands down
+      LOG.info(
+          "ADO sync concluída: {} eventos persistidos, watermark={}", events.size(), watermark);
       job.finish(now, events.size());
     } catch (AdoAuthException e) {
+      // Login problems are expected/user-driven — the message is enough, no stack trace.
+      LOG.warn("ADO sync abortada no login: {}", e.getMessage());
       job.fail("login não concluído: " + e.getMessage());
     } catch (RuntimeException e) {
+      // Ingestion failures need the full trace in the log for troubleshooting.
+      LOG.error("ADO sync falhou: {}", e.getMessage(), e);
       job.fail("falha na sincronização: " + e.getMessage());
     }
   }

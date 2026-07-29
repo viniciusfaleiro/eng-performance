@@ -22,3 +22,10 @@ management:
     web:
       exposure:
         include: health,info
+
+logging:
+  level:
+    # Azure DevOps sync diagnostics. Raise to DEBUG (env LOGGING_LEVEL_COM_ENGPERF_ADAPTER_OUTBOUND_ADO=DEBUG
+    # or edit here) to log every ADO request URL and response status while troubleshooting a load.
+    com.engperf.adapter.outbound.ado: INFO
+    com.engperf.application.ado: INFO

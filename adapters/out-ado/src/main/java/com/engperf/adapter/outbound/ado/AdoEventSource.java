@@ -21,6 +21,8 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,6 +36,7 @@ import org.springframework.stereotype.Component;
 @Component
 public final class AdoEventSource implements AdoEventSourcePort {
 
+  private static final Logger LOG = LoggerFactory.getLogger(AdoEventSource.class);
   private static final String API = "api-version=7.1";
 
   private final AdoRestClient client;
@@ -54,45 +57,87 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   @Override
   public List<RawEvent> fetchSince(String token, Instant since, ProgressReporter progress) {
-    String sinceIso = since.toString();
-    Predicate<String> isAi = aiDetector(config.aiConvention());
     List<Repository> repos = structure.findRepositories();
+    if (repos.isEmpty()) {
+      throw new IllegalStateException(
+          "nenhum repositório cadastrado — cadastre repositórios em Admin → Repositórios antes de sincronizar");
+    }
+    String sinceIso = since.toString();
     List<RawEvent> events = new ArrayList<>();
+    LOG.info(
+        "ADO sync: {} repositório(s) desde {} — {}",
+        repos.size(),
+        sinceIso,
+        repos.stream().map(r -> r.organization() + "/" + r.project() + "/" + r.key()).toList());
+
+    fetchRepoActivity(repos, token, since, sinceIso, progress, events);
+    fetchProjectActivity(repos, token, sinceIso, progress, events);
+
+    LOG.info("ADO sync: coleta concluída — {} eventos no total", events.size());
+    return events;
+  }
+
+  /** Per repository (own org/project/key): completed PRs (+ reviews) and commits since the mark. */
+  private void fetchRepoActivity(
+      List<Repository> repos,
+      String token,
+      Instant since,
+      String sinceIso,
+      ProgressReporter progress,
+      List<RawEvent> events) {
+    Predicate<String> isAi = aiDetector(config.aiConvention());
     int prs = 0;
     int commits = 0;
-
-    // Per repository: PRs + commits (using the repo's own organization/project/key).
     for (Repository repo : repos) {
+      String ctx = repo.organization() + "/" + repo.project() + "/" + repo.key();
+      LOG.info("ADO sync: repositório {} — PRs + commits", ctx);
       String base =
           normOrg(repo.organization())
               + "/"
               + enc(repo.project())
               + "/_apis/git/repositories/"
               + enc(repo.key());
-      for (JsonNode pr :
-          arr(
-              client.get(
-                  base + "/pullrequests?searchCriteria.status=completed&$top=200&" + API, token))) {
-        if (before(pr.path("closedDate").asText(""), since)) {
-          continue;
+      try {
+        for (JsonNode pr :
+            arr(
+                client.get(
+                    base + "/pullrequests?searchCriteria.status=completed&$top=200&" + API,
+                    token))) {
+          if (before(pr.path("closedDate").asText(""), since)) {
+            continue;
+          }
+          events.add(AdoMapper.pullRequest(pr));
+          events.addAll(AdoMapper.reviews(pr));
+          prs++;
         }
-        events.add(AdoMapper.pullRequest(pr));
-        events.addAll(AdoMapper.reviews(pr));
-        prs++;
+        progress.update("syncing", "prs", prs);
+        for (JsonNode c :
+            arr(
+                client.get(
+                    base
+                        + "/commits?searchCriteria.fromDate="
+                        + enc(sinceIso)
+                        + "&$top=1000&"
+                        + API,
+                    token))) {
+          events.add(AdoMapper.commit(c, repo.key(), isAi));
+          commits++;
+        }
+        progress.update("syncing", "commits", commits);
+      } catch (RuntimeException e) {
+        throw contextual("repositório " + ctx, e);
       }
-      progress.update("syncing", "prs", prs);
-      for (JsonNode c :
-          arr(
-              client.get(
-                  base + "/commits?searchCriteria.fromDate=" + enc(sinceIso) + "&$top=1000&" + API,
-                  token))) {
-        events.add(AdoMapper.commit(c, repo.key(), isAi));
-        commits++;
-      }
-      progress.update("syncing", "commits", commits);
     }
+    LOG.info("ADO sync: {} PR(s) e {} commit(s) coletados", prs, commits);
+  }
 
-    // Per distinct (org, project): pipeline runs (deploys) + work items — project-scoped in ADO.
+  /** Per distinct (org, project): pipeline runs (deploys) + work items — project-scoped in ADO. */
+  private void fetchProjectActivity(
+      List<Repository> repos,
+      String token,
+      String sinceIso,
+      ProgressReporter progress,
+      List<RawEvent> events) {
     int deploys = 0;
     int workItems = 0;
     Set<String> seenProjects = new HashSet<>();
@@ -100,27 +145,39 @@ public final class AdoEventSource implements AdoEventSourcePort {
       if (!seenProjects.add(repo.organization() + "|" + repo.project())) {
         continue;
       }
+      String projCtx = repo.organization() + "/" + repo.project();
+      LOG.info("ADO sync: projeto {} — pipelines + work items", projCtx);
       String org = normOrg(repo.organization());
       String proj = enc(repo.project());
       Map<String, String> stageBySourceRepo = productionStages(repos, repo);
-      for (JsonNode run :
-          arr(
-              client.get(
-                  org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
-                  token))) {
-        String sourceRepo = run.path("repository").path("name").asText("");
-        String stage = stageBySourceRepo.get(sourceRepo);
-        if (stage == null) {
-          continue; // a run whose source repository is not registered → skipped
+      try {
+        for (JsonNode run :
+            arr(
+                client.get(
+                    org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
+                    token))) {
+          String sourceRepo = run.path("repository").path("name").asText("");
+          String stage = stageBySourceRepo.get(sourceRepo);
+          if (stage == null) {
+            continue; // a run whose source repository is not registered → skipped
+          }
+          AdoMapper.deploy(run, stage).ifPresent(events::add);
+          deploys++;
         }
-        AdoMapper.deploy(run, stage).ifPresent(events::add);
-        deploys++;
+        progress.update("syncing", "deploys", deploys);
+        workItems += fetchWorkItems(org, proj, sinceIso, token, events);
+        progress.update("syncing", "workitems", workItems);
+      } catch (RuntimeException e) {
+        throw contextual("projeto " + projCtx, e);
       }
-      progress.update("syncing", "deploys", deploys);
-      workItems += fetchWorkItems(org, proj, sinceIso, token, events);
-      progress.update("syncing", "workitems", workItems);
     }
-    return events;
+    LOG.info("ADO sync: {} deploy(s) e {} work item(s) coletados", deploys, workItems);
+  }
+
+  /** Prefix an error with the repo/project being processed so the failure is self-locating. */
+  private static IllegalStateException contextual(String where, RuntimeException cause) {
+    LOG.warn("ADO sync: falha no {} — {}", where, cause.getMessage());
+    return new IllegalStateException("falha no " + where + ": " + cause.getMessage(), cause);
   }
 
   /**

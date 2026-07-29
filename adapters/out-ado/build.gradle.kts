@@ -6,6 +6,8 @@ dependencies {
     implementation(project(":application"))
 
     implementation("com.fasterxml.jackson.core:jackson-databind")
+    // SLF4J facade so the sync path emits diagnostable logs (binding provided by the app at runtime).
+    implementation("org.slf4j:slf4j-api")
     // Spring only for @Component discovery (like the persistence adapter) — never leaks inward.
     implementation("org.springframework:spring-context")
 

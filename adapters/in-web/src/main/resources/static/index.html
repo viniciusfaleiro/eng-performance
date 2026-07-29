@@ -231,6 +231,8 @@ table.tbl td{padding:9px 10px;border-bottom:1px solid var(--outline-var);}
 .btn.ghost:hover{box-shadow:none;background:var(--surface-3);}
 .code{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--outline-var);border-radius:6px;padding:2px 7px;color:var(--primary);}
 .callout{background:var(--surface-1);border:1px solid var(--outline-var);border-left:3px solid var(--primary);border-radius:10px;padding:12px 15px;font-size:13px;color:var(--on-surface-var);line-height:1.55;margin:14px 0;}
+.callout.danger{border-left-color:var(--crit);background:var(--crit-c);color:var(--on-crit-c);}
+.callout.danger b{color:var(--on-crit-c);}
 
 .gauge-card{display:flex;flex-direction:column;align-items:center;gap:3px;justify-content:center;}
 .gauge-card svg{width:200px;max-width:100%;height:auto;}
@@ -474,6 +476,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const jsend=(m,u,b)=>fetch(u,{method:m,headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(b)}).then(jcheck);
   const jpost=(u,b)=>jsend("POST",u,b),jput=(u,b)=>jsend("PUT",u,b);
   const jdel=(u)=>fetch(u,{method:"DELETE",headers:authHeaders()}).then(jcheck);
+  const escHtml=(s)=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
   const apiErr=(e)=>{const m=(e&&e.message)||String(e);
     const pt=/email already registered/i.test(m)?"Email já cadastrado":/valid email required|email must contain/i.test(m)?"Email inválido":/password must not be blank/i.test(m)?"Senha obrigatória":/not found/i.test(m)?"Registro não encontrado":/manager is not a registered person/i.test(m)?"Gestor precisa ser uma pessoa cadastrada":m;
     toast("Erro: "+pt);};
@@ -1244,7 +1247,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       const prog=$("ado_prog");
       if(prog){const counts=Object.entries(s.counts||{}).map(([k,v])=>k+': '+v).join(' · ');
         prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title">'+(ADO_PHASE[s.phase]||s.phase)+'</div><div class="card-note">'+(counts||'—')+'</div></div>';}
-      if(s.done){if(s.failed)toast('Falha: '+s.message);else{toast(s.message||'Sincronização concluída');loadFromApi();}return;}
+      if(s.done){
+        if(s.failed){
+          toast('Falha na sincronização');
+          if(prog)prog.innerHTML='<div class="callout danger" style="margin-top:10px"><b>Falha na sincronização</b><br>'+escHtml(s.message||'erro desconhecido')+'<br><span class="card-note">Detalhes completos (URL, stack trace) no log da aplicação — pacote <span class="code">com.engperf…ado</span>.</span></div>';
+        }else{toast(s.message||'Sincronização concluída');loadFromApi();}
+        return;
+      }
       setTimeout(()=>adoPoll(sid,interval),interval*1000);
     }).catch(apiErr);
   }

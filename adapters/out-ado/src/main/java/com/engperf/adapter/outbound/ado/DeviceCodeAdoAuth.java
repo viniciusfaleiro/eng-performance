@@ -14,6 +14,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,6 +25,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public final class DeviceCodeAdoAuth implements AdoAuthPort {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DeviceCodeAdoAuth.class);
 
   // Public client id of the Azure CLI (pre-consented in most tenants) — no app registration.
   private static final String CLIENT = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";
@@ -45,10 +49,14 @@ public final class DeviceCodeAdoAuth implements AdoAuthPort {
 
   @Override
   public DeviceCodePrompt beginDeviceCode() {
+    LOG.info("ADO auth: solicitando device-code ao Entra");
     JsonNode r = post(AUTHORITY + "/devicecode", Map.of("client_id", CLIENT, "scope", SCOPE));
     if (!r.hasNonNull("device_code")) {
-      throw new AdoAuthException(errorOf(r, "tenant blocked the device-code flow"));
+      String why = errorOf(r, "tenant blocked the device-code flow");
+      LOG.warn("ADO auth: device-code recusado — {}", why);
+      throw new AdoAuthException(why);
     }
+    LOG.info("ADO auth: device-code emitido, aguardando login do usuário");
     return new DeviceCodePrompt(
         r.get("user_code").asText(),
         r.get("verification_uri").asText(),
@@ -67,12 +75,17 @@ public final class DeviceCodeAdoAuth implements AdoAuthPort {
                 "client_id", CLIENT,
                 "device_code", deviceCode));
     if (r.hasNonNull("access_token")) {
+      LOG.info("ADO auth: login concluído, token obtido");
       return Optional.of(r.get("access_token").asText());
     }
     String error = r.path("error").asText("");
     return switch (error) {
       case "authorization_pending", "slow_down" -> Optional.empty();
-      default -> throw new AdoAuthException(errorOf(r, "device-code auth failed"));
+      default -> {
+        String why = errorOf(r, "device-code auth failed");
+        LOG.warn("ADO auth: falha no login ({}) — {}", error.isBlank() ? "sem código" : error, why);
+        throw new AdoAuthException(why);
+      }
     };
   }
 
