@@ -1019,8 +1019,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<text x="100" y="98" text-anchor="middle" font-size="30" font-weight="700" fill="var(--on-surface)" style="font-family:var(--mono)">'+Math.round(c)+'<tspan font-size="15" fill="var(--muted)">%</tspan></text></svg>'+
       '<div class="gauge-label">'+label+'</div><div class="card-note" style="text-align:center">'+sub+'</div></div>';
   }
+  const MONTH_ABBR=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
   function commitCalendar(id){
-    const weeks=53,months=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+    const weeks=53;
     let total=0,cells="";
     const lvlOf=(n)=>n===0?0:n<=2?1:n<=5?2:n<=9?3:4;
     const c=indData();
@@ -1043,6 +1044,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         }
       }
     }
+    // Rolling 12-month labels ending at the window's last day (real dates), not a fixed Jan–Dez.
+    let endY,endM;
+    if(c&&c.calendar&&c.calendar.length){const p=c.calendar[c.calendar.length-1].date.split("-");endY=+p[0];endM=+p[1]-1;}
+    else{const n=new Date();endY=n.getFullYear();endM=n.getMonth();}
+    const months=[];
+    for(let i=11;i>=0;i--){const d=new Date(endY,endM-i,1);months.push(MONTH_ABBR[d.getMonth()]);}
     const monthRow='<div class="cal-months">'+months.map(m=>'<span>'+m+'</span>').join("")+'</div>';
     const legend='<div class="cal-legend">Menos <i style="background:var(--cal-0)"></i><i style="background:var(--cal-1)"></i><i style="background:var(--cal-2)"></i><i style="background:var(--cal-3)"></i><i style="background:var(--cal-4)"></i> Mais</div>';
     return '<div class="chart-wrap cal-card" data-activity="'+id+'" role="button" tabindex="0" aria-label="Ver commits e PRs recentes"><div class="chart-head"><div class="chart-title">Contribuições — últimos 12 meses</div><div class="card-note"><span class="num">'+total+'</span> commits · ver detalhes ›</div></div><div class="cal"><div class="cal-inner">'+monthRow+'<div class="cal-grid">'+cells+'</div></div></div>'+legend+'</div>';
