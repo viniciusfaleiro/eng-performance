@@ -781,7 +781,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp"};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all"};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -1221,7 +1221,48 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<div class="callout"><b>Sincronização interativa (sem PAT, sem org fixa):</b> você faz login na Microsoft com MFA (device-code) e o app carrega os eventos dos <b>repositórios cadastrados</b> (aba Repositórios), em qualquer organização. <b>Backfill:</b> 6 meses na 1ª vez, depois só o diff. Fontes por repo: PRs+commits; por projeto: Pipelines e Boards.</div>'+
       '<div style="display:flex;align-items:center;gap:14px;margin:14px 0">'+status+'</div>'+
       '<div style="margin:6px 0"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button></div>'+
-      '<div id="ado_sync_box"></div>';
+      '<div id="ado_sync_box"></div>'+
+      '<div class="admin-bar" style="margin-top:26px;justify-content:space-between;align-items:flex-end">'+
+        '<div class="chart-title" style="margin:0">O que está carregado na base</div>'+
+        '<label class="mf" style="margin:0;min-width:240px">Filtrar por estrutura<select id="ado_stats_node">'+statsNodeOptions(state.adoStatsNode)+'</select></label>'+
+      '</div>'+
+      '<div id="ado_stats_box"><div class="card-note">Carregando…</div></div>';
+  }
+  const EV_COLS=[["COMMIT","Commits"],["PR","PRs"],["DEPLOY","Deploys"],["WORKITEM","Work items"],["REVIEW","Reviews"]];
+  function statsNodeOptions(sel){
+    const opt=(id,label)=>'<option value="'+id+'"'+(id===sel?" selected":"")+'>'+escHtml(label)+'</option>';
+    const grp=(name,map)=>{const ks=Object.keys(map);if(!ks.length)return"";return '<optgroup label="'+name+'">'+ks.sort().map(n=>opt(map[n],n)).join("")+'</optgroup>';};
+    return opt("all","Toda a estrutura")+grp("Verticais",VNAME2ID)+grp("Times",TNAME2ID)+grp("Pessoas",NAME2ID);
+  }
+  function loadAdoStats(node){
+    const box=$("ado_stats_box");if(!box)return;
+    box.innerHTML='<div class="card-note">Carregando…</div>';
+    jget("/api/admin/ado/stats?node="+encodeURIComponent(node||"all")).then(s=>renderAdoStats(s)).catch(e=>{box.innerHTML='<div class="callout danger">Não foi possível carregar as estatísticas: '+escHtml((e&&e.message)||e)+'</div>';});
+  }
+  function renderAdoStats(s){
+    const box=$("ado_stats_box");if(!box)return;
+    const t=s.totals,n=(x)=>Number(x||0).toLocaleString("pt-BR");
+    const fmtDate=(iso)=>iso?new Date(iso).toLocaleDateString("pt-BR"):"—";
+    const period=t.total?fmtDate(t.firstEventAt)+" – "+fmtDate(t.lastEventAt):"—";
+    const cov=t.total?Math.round(t.attributed*100/t.total):0;
+    const stat=(label,val)=>'<div class="panel" style="padding:12px 14px;flex:1;min-width:120px"><div class="card-note">'+label+'</div><div style="font-size:22px;font-weight:600;margin-top:2px">'+val+'</div></div>';
+    const chips=EV_COLS.map(c=>'<span class="badge">'+c[1]+': '+n(t.byType[c[0]])+'</span>').join(" ");
+    let head='<div style="display:flex;flex-wrap:wrap;gap:10px;margin:8px 0 4px">'+
+      stat("Eventos carregados",n(t.total))+
+      stat("Atribuídos",n(t.attributed)+' <span class="card-note" style="font-size:12px">('+cov+'%)</span>')+
+      stat("Não atribuídos",n(t.unattributed))+
+      stat("Última sincronização",s.lastSyncedAt?fmtDate(s.lastSyncedAt):"nunca")+
+      '</div>'+
+      '<div style="margin:10px 0 2px"><b>'+escHtml(s.nodeLabel)+'</b> · período '+period+'</div>'+
+      '<div style="margin:6px 0 14px">'+chips+'</div>';
+    if(s.childType==="none"||!s.rows.length){box.innerHTML=head+(s.rows.length?"":'<div class="card-note">Sem quebra por sub-nível para este nó.</div>');return;}
+    const childHead={vertical:"Vertical",team:"Time",person:"Pessoa"}[s.childType]||"Item";
+    const rows=s.rows.map(r=>{
+      const muted=(r.rowType==="unattributed"||r.rowType==="repo")?' style="color:var(--muted)"':'';
+      return '<tr'+muted+'><td>'+escHtml(r.label)+'</td><td style="text-align:right;font-weight:600">'+n(r.total)+'</td>'+
+        EV_COLS.map(c=>'<td style="text-align:right">'+n(r.byType[c[0]])+'</td>').join("")+'</tr>';
+    }).join("");
+    box.innerHTML=head+'<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>'+childHead+'</th><th style="text-align:right">Total</th>'+EV_COLS.map(c=>'<th style="text-align:right">'+c[1]+'</th>').join("")+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
   function adminIA(){
     return '<div class="callout">No MVP, um commit é considerado assistido por IA via <b>convenção de trailer</b> no commit — sem integração externa. Documente a convenção como pré-requisito de adoção do time.</div>'+
@@ -1476,6 +1517,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     document.querySelectorAll("[data-dash]").forEach(b=>b.addEventListener("click",()=>{state.dashTab=b.dataset.dash;render();}));
     document.querySelectorAll("[data-aact]").forEach(b=>b.addEventListener("click",()=>adminAction(b.dataset.aact,b.dataset)));
     document.querySelectorAll("[data-aset]").forEach(s=>s.addEventListener("change",()=>adminSet(s.dataset.aset,s.dataset,s.value)));
+    const statsSel=$("ado_stats_node");
+    if(statsSel){statsSel.addEventListener("change",()=>{state.adoStatsNode=statsSel.value;loadAdoStats(statsSel.value);});loadAdoStats(state.adoStatsNode);}
   }
 
   /* ---------- Global controls ---------- */

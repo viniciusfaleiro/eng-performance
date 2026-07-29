@@ -5,10 +5,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.engperf.application.ado.AdoStats;
 import com.engperf.application.ado.DeviceCodePrompt;
 import com.engperf.application.ado.SyncStatus;
+import com.engperf.application.port.inbound.AdoStatsUseCase;
 import com.engperf.application.port.inbound.AdoSyncUseCase;
+import com.engperf.domain.metrics.EventType;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,7 +31,7 @@ class AdoSyncApiTest {
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new AdoSyncController(new FakeSync()))
+        MockMvcBuilders.standaloneSetup(new AdoSyncController(new FakeSync(), new FakeStats()))
             .setControllerAdvice(new AdminExceptionHandler())
             .build();
   }
@@ -52,6 +56,38 @@ class AdoSyncApiTest {
   @Test
   void unknownSessionIs404() throws Exception {
     mvc.perform(get("/api/admin/ado/sync/status?sessionId=nope")).andExpect(status().isNotFound());
+  }
+
+  @Test
+  void statsReturnsTotalsAndRowsForTheNode() throws Exception {
+    mvc.perform(get("/api/admin/ado/stats?node=all"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.nodeLabel").value("Toda a estrutura"))
+        .andExpect(jsonPath("$.totals.total").value(3))
+        .andExpect(jsonPath("$.totals.byType.COMMIT").value(2))
+        .andExpect(jsonPath("$.rows[0].label").value("Pagamentos"));
+  }
+
+  private static final class FakeStats implements AdoStatsUseCase {
+    @Override
+    public AdoStats stats(String nodeId) {
+      Map<EventType, Long> byType = Map.of(EventType.COMMIT, 2L, EventType.DEPLOY, 1L);
+      return new AdoStats(
+          Instant.parse("2026-07-01T00:00:00Z"),
+          Instant.parse("2026-07-01T00:00:00Z"),
+          3L,
+          "all",
+          "Toda a estrutura",
+          "vertical",
+          new AdoStats.Totals(
+              3L,
+              3L,
+              0L,
+              byType,
+              Instant.parse("2026-01-01T00:00:00Z"),
+              Instant.parse("2026-07-01T00:00:00Z")),
+          List.of(new AdoStats.Row("v:pag", "Pagamentos", "vertical", 3L, byType)));
+    }
   }
 
   private static final class FakeSync implements AdoSyncUseCase {
