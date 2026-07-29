@@ -188,7 +188,10 @@ public final class AdoEventSource implements AdoEventSourcePort {
                 org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
                 token))) {
       String sourceRepo = run.path("repository").path("name").asText("");
-      String stageRule = stageBySourceRepo.get(sourceRepo);
+      // ADO returns the repo name lower-cased; registered keys keep their original case, so match
+      // case-insensitively — otherwise a real production build is silently dropped as
+      // "unregistered".
+      String stageRule = stageBySourceRepo.get(sourceRepo.toLowerCase(Locale.ROOT));
       if (stageRule == null) {
         continue; // a run whose source repository is not registered → skipped
       }
@@ -229,7 +232,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
     Map<String, String> byRepo = new HashMap<>();
     for (Repository r : repos) {
       if (r.organization().equals(any.organization()) && r.project().equals(any.project())) {
-        byRepo.put(r.key(), r.productionStage());
+        byRepo.put(r.key().toLowerCase(Locale.ROOT), r.productionStage());
       }
     }
     return byRepo;

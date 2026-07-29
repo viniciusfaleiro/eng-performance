@@ -86,6 +86,23 @@ class AdoMapperTest {
   }
 
   @Test
+  void blankRuleFallbackRecognizesPrdSpelling() {
+    JsonNode build = fixture("build.json");
+    JsonNode prd =
+        json(
+            "{\"id\":\"s1\",\"type\":\"Stage\",\"name\":\"Deploy to PRD\",\"result\":\"failed\","
+                + "\"finishTime\":\"2026-06-10T10:30:00Z\"}");
+    JsonNode hml =
+        json(
+            "{\"id\":\"s2\",\"type\":\"Stage\",\"name\":\"Deploy to HML\",\"result\":\"succeeded\"}");
+
+    // No explicit production_stage → the fallback must accept "PRD" (not a substring of "prod").
+    RawEvent e = AdoMapper.deploy(build, prd, "").orElseThrow();
+    assertThat(e.detail().get("outcome")).isEqualTo("failed");
+    assertThat(AdoMapper.deploy(build, hml, "")).isEmpty(); // HML is not production
+  }
+
+  @Test
   void workItemMapsTypeAndInProgressTimeFromHistory() {
     JsonNode updates =
         updates(

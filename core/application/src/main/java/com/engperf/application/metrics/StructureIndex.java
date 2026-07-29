@@ -9,6 +9,7 @@ import com.engperf.domain.structure.Repository;
 import com.engperf.domain.structure.Team;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -61,7 +62,9 @@ public final class StructureIndex {
     repositories.forEach(
         r -> {
           if (r.teamId() != null) {
-            repoToTeam.put(r.key(), r.teamId());
+            // Key lower-cased: DEPLOY events carry the repo name as ADO returns it (lower-cased),
+            // while registered keys keep their original case — match without regard to case.
+            repoToTeam.put(r.key().toLowerCase(Locale.ROOT), r.teamId());
           }
         });
     identities.forEach(
@@ -103,7 +106,7 @@ public final class StructureIndex {
     if (event.repoKey() == null) {
       return Optional.empty();
     }
-    String teamId = repoToTeam.get(event.repoKey());
+    String teamId = repoToTeam.get(event.repoKey().toLowerCase(Locale.ROOT));
     if (teamId == null) {
       return Optional.empty();
     }

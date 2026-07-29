@@ -235,7 +235,10 @@ final class AdoMapper {
 
   private static boolean matchesProduction(String stage, String rule) {
     if (rule == null || rule.isBlank()) {
-      return stage.toLowerCase(Locale.ROOT).contains("prod");
+      // No explicit rule: match the common production spellings. "prd" (without the "o") is a
+      // frequent convention and is NOT a substring of "prod", so check for it explicitly.
+      String s = stage.toLowerCase(Locale.ROOT);
+      return s.contains("prod") || s.contains("prd");
     }
     return stage.equalsIgnoreCase(rule)
         || stage.toLowerCase(Locale.ROOT).contains(rule.toLowerCase(Locale.ROOT));

@@ -110,6 +110,16 @@ class MetricsServiceTest {
   }
 
   @Test
+  void deployRepoKeyMatchesTeamCaseInsensitively() {
+    baseStructure();
+    // Repo registered in Title Case; ADO returns the source repo lower-cased on the deploy event.
+    structure.repositories.add(new Repository("Asa-Core-Card", "org", "Proj", "t:checkout", null));
+    events.add(deploy("asa-core-card", 0, 5));
+
+    assertThat(card("t:checkout", "deploy_freq")).isEqualTo(1); // matched despite the case mismatch
+  }
+
+  @Test
   void attributionIsAsOfEvent() {
     structure.verticals.add(new Vertical("v:eng", "Eng", null));
     structure.teams.add(new Team("t:checkout", "Checkout", "v:eng", null, null));
