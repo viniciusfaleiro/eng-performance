@@ -326,6 +326,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .cov-bar{flex:1;height:8px;border-radius:6px;background:var(--surface-3);overflow:hidden;}
 .cov-fill{height:100%;background:var(--good);border-radius:6px;}
 .cov-pct{font-family:var(--mono);font-size:13px;font-weight:600;}
+/* Sync/backfill progress: indeterminate stripe while running; solid on done/fail. */
+.progbar{height:8px;border-radius:6px;background:var(--surface-3);overflow:hidden;position:relative;margin:10px 0;}
+.progbar > i{position:absolute;top:0;bottom:0;left:0;width:35%;border-radius:6px;background:var(--primary);animation:prog 1.1s ease-in-out infinite;}
+@keyframes prog{0%{left:-35%;}100%{left:100%;}}
+.progbar.done > i,.progbar.fail > i{position:static;width:100%;animation:none;}
+.progbar.done > i{background:var(--good);}
+.progbar.fail > i{background:var(--crit);}
+.prog-counts{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:8px;margin-top:10px;}
+.prog-count{background:var(--surface-2);border:1px solid var(--outline-var);border-radius:8px;padding:8px 11px;}
+.prog-count b{font-family:var(--mono);font-size:18px;display:block;line-height:1.1;}
+.prog-count span{font-size:12px;color:var(--on-surface-var);}
 .admin-sel{font-family:inherit;font-size:12.5px;color:var(--on-surface);background:var(--surface-2);border:1px solid var(--outline);border-radius:7px;padding:5px 8px;max-width:180px;}
 .admin-bar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
 .btn.sm{padding:5px 10px;font-size:11.5px;}
@@ -1288,30 +1299,41 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   /* Interactive Azure DevOps sync (S9): device-code login (no PAT), then a polled progress view. */
-  const ADO_PHASE={"awaiting-login":"Aguardando login…","syncing":"Sincronizando…","done":"Concluído","failed":"Falhou"};
+  const ADO_PHASE={"awaiting-login":"Aguardando login…","syncing":"Sincronizando…","prs":"Coletando PRs…","commits":"Coletando commits…","deploys":"Coletando deploys…","workitems":"Coletando work items…","done":"Concluído","failed":"Falhou"};
+  const ADO_COUNT_LABELS={prs:"PRs",commits:"Commits",deploys:"Deploys",workitems:"Work items"};
+  const fmtElapsed=(ms)=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");};
+  function progCounts(counts){
+    const c=counts||{},keys=["prs","commits","deploys","workitems"].concat(Object.keys(c).filter(k=>!["prs","commits","deploys","workitems"].includes(k)));
+    return '<div class="prog-counts">'+keys.map(k=>'<div class="prog-count"><b>'+(c[k]||0)+'</b><span>'+escHtml(ADO_COUNT_LABELS[k]||k)+'</span></div>').join("")+'</div>';
+  }
   function startAdoSync(backfill){
     const box=$("ado_sync_box");if(!box)return;
     if(backfill&&!confirm("Reprocessar os últimos 6 meses? Ignora o watermark e recarrega todos os repositórios (idempotente). Pode levar mais tempo."))return;
-    box.innerHTML='<div class="callout">Iniciando'+(backfill?" reprocessamento (6 meses)":"")+'…</div>';
+    const label=backfill?"Reprocessamento (6 meses)":"Sincronização";
+    box.innerHTML='<div class="callout">Iniciando '+escHtml(label.toLowerCase())+'…</div>';
     jpost("/api/admin/ado/sync"+(backfill?"?backfill=true":""),{}).then(d=>{
       box.innerHTML='<div class="callout"><b>Faça login na Microsoft</b><br>1. Abra <a href="'+d.verificationUri+'" target="_blank" rel="noopener">'+d.verificationUri+'</a><br>2. Código: <span class="code">'+d.userCode+'</span> <button class="btn ghost sm" id="ado_copy">copiar</button></div><div id="ado_prog"></div>';
       const c=$("ado_copy");if(c)c.addEventListener("click",()=>{if(navigator.clipboard)navigator.clipboard.writeText(d.userCode);toast("Código copiado");});
-      adoPoll(d.sessionId,Math.max(2,(d.intervalSeconds||5)));
+      adoPoll(d.sessionId,Date.now(),label);
     }).catch(apiErr);
   }
-  function adoPoll(sid,interval){
+  function adoPoll(sid,t0,label){
     jget("/api/admin/ado/sync/status?sessionId="+encodeURIComponent(sid)).then(s=>{
-      const prog=$("ado_prog");
-      if(prog){const counts=Object.entries(s.counts||{}).map(([k,v])=>k+': '+v).join(' · ');
-        prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title">'+(ADO_PHASE[s.phase]||s.phase)+'</div><div class="card-note">'+(counts||'—')+'</div></div>';}
-      if(s.done){
-        if(s.failed){
-          toast('Falha na sincronização');
-          if(prog)prog.innerHTML='<div class="callout danger" style="margin-top:10px"><b>Falha na sincronização</b><br>'+escHtml(s.message||'erro desconhecido')+'<br><span class="card-note">Detalhes completos (URL, stack trace) no log da aplicação — pacote <span class="code">com.engperf…ado</span>.</span></div>';
-        }else{toast(s.message||'Sincronização concluída');loadFromApi();}
+      const prog=$("ado_prog");if(!prog)return;
+      const el=fmtElapsed(Date.now()-t0);
+      if(s.done&&s.failed){
+        toast("Falha na "+label.toLowerCase());
+        prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title" style="color:var(--crit)">✕ '+escHtml(label)+' falhou · '+el+'</div><div class="progbar fail"><i></i></div>'+progCounts(s.counts)+'<div class="callout danger" style="margin-bottom:0"><b>'+escHtml(s.message||"erro desconhecido")+'</b><br><span class="card-note">Detalhes (URL, stack trace) no log da aplicação — pacote <span class="code">com.engperf…ado</span>.</span></div></div>';
         return;
       }
-      setTimeout(()=>adoPoll(sid,interval),interval*1000);
+      if(s.done){
+        toast(s.message||label+" concluída");
+        prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title" style="color:var(--good)">✓ '+escHtml(label)+' concluída · '+el+'</div><div class="progbar done"><i></i></div><div class="card-note" style="margin:6px 0">'+escHtml(s.message||"")+'</div>'+progCounts(s.counts)+'</div>';
+        loadFromApi();
+        return;
+      }
+      prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title">'+escHtml(ADO_PHASE[s.phase]||s.phase)+' · '+el+'</div><div class="progbar"><i></i></div>'+progCounts(s.counts)+'<div class="card-note" style="margin-top:8px">O processo roda no servidor; acompanhe por aqui.</div></div>';
+      setTimeout(()=>adoPoll(sid,t0,label),2000);
     }).catch(apiErr);
   }
 

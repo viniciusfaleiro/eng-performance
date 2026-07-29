@@ -117,7 +117,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
           events.addAll(AdoMapper.reviews(pr));
           prs++;
         }
-        progress.update("syncing", "prs", prs);
+        progress.update("prs", "prs", prs);
         for (JsonNode c :
             arr(
                 client.get(
@@ -130,7 +130,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
           events.add(AdoMapper.commit(c, repo.key(), isAi));
           commits++;
         }
-        progress.update("syncing", "commits", commits);
+        progress.update("commits", "commits", commits);
       } catch (RuntimeException e) {
         throw contextual("repositório " + ctx, e);
       }
@@ -159,9 +159,9 @@ public final class AdoEventSource implements AdoEventSourcePort {
       Map<String, String> stageBySourceRepo = productionStages(repos, repo);
       try {
         deploys += fetchDeploys(org, proj, sinceIso, stageBySourceRepo, token, events);
-        progress.update("syncing", "deploys", deploys);
+        progress.update("deploys", "deploys", deploys);
         workItems += fetchWorkItems(org, proj, sinceIso, token, events);
-        progress.update("syncing", "workitems", workItems);
+        progress.update("workitems", "workitems", workItems);
       } catch (RuntimeException e) {
         throw contextual("projeto " + projCtx, e);
       }
