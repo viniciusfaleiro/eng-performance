@@ -148,6 +148,9 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       hoursByType.put(t.getKey(), 0.0);
     }
     for (RawEvent w : workItems) {
+      if (!w.detail().containsKey("hours")) {
+        continue; // no usable state history → "no data", excluded from the distribution (not zero)
+      }
       String type = w.detail().getOrDefault("type", "docs");
       hoursByType.merge(
           hoursByType.containsKey(type) ? type : "docs", doubleDetail(w, "hours"), Double::sum);

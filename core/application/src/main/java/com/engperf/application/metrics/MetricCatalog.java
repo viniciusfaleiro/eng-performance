@@ -87,13 +87,15 @@ public final class MetricCatalog {
               "%",
               Direction.HIGHER_BETTER),
           new MetricDefinition(
+              // WIP = median time a work item spends in in-progress states (derived from the ADO
+              // state history), reading the WORKITEM value; lower-is-better, in hours.
               "wip",
               "Work in Progress",
               "fluxo",
               EventType.WORKITEM,
               AttributionScope.PERSON,
-              Aggregation.SNAPSHOT,
-              "itens",
+              Aggregation.MEDIAN,
+              "h",
               Direction.LOWER_BETTER),
           // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
           new MetricDefinition(

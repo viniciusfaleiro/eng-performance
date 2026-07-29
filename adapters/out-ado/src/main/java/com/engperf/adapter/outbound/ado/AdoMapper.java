@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -149,23 +150,72 @@ final class AdoMapper {
             detail));
   }
 
-  /** A work item → one WORKITEM event (type + completed hours) for the distribution. */
-  static RawEvent workItem(JsonNode wi) {
+  /**
+   * A work item → one WORKITEM event. Its measure is the **time the item spent in in-progress
+   * states**, reconstructed from the update history (not the manual CompletedWork field): written
+   * to both channels the metrics read — {@code numericValue} (WIP median) and {@code detail.hours}
+   * (type distribution). An item with no usable state transition has an **absent** measure (no
+   * data), so it is seen but excluded from the value and reflected in coverage — never a silent
+   * zero.
+   */
+  static RawEvent workItem(
+      JsonNode wi, JsonNode updates, Predicate<String> inProgress, Instant now) {
     JsonNode f = wi.path("fields");
     Map<String, String> detail = new HashMap<>();
     detail.put("type", workType(f.path("System.WorkItemType").asText("")));
-    detail.put("hours", num(f.path("Microsoft.VSTS.Scheduling.CompletedWork").asDouble(0)));
+    Optional<Double> hours = inProgressHours(updates, inProgress, now);
+    hours.ifPresent(h -> detail.put("hours", num(h)));
     return new RawEvent(
         "wi:" + wi.path("id").asText(),
         EventType.WORKITEM,
         instant(f, "System.ChangedDate"),
         null,
         identity(f.path("System.AssignedTo")),
-        null,
+        hours.orElse(null), // WIP measure; null = no usable state history → excluded from the value
         null,
         false,
         detail);
   }
+
+  /**
+   * Hours the item spent in in-progress states, from its {@code System.State} transitions (each
+   * update's revised timestamp + new value). Empty when there is no usable transition — fewer than
+   * two state changes, or all at the same instant (e.g. created and closed together). The last
+   * state runs to {@code now}; sentinel/future revisions are ignored.
+   */
+  static Optional<Double> inProgressHours(
+      JsonNode updates, Predicate<String> inProgress, Instant now) {
+    List<StateAt> states = new ArrayList<>();
+    for (JsonNode u : updates.path("value")) {
+      JsonNode sv = u.path("fields").path("System.State");
+      if (!sv.hasNonNull("newValue") || !u.hasNonNull("revisedDate")) {
+        continue;
+      }
+      Instant at = parseInstant(u.path("revisedDate").asText());
+      if (at == null || at.isAfter(now)) {
+        continue; // unparseable or the "9999" open-revision sentinel
+      }
+      states.add(new StateAt(at, sv.path("newValue").asText("")));
+    }
+    if (states.size() < 2) {
+      return Optional.empty(); // never transitioned → no data
+    }
+    states.sort(Comparator.comparing(StateAt::at));
+    if (!states.get(0).at().isBefore(states.get(states.size() - 1).at())) {
+      return Optional.empty(); // all transitions at one instant → no measurable data
+    }
+    double hours = 0;
+    for (int i = 0; i < states.size(); i++) {
+      Instant from = states.get(i).at();
+      Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
+      if (inProgress.test(states.get(i).state())) {
+        hours += hoursBetween(from, to);
+      }
+    }
+    return Optional.of(hours);
+  }
+
+  private record StateAt(Instant at, String state) {}
 
   // ---- helpers ----
 
@@ -216,6 +266,14 @@ final class AdoMapper {
 
   private static Instant instant(JsonNode node, String field) {
     return Instant.parse(node.path(field).asText());
+  }
+
+  private static Instant parseInstant(String raw) {
+    try {
+      return Instant.parse(raw);
+    } catch (RuntimeException e) {
+      return null;
+    }
   }
 
   private static double hoursBetween(Instant a, Instant b) {

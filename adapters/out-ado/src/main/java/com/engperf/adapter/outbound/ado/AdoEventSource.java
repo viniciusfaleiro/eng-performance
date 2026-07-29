@@ -241,8 +241,9 @@ public final class AdoEventSource implements AdoEventSourcePort {
     if (ids.isEmpty()) {
       return 0;
     }
-    String fields =
-        "System.WorkItemType,System.ChangedDate,System.AssignedTo,Microsoft.VSTS.Scheduling.CompletedWork";
+    String fields = "System.WorkItemType,System.ChangedDate,System.AssignedTo";
+    Map<String, Predicate<String>> inProgressByType = new HashMap<>();
+    Instant now = Instant.now();
     int n = 0;
     // ADO caps the workitems batch GET at 200 ids per request — page the id list.
     for (int i = 0; i < ids.size(); i += WORKITEM_ID_BATCH) {
@@ -252,11 +253,59 @@ public final class AdoEventSource implements AdoEventSourcePort {
           client.get(
               org + "/_apis/wit/workitems?ids=" + batch + "&fields=" + fields + "&" + API, token);
       for (JsonNode wi : arr(items)) {
-        events.add(AdoMapper.workItem(wi));
+        String type = wi.path("fields").path("System.WorkItemType").asText("");
+        Predicate<String> inProgress =
+            inProgressByType.computeIfAbsent(type, t -> inProgressStates(org, proj, t, token));
+        // The update history (one call per item; no batch endpoint) gives the state transitions.
+        JsonNode updates =
+            client.get(
+                org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
+                token);
+        events.add(AdoMapper.workItem(wi, updates, inProgress, now));
         n++;
       }
     }
     return n;
+  }
+
+  /**
+   * Which states of a work-item type count as "in-progress". Prefers the ADO state **category**
+   * ({@code InProgress}) from the type's states metadata (cached per type by the caller); falls
+   * back to a name heuristic when the metadata is unavailable — never hardcoded to one process
+   * template.
+   */
+  private Predicate<String> inProgressStates(String org, String proj, String type, String token) {
+    Set<String> inProgress = new HashSet<>();
+    try {
+      JsonNode states =
+          client.get(
+              org + "/" + proj + "/_apis/wit/workitemtypes/" + enc(type) + "/states?" + API, token);
+      for (JsonNode s : states.path("value")) {
+        if ("InProgress".equalsIgnoreCase(s.path("stateCategory").asText(""))) {
+          inProgress.add(s.path("name").asText(""));
+        }
+      }
+    } catch (RuntimeException e) {
+      LOG.warn(
+          "ADO sync: sem metadata de estados de '{}' ({}); usando heurística por nome",
+          type,
+          e.getMessage());
+    }
+    return inProgress.isEmpty() ? AdoEventSource::looksInProgress : inProgress::contains;
+  }
+
+  private static final List<String> TERMINAL_HINTS =
+      List.of("done", "closed", "resolved", "completed", "removed", "new", "proposed");
+  private static final List<String> PROGRESS_HINTS =
+      List.of("progress", "active", "doing", "review", "testing", "develop");
+
+  /** Name heuristic for "in-progress" when the ADO state category is unavailable. */
+  private static boolean looksInProgress(String state) {
+    String s = state.toLowerCase(Locale.ROOT);
+    if (TERMINAL_HINTS.stream().anyMatch(s::contains)) {
+      return false;
+    }
+    return PROGRESS_HINTS.stream().anyMatch(s::contains);
   }
 
   /**

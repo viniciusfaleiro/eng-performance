@@ -8,8 +8,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 /** Maps recorded Azure DevOps JSON to the RawEvent contract the metric groups consume. */
@@ -84,13 +86,57 @@ class AdoMapperTest {
   }
 
   @Test
-  void workItemMapsTypeAndHours() {
-    RawEvent e = AdoMapper.workItem(fixture("workitem.json"));
+  void workItemMapsTypeAndInProgressTimeFromHistory() {
+    JsonNode updates =
+        updates(
+            stateUpdate("2026-06-10T10:00:00Z", "New"),
+            stateUpdate("2026-06-10T11:00:00Z", "Active"),
+            stateUpdate("2026-06-10T13:00:00Z", "Closed"));
+    Predicate<String> inProgress = "Active"::equals;
+    Instant now = Instant.parse("2026-06-11T00:00:00Z");
+
+    RawEvent e = AdoMapper.workItem(fixture("workitem.json"), updates, inProgress, now);
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
     assertThat(e.detail().get("type")).isEqualTo("bug");
-    assertThat(e.detail().get("hours")).isEqualTo("6.0");
+    assertThat(e.value()).isEqualTo(2.0); // in Active 11:00 → Closed 13:00 = 2h in progress
+    assertThat(e.detail().get("hours"))
+        .isEqualTo("2.0"); // same value on the type-distribution channel
+  }
+
+  @Test
+  void workItemWithNoUsableTransitionIsNoData() {
+    JsonNode oneState = updates(stateUpdate("2026-06-10T10:00:00Z", "New"));
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem.json"), oneState, s -> true, Instant.parse("2026-06-11T00:00:00Z"));
+    assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
+    assertThat(e.detail()).doesNotContainKey("hours");
+  }
+
+  @Test
+  void inProgressHoursIsEmptyWhenAllTransitionsAtOneInstant() {
+    JsonNode sameInstant =
+        updates(
+            stateUpdate("2026-06-10T10:00:00Z", "New"),
+            stateUpdate("2026-06-10T10:00:00Z", "Closed"));
+    assertThat(
+            AdoMapper.inProgressHours(
+                sameInstant, s -> true, Instant.parse("2026-06-11T00:00:00Z")))
+        .isEmpty(); // created and closed together → no measurable data
+  }
+
+  private static String stateUpdate(String date, String state) {
+    return "{\"revisedDate\":\""
+        + date
+        + "\",\"fields\":{\"System.State\":{\"newValue\":\""
+        + state
+        + "\"}}}";
+  }
+
+  private static JsonNode updates(String... entries) {
+    return json("{\"value\":[" + String.join(",", entries) + "]}");
   }
 
   private static JsonNode fixture(String name) {
