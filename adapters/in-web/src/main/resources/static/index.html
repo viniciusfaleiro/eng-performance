@@ -345,7 +345,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);z-index:140;background:var(--surface-3);color:var(--on-surface);border:1px solid var(--outline);border-radius:10px;padding:11px 18px;font-size:13px;font-weight:500;box-shadow:0 12px 30px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 </style>
-<script>document.documentElement.dataset.theme="dark";</script>
+<script>try{var t=localStorage.getItem("ep_theme");document.documentElement.dataset.theme=(t==="light"||t==="dark")?t:"dark";}catch(e){document.documentElement.dataset.theme="dark";}</script>
 
 <div id="login" class="login">
   <div class="login-card">
@@ -1524,7 +1524,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Global controls ---------- */
   $("viewSwitch").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.view=b.dataset.view;state.mode="structure";render();});
   $("freq").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.freq=b.dataset.freq;document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x===b));render();});
-  $("themeBtn").addEventListener("click",()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.setAttribute("data-theme",dark?"light":"dark");});
+  $("themeBtn").addEventListener("click",()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;const next=dark?"light":"dark";document.documentElement.setAttribute("data-theme",next);try{localStorage.setItem("ep_theme",next);}catch(e){}});
   const sb=$("sidebar"),ns=$("navscrim");function closeNav(){sb.classList.remove("open");ns.classList.remove("open");}
   $("menuBtn").addEventListener("click",()=>{sb.classList.add("open");ns.classList.add("open");});
   ns.addEventListener("click",closeNav);
