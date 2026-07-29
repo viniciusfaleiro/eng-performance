@@ -63,13 +63,13 @@ public final class AdoSyncService implements AdoSyncUseCase {
   }
 
   @Override
-  public Session start() {
+  public Session start(boolean fullBackfill) {
     // No org to configure: ingestion iterates the registered repositories (each with its own org).
     DeviceCodePrompt prompt = auth.beginDeviceCode();
     Job job = new Job();
     String sessionId = UUID.randomUUID().toString();
     jobs.put(sessionId, job);
-    executor.execute(() -> run(job, prompt));
+    executor.execute(() -> run(job, prompt, fullBackfill));
     return new Session(sessionId, prompt);
   }
 
@@ -78,12 +78,12 @@ public final class AdoSyncService implements AdoSyncUseCase {
     return Optional.ofNullable(jobs.get(sessionId)).map(j -> j.snapshot(sessionId));
   }
 
-  private void run(Job job, DeviceCodePrompt prompt) {
-    boolean incremental = syncState.load().isPresent();
+  private void run(Job job, DeviceCodePrompt prompt, boolean fullBackfill) {
+    boolean incremental = !fullBackfill && syncState.load().isPresent();
     try {
       String token = awaitToken(job, prompt);
       job.phase = "syncing";
-      Instant since = watermarkOrBackfill();
+      Instant since = incremental ? watermarkOrBackfill() : backfillWindow();
       LOG.info(
           "ADO sync iniciando: modo={}, desde={}", incremental ? "incremental" : "backfill", since);
       List<RawEvent> events = source.fetchSince(token, since, job::report);
@@ -128,10 +128,11 @@ public final class AdoSyncService implements AdoSyncUseCase {
   }
 
   private Instant watermarkOrBackfill() {
-    return syncState
-        .load()
-        .map(SyncState::watermark)
-        .orElseGet(() -> clock.instant().minusSeconds((long) BACKFILL_MONTHS * 30 * 24 * 3600));
+    return syncState.load().map(SyncState::watermark).orElseGet(this::backfillWindow);
+  }
+
+  private Instant backfillWindow() {
+    return clock.instant().minusSeconds((long) BACKFILL_MONTHS * 30 * 24 * 3600);
   }
 
   private static void sleep(int seconds) {

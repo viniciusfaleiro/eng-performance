@@ -28,9 +28,10 @@ public class AdoSyncController {
   }
 
   @PostMapping("/api/admin/ado/sync")
-  public SyncStartDto start() {
+  public SyncStartDto start(
+      @RequestParam(name = "backfill", defaultValue = "false") boolean backfill) {
     try {
-      return SyncStartDto.from(sync.start());
+      return SyncStartDto.from(sync.start(backfill));
     } catch (IllegalStateException ex) {
       throw new ConflictException(ex.getMessage()); // e.g. organization not connected yet
     }

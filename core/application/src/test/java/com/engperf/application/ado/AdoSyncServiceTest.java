@@ -46,7 +46,7 @@ class AdoSyncServiceTest {
     source.events =
         List.of(commit("c1", "2026-06-20T10:00:00Z"), commit("c2", "2026-06-25T10:00:00Z"));
 
-    Session first = service.start();
+    Session first = service.start(false);
     var status1 = service.status(first.sessionId()).orElseThrow();
     assertThat(status1.done()).isTrue();
     assertThat(status1.failed()).isFalse();
@@ -56,23 +56,33 @@ class AdoSyncServiceTest {
     assertThat(syncState.state.watermark()).isEqualTo(Instant.parse("2026-06-25T10:00:00Z"));
 
     // Second run: since = the recorded watermark (only the diff).
-    service.start();
+    service.start(false);
     assertThat(source.lastSince).isEqualTo(Instant.parse("2026-06-25T10:00:00Z"));
   }
 
   @Test
   void reRunningDoesNotDuplicate() {
     source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
-    service.start();
-    service.start();
+    service.start(false);
+    service.start(false);
     assertThat(store.byId).hasSize(1); // upsert by id — no duplicates
+  }
+
+  @Test
+  void backfillIgnoresTheWatermarkAndReprocessesTheWholeWindow() {
+    source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
+    service.start(false); // records a recent watermark
+    assertThat(syncState.state.watermark()).isEqualTo(Instant.parse("2026-06-20T10:00:00Z"));
+
+    service.start(true); // backfill → ignores the watermark, re-ingests the whole window
+    assertThat(source.lastSince).isBefore(Instant.parse("2026-02-01T00:00:00Z"));
   }
 
   @Test
   void awaitsLoginBeforeSyncing() {
     auth.pollsUntilToken = 2; // pending once, then the token
     source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
-    Session s = service.start();
+    Session s = service.start(false);
     assertThat(service.status(s.sessionId()).orElseThrow().done()).isTrue();
     assertThat(auth.pollCount).isEqualTo(2);
   }

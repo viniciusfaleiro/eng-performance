@@ -1235,7 +1235,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const status=ADO_CFG.connected?'<span class="status-dot"><i style="background:var(--good)"></i>Conectado</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Ainda não sincronizado</span>';
     return '<div class="callout"><b>Sincronização interativa (sem PAT, sem org fixa):</b> você faz login na Microsoft com MFA (device-code) e o app carrega os eventos dos <b>repositórios cadastrados</b> (aba Repositórios), em qualquer organização. <b>Backfill:</b> 6 meses na 1ª vez, depois só o diff. Fontes por repo: PRs+commits; por projeto: Pipelines e Boards.</div>'+
       '<div style="display:flex;align-items:center;gap:14px;margin:14px 0">'+status+'</div>'+
-      '<div style="margin:6px 0"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button></div>'+
+      '<div style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button><button class="btn ghost" data-aact="ado-backfill" title="Ignora o watermark e reprocessa os últimos 6 meses (aplica os mapeamentos atuais aos dados já carregados)">Reprocessar 6 meses</button></div>'+
       '<div id="ado_sync_box"></div>'+
       '<div class="admin-bar" style="margin-top:26px;justify-content:space-between;align-items:flex-end">'+
         '<div class="chart-title" style="margin:0">O que está carregado na base</div>'+
@@ -1289,10 +1289,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   /* Interactive Azure DevOps sync (S9): device-code login (no PAT), then a polled progress view. */
   const ADO_PHASE={"awaiting-login":"Aguardando login…","syncing":"Sincronizando…","done":"Concluído","failed":"Falhou"};
-  function startAdoSync(){
+  function startAdoSync(backfill){
     const box=$("ado_sync_box");if(!box)return;
-    box.innerHTML='<div class="callout">Iniciando…</div>';
-    jpost("/api/admin/ado/sync",{}).then(d=>{
+    if(backfill&&!confirm("Reprocessar os últimos 6 meses? Ignora o watermark e recarrega todos os repositórios (idempotente). Pode levar mais tempo."))return;
+    box.innerHTML='<div class="callout">Iniciando'+(backfill?" reprocessamento (6 meses)":"")+'…</div>';
+    jpost("/api/admin/ado/sync"+(backfill?"?backfill=true":""),{}).then(d=>{
       box.innerHTML='<div class="callout"><b>Faça login na Microsoft</b><br>1. Abra <a href="'+d.verificationUri+'" target="_blank" rel="noopener">'+d.verificationUri+'</a><br>2. Código: <span class="code">'+d.userCode+'</span> <button class="btn ghost sm" id="ado_copy">copiar</button></div><div id="ado_prog"></div>';
       const c=$("ado_copy");if(c)c.addEventListener("click",()=>{if(navigator.clipboard)navigator.clipboard.writeText(d.userCode);toast("Código copiado");});
       adoPoll(d.sessionId,Math.max(2,(d.intervalSeconds||5)));
@@ -1403,7 +1404,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else if(act==="add-repo")repoModal();
     else if(act==="del-repo"){const k=REPOS[+ds.i].repo;jdel("/api/admin/repositories/"+encodeURIComponent(k)).then(loadFromApi).then(()=>toast(k+" removido")).catch(apiErr);}
     else if(act==="reload-identities")jpost("/api/admin/ado/committers/reload",{}).then(r=>loadFromApi().then(()=>toast(r.discovered+" identidade(s) carregada(s) · "+r.linked+" associada(s)"))).catch(apiErr);
-    else if(act==="ado-sync")startAdoSync();
+    else if(act==="ado-sync")startAdoSync(false);
+    else if(act==="ado-backfill")startAdoSync(true);
     else if(act==="save"){
       if(state.adminTab==="ia"){
         jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})

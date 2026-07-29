@@ -92,7 +92,7 @@ class AdoSyncApiTest {
 
   private static final class FakeSync implements AdoSyncUseCase {
     @Override
-    public Session start() {
+    public Session start(boolean fullBackfill) {
       return new Session(
           "s1", new DeviceCodePrompt("ABC-123", "https://microsoft.com/devicelogin", "d", 5, 900));
     }
