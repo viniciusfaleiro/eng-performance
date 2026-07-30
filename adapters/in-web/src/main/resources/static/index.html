@@ -521,7 +521,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     Object.keys(NODES).forEach(k=>delete NODES[k]);
     ALL_PEOPLE.length=0;ALL_TEAMS.length=0;
     NODES["all"]={label:"Visão geral",level:"Organização",teamIds:[]};
-    ORG.forEach(v=>{const vid="v:"+slug(v.name);const vt=[];v.teams.forEach(t=>{const tid="t:"+t.id;vt.push(tid);ALL_TEAMS.push(t.name);NODES[tid]={label:t.name,level:"Time",teamIds:[tid],vertical:v.name,people:t.people.map(p=>"p:"+slug(p))};t.people.forEach(p=>{ALL_PEOPLE.push(p);NODES["p:"+slug(p)]={label:p,level:"Pessoa",teamIds:[tid],vertical:v.name,team:t.name};});});NODES[vid]={label:v.name,level:"Vertical",teamIds:vt};NODES["all"].teamIds.push(...vt);});
+    ORG.forEach(v=>{const vid=v.id||("v:"+slug(v.name));const vt=[];v.teams.forEach(t=>{const tid="t:"+t.id;vt.push(tid);ALL_TEAMS.push(t.name);NODES[tid]={label:t.name,level:"Time",teamIds:[tid],vertical:v.name,people:t.people.map(p=>"p:"+slug(p))};t.people.forEach(p=>{ALL_PEOPLE.push(p);NODES["p:"+slug(p)]={label:p,level:"Pessoa",teamIds:[tid],vertical:v.name,team:t.name};});});NODES[vid]={label:v.name,level:"Vertical",teamIds:vt};NODES["all"].teamIds.push(...vt);});
   }
   rebuildStructure();
 
@@ -559,7 +559,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         (v.children||[]).forEach(t=>{teamNameById[t.id]=t.label;TNAME2ID[t.label]=t.id;
           (t.children||[]).forEach(p=>{nameById[p.id]=p.label;NAME2ID[p.label]=p.id;});});});
       ORG.length=0;
-      (tree.children||[]).forEach(v=>ORG.push({name:v.label,teams:(v.children||[]).map(t=>({id:t.id.replace(/^t:/,""),name:t.label,people:(t.children||[]).map(p=>p.label)}))}));
+      (tree.children||[]).forEach(v=>ORG.push({name:v.label,id:v.id,teams:(v.children||[]).map(t=>({id:t.id.replace(/^t:/,""),name:t.label,people:(t.children||[]).map(p=>p.label)}))}));
       Object.keys(VERT_MANAGER).forEach(k=>delete VERT_MANAGER[k]);
       Object.keys(TEAM_MANAGER).forEach(k=>delete TEAM_MANAGER[k]);
       COMMITTERS.length=0;REPOS.length=0;USERS.length=0;
@@ -887,7 +887,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const c=IA_CACHE[state.node+"|"+state.freq];
     if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null)return c.byNode[id][m.key].cur;
     return null;}
-  function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
+  function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd&&nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
   function areaTrend(title,m){const labels=periodLabels(state.freq,12);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+lineChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
