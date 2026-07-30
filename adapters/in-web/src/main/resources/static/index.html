@@ -623,12 +623,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     lt:"Tempo do 1º commit de uma mudança até ela estar em produção. Mede a velocidade do fluxo de entrega ponta a ponta.",
     cfr:"% de deploys que falharam ou exigiram rollback/hotfix. Derivado de releases com falha nos Pipelines.",
     mttr:"Tempo entre a falha de um deploy e o deploy de recuperação. Mede resiliência.",
-    ct:"Tempo total de um PR: Coding → Pickup → Review → Deploy. O 'coração' do fluxo — mostra onde trava.",
-    tp:"Quantidade de PRs concluídos no período. Sinaliza vazão do time.",
-    wip:"Trabalho em progresso simultâneo. WIP alto costuma indicar excesso de context-switching.",
-    rt:"Tempo entre o PR ficar pronto para review e ser aprovado.",
-    ps:"Tamanho médio dos PRs em linhas alteradas. PRs menores tendem a fluir mais rápido.",
-    fe:"% do cycle time em que o trabalho esteve ativo (vs. esperando). Eficiência do fluxo.",
+    ct:"Tempo do work item do 1º estado ativo até a conclusão (Espera → Ativo → Review → Done). Mostra onde o trabalho trava.",
+    tp:"Quantidade de work items (tasks) concluídos no período. Sinaliza vazão do time.",
+    flt:"Tempo do work item da criação até a conclusão (lead time de fluxo). Distinto do lead time de DORA (mudança → produção).",
+    wip:"Quantidade de work items em progresso no período. WIP alto costuma indicar excesso de context-switching.",
+    rt:"Tempo entre o PR ficar pronto para review e ser aprovado (drill-down de código).",
+    ps:"Tamanho médio dos PRs em linhas alteradas, drill-down de código. PRs menores tendem a fluir mais rápido.",
+    fe:"% do tempo do item em que o trabalho esteve ativo (vs. esperando/bloqueado). Eficiência do fluxo.",
     aic:"% de commits do período marcados como assistidos por IA (convenção de trailer no commit).",
     aad:"% de devs do escopo que usaram IA no período.",
     aim:"Diferença de cycle time entre PRs feitos com IA e sem IA. Responde: 'a IA está acelerando?'.",
@@ -1149,8 +1150,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const IM={tp:M("tp"),ct:M("ct"),aic:M("aic")};
     const selKey=IM[state.indMetric]?state.indMetric:"tp";
     h+='<div class="grid tiles">'+
-      selCard("tp","Throughput",fmt(tp.cur,"PRs")+" PRs","PRs concluídos no período",evoChip(tp),selKey==="tp")+
-      selCard("ct","Tempo por ciclo",fmt(ct.cur,"h")+" h","do 1º commit ao merge",evoChip(ct),selKey==="ct")+
+      selCard("tp","Throughput",fmt(tp.cur,"itens")+" itens","tasks concluídas no período",evoChip(tp),selKey==="tp")+
+      selCard("ct","Cycle Time",fmt(ct.cur,"h")+" h","do 1º estado ativo à conclusão",evoChip(ct),selKey==="ct")+
       selCard("aic","% commits com IA",fmt(aic.cur,"%")+"%","assistência de IA",evoChip(aic),selKey==="aic")+
       '</div>';
     const selM=IM[selKey];
@@ -1207,8 +1208,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       {n:"9",t:"Falha e recuperação explícitas no pipeline",need:"Deploy termina com resultado claro (success/failed/recovery); release quebrada não é apagada.",m:["cfr","mttr"]}]},
     {g:"C · Fluxo de código",items:[
       {n:"10",t:"Todo código entra na main por pull request",need:"Branch policy bloqueia push direto; merge só via PR. PR abandonado é fechado.",m:["throughput","cycle_time","pr_size","assertividade"]},
-      {n:"11",t:"Branch curta, criada a partir da main atual",need:"Branch vive dias, não meses. Nada de ressuscitar branch antiga — o 1º commit ancora o lead time.",m:["lead_time","coding_time","cycle_time"]},
-      {n:"12",t:"PR em rascunho até estar pronto para review",need:"Trabalho em andamento fica como draft; ao sair do rascunho, reviewers são atribuídos na hora.",m:["pickup_time","cycle_time","flow_efficiency"]},
+      {n:"11",t:"Branch curta, criada a partir da main atual",need:"Branch vive dias, não meses. Nada de ressuscitar branch antiga — o 1º commit ancora o lead time.",m:["lead_time","active_time","cycle_time"]},
+      {n:"12",t:"PR em rascunho até estar pronto para review",need:"Trabalho em andamento fica como draft; ao sair do rascunho, reviewers são atribuídos na hora.",m:["waiting_time","cycle_time","flow_efficiency"]},
       {n:"13",t:"A review acontece dentro do PR",need:"Reviewers atribuídos; comentários, ajustes, aprovações e rejeições registrados no PR — não no chat.",m:["pr_review_time","% PRs sem review","assertividade"]},
       {n:"14",t:"PR pequeno, com um propósito só",need:"Refactor amplo, formatação em massa e código gerado em PRs separados.",m:["pr_size","pr_review_time","cycle_time"]},
       {n:"15",t:"Histórico não é reescrito depois do merge",need:"Force-push na main bloqueado. Rebase/squash antes do merge, nunca depois.",m:["lead_time","mapa de contribuição","ai_share"]}]},
