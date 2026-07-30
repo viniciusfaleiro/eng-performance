@@ -59,39 +59,46 @@ class FlowDashboardServiceTest {
   @Test
   void cardsPhasesAndFlowEfficiency() {
     baseStructure();
-    // Ana: two PRs with phases (coding, pickup, review, deploy).
-    events.add(pr("id-ana", 4, 1, 2, 1, 200)); // cycle 8, active 6
-    events.add(pr("id-ana", 6, 1, 2, 1, 400)); // cycle 10, active 8
+    // Ana: two completed work items (board segments) + two PRs (code drill-downs pr_size/review).
+    events.add(doneItem("id-ana", 4, 2, 2)); // active 4, review 2, wait 2 → cycle 8, working 6
+    events.add(doneItem("id-ana", 6, 2, 2)); // active 6, review 2, wait 2 → cycle 10, working 8
+    events.add(prCode("id-ana", 2, 200));
+    events.add(prCode("id-ana", 2, 400));
 
     var dash = flow.dashboard("t:checkout", Frequency.MONTHLY);
     assertThat(dash.cards())
         .extracting(c -> c.definition().key())
         .containsExactly(
-            "cycle_time", "throughput", "wip", "pr_review_time", "pr_size", "flow_efficiency");
+            "cycle_time",
+            "throughput",
+            "flow_lead_time",
+            "wip",
+            "flow_efficiency",
+            "pr_review_time",
+            "pr_size");
 
     var byKey = cards("t:checkout");
     assertThat(byKey.get("cycle_time").value().value()).isEqualTo(9.0); // median(8,10)
-    assertThat(byKey.get("throughput").value().value()).isEqualTo(2);
+    assertThat(byKey.get("throughput").value().value()).isEqualTo(2); // completed items
     assertThat(byKey.get("pr_size").value().value()).isEqualTo(300.0); // median(200,400)
-    // Flow efficiency = Σactive / Σcycle = (6+8)/(8+10) = 14/18.
+    // Flow efficiency = Σworking / Σ(working+wait) = (6+8)/((6+2)+(8+2)) = 14/18.
     assertThat(byKey.get("flow_efficiency").value().value())
         .isCloseTo(14.0 / 18.0, Offset.offset(1e-9));
 
-    // Phase breakdown = median of each phase over the population.
+    // Phase breakdown = median of each board segment over the population.
     var phases = new java.util.HashMap<String, Double>();
     dash.phases().forEach(p -> phases.put(p.key(), p.hours()));
-    assertThat(phases.get("coding_time")).isEqualTo(5.0); // median(4,6)
-    assertThat(phases.get("pickup_time")).isEqualTo(1.0);
-    assertThat(phases.get("pr_review_time")).isEqualTo(2.0);
-    assertThat(phases.get("deploy_time")).isEqualTo(1.0);
+    assertThat(phases.get("waiting_time")).isEqualTo(2.0);
+    assertThat(phases.get("active_time")).isEqualTo(5.0); // median(4,6)
+    assertThat(phases.get("review_time")).isEqualTo(2.0);
   }
 
   @Test
   void scatterRanksVerticalsAtOverviewNeverPeople() {
     baseStructure();
-    events.add(pr("id-ana", 4, 1, 2, 1, 100));
-    events.add(pr("id-bruno", 4, 1, 2, 1, 100));
-    events.add(pr("id-carla", 4, 1, 2, 1, 100));
+    events.add(doneItem("id-ana", 4, 2, 2));
+    events.add(doneItem("id-bruno", 4, 2, 2));
+    events.add(doneItem("id-carla", 4, 2, 2));
 
     var dash = flow.dashboard("all", Frequency.MONTHLY);
     assertThat(dash.childType()).isEqualTo("vertical");
@@ -112,21 +119,35 @@ class FlowDashboardServiceTest {
     assertThat(dash.scatter()).isEmpty();
   }
 
-  private RawEvent pr(
-      String identity, double coding, double pickup, double review, double deploy, double lines) {
-    double cycle = coding + pickup + review + deploy;
-    double active = coding + review;
+  /** A completed work item with board segments — feeds throughput, cycle_time, flow, phases. */
+  private RawEvent doneItem(String identity, double active, double review, double wait) {
+    double cycle = active + review + wait;
+    double working = active + review;
     Map<String, String> detail =
         Map.of(
-            "coding_h", Double.toString(coding),
-            "pickup_h", Double.toString(pickup),
+            "completed", "1",
+            "type", "feature",
+            "active_h", Double.toString(active),
             "review_h", Double.toString(review),
-            "deploy_h", Double.toString(deploy),
+            "wait_h", Double.toString(wait),
             "cycle_h", Double.toString(cycle),
-            "lines", Double.toString(lines),
-            "num", Double.toString(active),
+            "lead_h", Double.toString(cycle),
+            "num", Double.toString(working),
             "den", Double.toString(cycle));
-    // numericValue = review hours (pr_review_time reads the default measure).
+    return new RawEvent(
+        "w" + (seq++),
+        EventType.WORKITEM,
+        Instant.parse("2026-06-10T10:00:00Z"),
+        null,
+        identity,
+        null,
+        null,
+        false,
+        detail);
+  }
+
+  /** A PR carrying the code drill-downs: numericValue = review hours, detail.lines = PR size. */
+  private RawEvent prCode(String identity, double review, double lines) {
     return new RawEvent(
         "e" + (seq++),
         EventType.PR,
@@ -136,7 +157,7 @@ class FlowDashboardServiceTest {
         review,
         "review",
         false,
-        detail);
+        Map.of("lines", Double.toString(lines)));
   }
 
   private static final class FakeEvents implements EventStorePort {

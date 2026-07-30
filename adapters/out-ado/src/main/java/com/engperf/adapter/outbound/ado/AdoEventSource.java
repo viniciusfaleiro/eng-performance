@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -31,11 +32,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 /**
- * Fetches Azure DevOps activity (api-version 7.1) for the **registered repositories across any
- * organizations** — no single configured org. Per repo it fetches PRs and commits; per distinct
- * {@code (organization, project)} it fetches that project's pipeline runs (attributed to their
- * source repo and classified by that repo's production-stage rule) and work items. Mapping to
- * {@link RawEvent} is done by {@link AdoMapper}; REST paths are tuned against a real org.
+ * Fetches Azure DevOps activity (api-version 7.1) for the registered repositories across any orgs.
+ * Per repo: PRs and commits; per distinct (org, project): pipeline runs (deploys) and work items.
+ * Mapping to {@link RawEvent} is by {@link AdoMapper}; REST paths are tuned against a real org.
  */
 @Component
 public final class AdoEventSource implements AdoEventSourcePort {
@@ -174,9 +173,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   /**
-   * Deploys for one project. A YAML pipeline's stages live only in each build's Timeline, so for
-   * every build whose source repo is registered we fetch its Timeline and emit a DEPLOY for the
-   * production-stage record. Builds of unregistered source repos are skipped.
+   * Deploys for one project. A build's stages live only in its Timeline, so for every build whose
+   * source repo is registered we fetch its Timeline and emit a DEPLOY for the production stage.
    */
   private int fetchDeploys(
       String org,
@@ -247,8 +245,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
     if (ids.isEmpty()) {
       return 0;
     }
-    String fields = "System.WorkItemType,System.ChangedDate,System.AssignedTo";
-    Map<String, Predicate<String>> inProgressByType = new HashMap<>();
+    String fields = "System.WorkItemType,System.ChangedDate,System.CreatedDate,System.AssignedTo";
+    Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
     Instant now = Instant.now();
     int n = 0;
     // ADO caps the workitems batch GET at 200 ids per request — page the id list.
@@ -260,14 +258,14 @@ public final class AdoEventSource implements AdoEventSourcePort {
               org + "/_apis/wit/workitems?ids=" + batch + "&fields=" + fields + "&" + API, token);
       for (JsonNode wi : arr(items)) {
         String type = wi.path("fields").path("System.WorkItemType").asText("");
-        Predicate<String> inProgress =
-            inProgressByType.computeIfAbsent(type, t -> inProgressStates(org, proj, t, token));
+        Function<String, Segment> classify =
+            classifierByType.computeIfAbsent(type, t -> stateClassifier(org, proj, t, token));
         // The update history (one call per item; no batch endpoint) gives the state transitions.
         JsonNode updates =
             client.get(
                 org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
                 token);
-        events.add(AdoMapper.workItem(wi, updates, inProgress, now));
+        events.add(AdoMapper.workItem(wi, updates, classify, now));
         n++;
       }
     }
@@ -275,21 +273,20 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   /**
-   * Which states of a work-item type count as "in-progress". Prefers the ADO state **category**
-   * ({@code InProgress}) from the type's states metadata (cached per type by the caller); falls
-   * back to a name heuristic when the metadata is unavailable — never hardcoded to one process
-   * template.
+   * Classifies each state of a work-item type into a flow {@link Segment} by its ADO state category
+   * (Completed/Resolved/Removed → DONE, Proposed → WAITING, InProgress → REVIEW/ACTIVE by name),
+   * cached per type; states without metadata fall back to the name heuristic (never hardcoded).
    */
-  private Predicate<String> inProgressStates(String org, String proj, String type, String token) {
-    Set<String> inProgress = new HashSet<>();
+  private Function<String, Segment> stateClassifier(
+      String org, String proj, String type, String token) {
+    Map<String, Segment> byName = new HashMap<>();
     try {
       JsonNode states =
           client.get(
               org + "/" + proj + "/_apis/wit/workitemtypes/" + enc(type) + "/states?" + API, token);
       for (JsonNode s : states.path("value")) {
-        if ("InProgress".equalsIgnoreCase(s.path("stateCategory").asText(""))) {
-          inProgress.add(s.path("name").asText(""));
-        }
+        String name = s.path("name").asText("");
+        byName.put(name, StateClassifier.fromCategory(s.path("stateCategory").asText(""), name));
       }
     } catch (RuntimeException e) {
       LOG.warn(
@@ -297,27 +294,12 @@ public final class AdoEventSource implements AdoEventSourcePort {
           type,
           e.getMessage());
     }
-    return inProgress.isEmpty() ? AdoEventSource::looksInProgress : inProgress::contains;
-  }
-
-  private static final List<String> TERMINAL_HINTS =
-      List.of("done", "closed", "resolved", "completed", "removed", "new", "proposed");
-  private static final List<String> PROGRESS_HINTS =
-      List.of("progress", "active", "doing", "review", "testing", "develop");
-
-  /** Name heuristic for "in-progress" when the ADO state category is unavailable. */
-  private static boolean looksInProgress(String state) {
-    String s = state.toLowerCase(Locale.ROOT);
-    if (TERMINAL_HINTS.stream().anyMatch(s::contains)) {
-      return false;
-    }
-    return PROGRESS_HINTS.stream().anyMatch(s::contains);
+    return state -> byName.getOrDefault(state, StateClassifier.byName(state));
   }
 
   /**
-   * WIQL caps a result at 20000 rows and cannot be paged (no skip); collect the ids over {@code
-   * [sinceDate, today]} by adaptive bisection — a window that exceeds the cap is split in half and
-   * retried until each half fits. The column has day precision, so bounds are dates.
+   * WIQL caps a result at 20000 rows and cannot be paged; collect the ids over {@code [sinceDate,
+   * today]} by adaptive bisection — a window over the cap is split in half until each fits.
    */
   private List<String> collectChangedWorkItemIds(
       String org, String proj, String sinceDate, String token) {

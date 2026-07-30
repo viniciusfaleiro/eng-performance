@@ -145,12 +145,13 @@ class AiDashboardServiceTest {
     events.add(pr("id-bruno", 10, false));
     events.add(pr("id-bruno", 10, false));
 
-    double aiPrs = last(metrics.cohortSeries("throughput", "t:checkout", Frequency.MONTHLY, true));
+    double aiPrs =
+        last(metrics.cohortSeries("code_throughput", "t:checkout", Frequency.MONTHLY, true));
     double nonPrs =
-        last(metrics.cohortSeries("throughput", "t:checkout", Frequency.MONTHLY, false));
+        last(metrics.cohortSeries("code_throughput", "t:checkout", Frequency.MONTHLY, false));
     double all =
         metrics.cards("t:checkout", Frequency.MONTHLY).stream()
-            .filter(c -> c.definition().key().equals("throughput"))
+            .filter(c -> c.definition().key().equals("code_throughput"))
             .mapToDouble(c -> c.current().value())
             .findFirst()
             .orElseThrow();

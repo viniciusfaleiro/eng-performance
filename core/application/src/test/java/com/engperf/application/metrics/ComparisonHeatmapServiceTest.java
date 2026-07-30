@@ -35,10 +35,11 @@ class ComparisonHeatmapServiceTest {
           "mttr",
           "cycle_time",
           "throughput",
+          "flow_lead_time",
           "wip",
+          "flow_efficiency",
           "pr_review_time",
           "pr_size",
-          "flow_efficiency",
           "ai_share",
           "ai_adoption",
           "ai_impact");
@@ -84,9 +85,9 @@ class ComparisonHeatmapServiceTest {
   @Test
   void aCellEqualsTheSameNodesDashboardCard() {
     baseStructure();
-    events.add(pr("id-ana"));
-    events.add(pr("id-ana"));
-    events.add(pr("id-bruno"));
+    events.add(doneItem("id-ana"));
+    events.add(doneItem("id-ana"));
+    events.add(doneItem("id-bruno"));
 
     var h = heatmap.heatmap("all", Frequency.MONTHLY, "times");
     int throughputCol = COLUMN_ORDER.indexOf("throughput");
@@ -137,6 +138,20 @@ class ComparisonHeatmapServiceTest {
         "review",
         false,
         Map.of("cycle_h", "8", "num", "6", "den", "8"));
+  }
+
+  /** A completed work item — feeds throughput/cycle_time/flow on the WORKITEM channel. */
+  private RawEvent doneItem(String identity) {
+    return new RawEvent(
+        "w" + (seq++),
+        EventType.WORKITEM,
+        Instant.parse("2026-06-10T10:00:00Z"),
+        null,
+        identity,
+        null,
+        null,
+        false,
+        Map.of("completed", "1", "type", "feature", "cycle_h", "8", "num", "6", "den", "8"));
   }
 
   private static final class FakeEvents implements EventStorePort {

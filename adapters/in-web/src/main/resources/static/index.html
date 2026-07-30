@@ -603,12 +603,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     {key:"mttr",label:"Mean Time to Restore",unit:"h",higher:false,base:4.5,dora:true},
   ];
   const FLUXO=[
-    {key:"ct",label:"Cycle Time (código)",unit:"h",higher:false,base:58,phases:true},
-    {key:"tp",label:"Throughput",unit:"PRs",higher:true,base:22,count:true},
+    {key:"ct",label:"Cycle Time",unit:"h",higher:false,base:58,phases:true},
+    {key:"tp",label:"Throughput",unit:"itens",higher:true,base:22,count:true},
+    {key:"flt",label:"Lead Time (fluxo)",unit:"h",higher:false,base:120},
     {key:"wip",label:"Work in Progress",unit:"itens",higher:false,base:9},
+    {key:"fe",label:"Flow Efficiency",unit:"%",higher:true,base:42},
     {key:"rt",label:"PR Review Time",unit:"h",higher:false,base:7.5},
     {key:"ps",label:"PR Size (médio)",unit:"linhas",higher:false,base:210},
-    {key:"fe",label:"Flow Efficiency",unit:"%",higher:true,base:42},
   ];
   const IA=[
     {key:"aic",label:"% de commits com IA",unit:"%",higher:true,base:34},
@@ -649,7 +650,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* Dispatcher: DORA metrics (df/lt/cfr/mttr) read the real engine value from the DORA cache for
      the active node/freq; everything else stays synthetic (Fluxo/IA until S5-S6). The sparkline
      trend shape stays synthetic (decorative); the headline value + evolution + tier are real. */
-  const FLOW_KEYS=new Set(["ct","tp","wip","rt","ps","fe"]);
+  const FLOW_KEYS=new Set(["ct","tp","flt","wip","rt","ps","fe"]);
   const IA_KEYS=new Set(["aic","aad","aim"]);
   function snap(id,m,freq){
     if(m.dora){
@@ -677,7 +678,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* Tendências wired to the real metrics engine (S3). Prototype metric key → S3 catalog key; the
      rest stay synthetic until their group slice (S4-S6). Only the single-series Tendências chart
      + its tiles read real data; the dashboard card grids remain the mock until then. */
-  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",tp:"throughput",wip:"wip",rt:"pr_review_time",aic:"ai_share",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
+  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
   const TREND={},TREND_LOADING=new Set();
   const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq;
   function ensureTrend(mk){
@@ -733,7 +734,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      4-phase breakdown, and the throughput×cycle scatter of the children. cfr-style unit fixes: fe
      (flow efficiency) comes as a 0..1 ratio, shown as a percentage. */
   const FLOW_CACHE={},FLOW_LOADING=new Set();
-  const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe"};
+  const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe"};
   function ensureFlow(){
     const k=state.node+"|"+state.freq;
     if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
@@ -754,7 +755,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
     return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
   }
-  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq];return (c&&c.phases&&c.phases.length===4)?c.phases:null;}
+  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
   /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
      (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
      with/without-AI cycle-time series. ai_share/ai_adoption arrive as 0..1 ratios, shown as %. */
@@ -837,8 +838,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="linhas")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
   function tierOf(k,v){switch(k){case"df":return v>=1?"Elite":v>=0.25?"Alto":v>=0.06?"Médio":"Baixo";case"lt":return v<24?"Elite":v<72?"Alto":v<168?"Médio":"Baixo";case"cfr":return v<=5?"Elite":v<=10?"Alto":v<=20?"Médio":"Baixo";case"mttr":return v<1?"Elite":v<24?"Alto":v<72?"Médio":"Baixo";default:return"";}}
   const TC={"Elite":"tier-elite","Alto":"tier-alto","Médio":"tier-medio","Baixo":"tier-baixo"};
-  const phaseSplit=(id,freq,total)=>{const w=[0.30,0.16,0.34,0.20].map((base,i)=>base*(0.7+hash(id+"|"+freq+"|ph"+i)*0.6));const sum=w.reduce((a,b)=>a+b,0);return w.map(x=>total*x/sum);};
-  const PHASES=[{n:"Coding",c:"var(--cat-1)"},{n:"Pickup",c:"var(--cat-2)"},{n:"Review",c:"var(--cat-3)"},{n:"Deploy",c:"var(--cat-4)"}];
+  const phaseSplit=(id,freq,total)=>{const w=[0.35,0.45,0.20].map((base,i)=>base*(0.7+hash(id+"|"+freq+"|ph"+i)*0.6));const sum=w.reduce((a,b)=>a+b,0);return w.map(x=>total*x/sum);};
+  const PHASES=[{n:"Espera",c:"var(--cat-2)"},{n:"Ativo",c:"var(--cat-1)"},{n:"Review",c:"var(--cat-3)"}];
   const TASK_TYPES=[{n:"Feature",c:"var(--cat-1)",w:0.42},{n:"Bug",c:"var(--cat-5)",w:0.22},{n:"Tech Debt",c:"var(--cat-4)",w:0.15},{n:"Manutenção",c:"var(--cat-2)",w:0.14},{n:"Docs/Outros",c:"var(--cat-3)",w:0.07}];
   const taskSplit=(id,freq)=>{const w=TASK_TYPES.map((t,i)=>t.w*(0.55+hash(id+"|"+freq+"|tt"+i)*0.9));const s=w.reduce((a,b)=>a+b,0);return w.map(x=>x/s*100);};
 
@@ -1045,7 +1046,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const total=snap(id,m,state.freq).cur;const parts=flowPhases()||phaseSplit(id,state.freq,total);const sum=parts.reduce((a,b)=>a+b,0)||1;
     let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div class="phaseseg" style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h"></div>';});bar+='</div>';
     let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div class="phase-item"><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b></div>';});leg+='</div>';
-    return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Cycle Time — 4 fases</div>'+bar+leg+'</div>';
+    return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Cycle Time — fases (board)</div>'+bar+leg+'</div>';
   }
 
   function gauge(pct,label,sub){

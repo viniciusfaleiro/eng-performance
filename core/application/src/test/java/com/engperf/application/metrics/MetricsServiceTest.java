@@ -62,18 +62,22 @@ class MetricsServiceTest {
   @Test
   void rollsUpPerNodeWithPopulationMedianAndManagerWithoutCommits() {
     baseStructure();
+    // PRs feed pr_review_time (median review hours). Completed work items feed throughput.
     // Ana: 2 PRs @10h ; Bruno: 8 PRs @2h ; Diego(pay): 4 PRs @5h ; Carla(pay manager): none.
     for (int i = 0; i < 2; i++) {
       events.add(pr("id-ana", 10));
+      events.add(doneItem("id-ana"));
     }
     for (int i = 0; i < 8; i++) {
       events.add(pr("id-bruno", 2));
+      events.add(doneItem("id-bruno"));
     }
     for (int i = 0; i < 4; i++) {
       events.add(pr("id-diego", 5));
+      events.add(doneItem("id-diego"));
     }
 
-    // Throughput (SUM, person) rolls up to team/vertical/all.
+    // Throughput = completed work items, SUM per person, rolling up to team/vertical/all.
     assertThat(card("p:ana", "throughput")).isEqualTo(2);
     assertThat(card("p:bruno", "throughput")).isEqualTo(8);
     assertThat(card("t:checkout", "throughput")).isEqualTo(10);
@@ -131,10 +135,10 @@ class MetricsServiceTest {
     structure.people.add(bruno);
     structure.identities.add(new CommitterIdentity("id-bruno", "Bruno", "p:bruno", 0));
 
-    events.add(prOn("id-bruno", 1, "2026-03-10")); // while in Checkout
-    events.add(prOn("id-bruno", 1, "2026-06-10")); // after moving to Pay
+    events.add(doneItemOn("id-bruno", "2026-03-10")); // while in Checkout
+    events.add(doneItemOn("id-bruno", "2026-06-10")); // after moving to Pay
 
-    // Monthly series: March PR counts for Checkout, not Pay; June PR counts for Pay.
+    // Monthly series: March item counts for Checkout, not Pay; June item counts for Pay.
     var checkout = service.series("throughput", "t:checkout", Frequency.MONTHLY);
     var pay = service.series("throughput", "t:pay", Frequency.MONTHLY);
     assertThat(pointValue(checkout, "2026-03-01")).isEqualTo(1);
@@ -175,6 +179,36 @@ class MetricsServiceTest {
         null,
         false,
         null);
+  }
+
+  /** A completed work item on {@code date} — feeds throughput (count), cycle_time and flow. */
+  private RawEvent doneItemOn(String identity, String date) {
+    return new RawEvent(
+        "w" + (seq++),
+        EventType.WORKITEM,
+        Instant.parse(date + "T10:00:00Z"),
+        null,
+        identity,
+        null,
+        null,
+        false,
+        java.util.Map.of(
+            "completed",
+            "1",
+            "type",
+            "feature",
+            "cycle_h",
+            "5.0",
+            "lead_h",
+            "8.0",
+            "num",
+            "4.0",
+            "den",
+            "5.0"));
+  }
+
+  private RawEvent doneItem(String identity) {
+    return doneItemOn(identity, "2026-06-15");
   }
 
   private RawEvent deploy(String repo, double failed, double leadHours) {

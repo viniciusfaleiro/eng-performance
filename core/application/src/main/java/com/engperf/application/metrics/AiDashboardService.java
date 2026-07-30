@@ -24,7 +24,7 @@ import java.util.Objects;
 public final class AiDashboardService implements AiDashboardUseCase {
 
   private static final int TOP_N = 10;
-  private static final String CYCLE_TIME = "cycle_time";
+  private static final String CYCLE_TIME = "code_cycle_time";
 
   private final MetricsQueryUseCase metrics;
   private final MetricCatalog catalog;
@@ -90,8 +90,10 @@ public final class AiDashboardService implements AiDashboardUseCase {
     }
     // Coverage = share of the node's PRs that are AI-assisted (AI PRs over all PRs; the two
     // cohorts partition the population).
-    long ai = Math.round(lastValue(metrics.cohortSeries("throughput", nodeId, frequency, true)));
-    long non = Math.round(lastValue(metrics.cohortSeries("throughput", nodeId, frequency, false)));
+    long ai =
+        Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, frequency, true)));
+    long non =
+        Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, frequency, false)));
     return new Impact(value, new Coverage(ai, ai + non), withAi, withoutAi);
   }
 

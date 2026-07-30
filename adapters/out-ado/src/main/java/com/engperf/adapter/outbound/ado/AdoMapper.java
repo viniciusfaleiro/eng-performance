@@ -6,30 +6,25 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.StringJoiner;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * Pure mapping of Azure DevOps REST payloads (api-version 7.1) to the platform's {@link RawEvent}
- * contract — filling the {@code detail} keys the metric groups already consume. Unambiguous fields
- * (ids, identities, dates, decisions, types, deep-links) are mapped here and covered by fixture
- * tests; org-shaped derivations (fine phase split, deploy recovery pairing) are approximated and
- * tuned against a real org during acceptance.
+ * Pure mapping of Azure DevOps REST payloads (api-version 7.1) to {@link RawEvent}, filling the
+ * {@code detail} keys the metric groups consume. Org-shaped derivations are tuned against a real
+ * org.
  */
 final class AdoMapper {
 
   private AdoMapper() {}
 
   /**
-   * A pull request → one PR event (cycle time + first-pass approval + deep-link). {@code commits}
-   * is the PR's commit list (from {@code .../pullRequests/{id}/commits}); it feeds the active
-   * coding time, the flow-efficiency ratio and the PR size.
+   * A pull request → one PR event; {@code commits} feed the coding time, flow ratio and PR size.
    */
   static RawEvent pullRequest(JsonNode pr, JsonNode commits) {
     Instant created = instant(pr, "creationDate");
@@ -58,12 +53,10 @@ final class AdoMapper {
   }
 
   /**
-   * Derives the PR's active coding time, flow-efficiency ratio and size from its commits. {@code
-   * coding_h} = first→last commit; {@code flow_efficiency} = coding/cycle (active vs. waiting for
-   * review/merge, via {@code num/den}); size ({@code lines}) is the summed changed lines when the
-   * commits expose {@code changeCounts}, else the commit count as a coarse proxy. Exact ADO fields
-   * are best-effort and tuned against a real org during acceptance; a PR with no commit data is
-   * excluded from flow_efficiency (num=den=0) and leaves {@code lines} absent (no data).
+   * From the PR's commits: {@code coding_h} = first→last commit; flow {@code num/den} =
+   * coding/cycle; {@code lines} = summed {@code changeCounts} (else commit count). Best-effort,
+   * acceptance-tuned; a PR with no commit data is excluded from flow_efficiency (num=den=0) and has
+   * no {@code lines}.
    */
   private static void applyCommitStats(
       Map<String, String> detail, JsonNode commits, double cycleH) {
@@ -158,11 +151,9 @@ final class AdoMapper {
   }
 
   /**
-   * A build's Timeline "Stage" record matching the production rule → one DEPLOY event. A
-   * multi-stage YAML pipeline exposes its stages only in the Timeline (not the Build object), so
-   * the stage name, result and timing come from {@code stageRecord}; repository and trigger time
-   * come from {@code build}. Empty when the stage isn't production or hasn't finished with a
-   * result.
+   * A build Timeline "Stage" record matching the production rule → one DEPLOY event (stage name,
+   * result and timing from {@code stageRecord}; repo and trigger from {@code build}). Empty when
+   * the stage isn't production or hasn't finished.
    */
   static Optional<RawEvent> deploy(JsonNode build, JsonNode stageRecord, String productionStage) {
     String stage = stageRecord.path("name").asText(stageRecord.path("identifier").asText(""));
@@ -203,109 +194,28 @@ final class AdoMapper {
             detail));
   }
 
-  /**
-   * A work item → one WORKITEM event. Its measure is the **time the item spent in in-progress
-   * states**, reconstructed from the update history (not the manual CompletedWork field): written
-   * to both channels the metrics read — {@code numericValue} (WIP median) and {@code detail.hours}
-   * (type distribution). An item with no usable state transition has an **absent** measure (no
-   * data), so it is seen but excluded from the value and reflected in coverage — never a silent
-   * zero.
-   */
+  /** A work item → one WORKITEM event, its flow measures reconstructed from the state history. */
   static RawEvent workItem(
-      JsonNode wi, JsonNode updates, Predicate<String> inProgress, Instant now) {
+      JsonNode wi, JsonNode updates, Function<String, Segment> classify, Instant now) {
     JsonNode f = wi.path("fields");
+    Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
     Map<String, String> detail = new HashMap<>();
     detail.put("type", workType(f.path("System.WorkItemType").asText("")));
-    List<long[]> spans = inProgressSpans(updates, inProgress, now);
-    Double measure = null;
-    if (spans != null) {
-      // Store the raw in-progress intervals (epoch-milli from:to) so period-scoped views can clip
-      // each item's duration to the window asked, instead of always counting its whole life.
-      double hours = 0;
-      StringJoiner sj = new StringJoiner(",");
-      for (long[] s : spans) {
-        hours += (s[1] - s[0]) / 3_600_000.0;
-        sj.add(s[0] + ":" + s[1]);
-      }
-      detail.put("hours", num(hours));
-      detail.put("spans", sj.toString());
-      measure = hours;
-    }
+    WorkItemFlow flow = WorkItemFlow.of(updates, classify, created, now);
+    Instant occurred =
+        flow.completion() != null ? flow.completion() : instant(f, "System.ChangedDate");
+    flow.fill(detail);
     return new RawEvent(
         "wi:" + wi.path("id").asText(),
         EventType.WORKITEM,
-        instant(f, "System.ChangedDate"),
+        occurred,
         null,
         identity(f.path("System.AssignedTo")),
-        measure, // WIP measure; null = no usable state history → excluded from the value
+        null, // WORKITEM metrics read named detail keys, not numericValue
         null,
         false,
         detail);
   }
-
-  /**
-   * Hours the item spent in in-progress states, from its {@code System.State} transitions. Empty
-   * when there is no usable transition — fewer than two state changes, or all at the same instant.
-   * Kept as the total (whole-life) measure the WIP metric reads; period-scoped views instead clip
-   * the {@code spans} detail. The last state runs to {@code now}; sentinel/future revisions
-   * ignored.
-   */
-  static Optional<Double> inProgressHours(
-      JsonNode updates, Predicate<String> inProgress, Instant now) {
-    List<long[]> spans = inProgressSpans(updates, inProgress, now);
-    if (spans == null) {
-      return Optional.empty();
-    }
-    double hours = 0;
-    for (long[] s : spans) {
-      hours += (s[1] - s[0]) / 3_600_000.0;
-    }
-    return Optional.of(hours);
-  }
-
-  /**
-   * The in-progress intervals (epoch-milli {@code [from, to)}) from the item's state history, or
-   * {@code null} when there is no usable transition. An empty list means the item transitioned but
-   * spent no time in an in-progress state (data, but zero hours).
-   */
-  private static List<long[]> inProgressSpans(
-      JsonNode updates, Predicate<String> inProgress, Instant now) {
-    List<StateAt> states = collectStates(updates, now);
-    if (states.size() < 2) {
-      return null; // never transitioned → no data
-    }
-    states.sort(Comparator.comparing(StateAt::at));
-    if (!states.get(0).at().isBefore(states.get(states.size() - 1).at())) {
-      return null; // all transitions at one instant → no measurable data
-    }
-    List<long[]> spans = new ArrayList<>();
-    for (int i = 0; i < states.size(); i++) {
-      Instant from = states.get(i).at();
-      Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
-      if (inProgress.test(states.get(i).state()) && from.isBefore(to)) {
-        spans.add(new long[] {from.toEpochMilli(), to.toEpochMilli()});
-      }
-    }
-    return spans;
-  }
-
-  private static List<StateAt> collectStates(JsonNode updates, Instant now) {
-    List<StateAt> states = new ArrayList<>();
-    for (JsonNode u : updates.path("value")) {
-      JsonNode sv = u.path("fields").path("System.State");
-      if (!sv.hasNonNull("newValue") || !u.hasNonNull("revisedDate")) {
-        continue;
-      }
-      Instant at = parseInstant(u.path("revisedDate").asText());
-      if (at == null || at.isAfter(now)) {
-        continue; // unparseable or the "9999" open-revision sentinel
-      }
-      states.add(new StateAt(at, sv.path("newValue").asText("")));
-    }
-    return states;
-  }
-
-  private record StateAt(Instant at, String state) {}
 
   // ---- helpers ----
 
@@ -361,7 +271,7 @@ final class AdoMapper {
     return Instant.parse(node.path(field).asText());
   }
 
-  private static Instant parseInstant(String raw) {
+  static Instant parseInstant(String raw) {
     try {
       return Instant.parse(raw);
     } catch (RuntimeException e) {
@@ -369,11 +279,11 @@ final class AdoMapper {
     }
   }
 
-  private static double hoursBetween(Instant a, Instant b) {
+  static double hoursBetween(Instant a, Instant b) {
     return Math.max(0, Duration.between(a, b).toMinutes()) / 60.0;
   }
 
-  private static String num(double v) {
+  static String num(double v) {
     return Double.toString(Math.round(v * 100.0) / 100.0);
   }
 

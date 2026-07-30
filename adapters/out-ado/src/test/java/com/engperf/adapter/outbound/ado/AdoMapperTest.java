@@ -11,7 +11,7 @@ import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.function.Predicate;
+import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
 /** Maps recorded Azure DevOps JSON to the RawEvent contract the metric groups consume. */
@@ -120,28 +120,40 @@ class AdoMapperTest {
     assertThat(AdoMapper.deploy(build, hml, "")).isEmpty(); // HML is not production
   }
 
+  /** New → Blocked → Active → Code Review → Closed, classified by name into flow segments. */
+  private static final Function<String, Segment> CLASSIFY =
+      name ->
+          switch (name) {
+            case "Closed", "Done", "Removed" -> Segment.DONE;
+            case "New", "Blocked" -> Segment.WAITING;
+            case "Code Review" -> Segment.REVIEW;
+            default -> Segment.ACTIVE;
+          };
+
   @Test
-  void workItemMapsTypeAndInProgressTimeFromHistory() {
+  void workItemDerivesActiveWaitCycleAndLeadFromHistory() {
     JsonNode updates =
         updates(
-            stateUpdate("2026-06-10T10:00:00Z", "New"),
-            stateUpdate("2026-06-10T11:00:00Z", "Active"),
-            stateUpdate("2026-06-10T13:00:00Z", "Closed"));
-    Predicate<String> inProgress = "Active"::equals;
+            stateUpdate("2026-06-10T10:00:00Z", "New"), // backlog before work → ignored
+            stateUpdate("2026-06-10T11:00:00Z", "Active"), // active 11:00 → 12:00
+            stateUpdate("2026-06-10T12:00:00Z", "Blocked"), // wait 12:00 → 13:00
+            stateUpdate("2026-06-10T13:00:00Z", "Code Review"), // review 13:00 → 14:00
+            stateUpdate("2026-06-10T14:00:00Z", "Closed")); // completion
     Instant now = Instant.parse("2026-06-11T00:00:00Z");
 
-    RawEvent e = AdoMapper.workItem(fixture("workitem.json"), updates, inProgress, now);
+    RawEvent e = AdoMapper.workItem(fixture("workitem.json"), updates, CLASSIFY, now);
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
-    assertThat(e.detail().get("type")).isEqualTo("bug");
-    assertThat(e.value()).isEqualTo(2.0); // in Active 11:00 → Closed 13:00 = 2h in progress
-    assertThat(e.detail().get("hours"))
-        .isEqualTo("2.0"); // same value on the type-distribution channel
-    long a = Instant.parse("2026-06-10T11:00:00Z").toEpochMilli();
-    long b = Instant.parse("2026-06-10T13:00:00Z").toEpochMilli();
-    assertThat(e.detail().get("spans"))
-        .isEqualTo(a + ":" + b); // in-progress interval, for period-clipped views
+    assertThat(e.occurredAt().toString()).isEqualTo("2026-06-10T14:00:00Z"); // dated at completion
+    assertThat(e.detail().get("active_h")).isEqualTo("1.0"); // 11:00 → 12:00
+    assertThat(e.detail().get("wait_h")).isEqualTo("1.0"); // Blocked 12:00 → 13:00
+    assertThat(e.detail().get("review_h")).isEqualTo("1.0"); // Code Review 13:00 → 14:00
+    assertThat(e.detail().get("cycle_h")).isEqualTo("3.0"); // first work 11:00 → done 14:00
+    assertThat(e.detail().get("lead_h")).isEqualTo("5.0"); // created 09:00 → done 14:00
+    assertThat(e.detail().get("completed")).isEqualTo("1");
+    assertThat(e.detail().get("num")).isEqualTo("2.0"); // working = active + review
+    assertThat(e.detail().get("den")).isEqualTo("3.0"); // working + wait
   }
 
   @Test
@@ -149,21 +161,23 @@ class AdoMapperTest {
     JsonNode oneState = updates(stateUpdate("2026-06-10T10:00:00Z", "New"));
     RawEvent e =
         AdoMapper.workItem(
-            fixture("workitem.json"), oneState, s -> true, Instant.parse("2026-06-11T00:00:00Z"));
+            fixture("workitem.json"), oneState, CLASSIFY, Instant.parse("2026-06-11T00:00:00Z"));
     assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
-    assertThat(e.detail()).doesNotContainKey("hours");
+    assertThat(e.detail()).doesNotContainKey("active_h").doesNotContainKey("completed");
   }
 
   @Test
-  void inProgressHoursIsEmptyWhenAllTransitionsAtOneInstant() {
-    JsonNode sameInstant =
+  void openItemInProgressCarriesActiveButNoCompletion() {
+    JsonNode updates =
         updates(
             stateUpdate("2026-06-10T10:00:00Z", "New"),
-            stateUpdate("2026-06-10T10:00:00Z", "Closed"));
-    assertThat(
-            AdoMapper.inProgressHours(
-                sameInstant, s -> true, Instant.parse("2026-06-11T00:00:00Z")))
-        .isEmpty(); // created and closed together → no measurable data
+            stateUpdate("2026-06-10T11:00:00Z", "Active")); // still active, never closed
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem.json"), updates, CLASSIFY, Instant.parse("2026-06-10T13:00:00Z"));
+    assertThat(e.detail().get("in_progress")).isEqualTo("1");
+    assertThat(e.detail()).doesNotContainKey("completed").doesNotContainKey("cycle_h");
+    assertThat(e.detail().get("active_h")).isEqualTo("2.0"); // 11:00 → now 13:00
   }
 
   private static String stateUpdate(String date, String state) {

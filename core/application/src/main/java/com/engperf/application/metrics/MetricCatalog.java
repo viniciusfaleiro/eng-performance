@@ -5,9 +5,12 @@ import com.engperf.domain.metrics.AttributionScope;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.TierBands;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * The metric catalog. Non-DORA metrics are representative S3 samples; the four DORA metrics carry
@@ -20,13 +23,19 @@ public final class MetricCatalog {
   /** The DORA metrics in dashboard order. */
   public static final List<String> DORA = List.of("deploy_freq", "lead_time", "cfr", "mttr");
 
-  /** The Fluxo metrics in dashboard-card order. */
+  /** The Fluxo metrics in dashboard-card order: board delivery metrics, then code drill-downs. */
   public static final List<String> FLUXO =
-      List.of("cycle_time", "throughput", "wip", "pr_review_time", "pr_size", "flow_efficiency");
+      List.of(
+          "cycle_time",
+          "throughput",
+          "flow_lead_time",
+          "wip",
+          "flow_efficiency",
+          "pr_review_time",
+          "pr_size");
 
-  /** The four cycle-time phases, in flow order (review reuses {@code pr_review_time}). */
-  public static final List<String> PHASES =
-      List.of("coding_time", "pickup_time", "pr_review_time", "deploy_time");
+  /** The cycle-time segments, in flow order — from the work item's own board states. */
+  public static final List<String> PHASES = List.of("waiting_time", "active_time", "review_time");
 
   /** The IA metrics in dashboard-card order (impact is composed, not a raw engine metric). */
   public static final List<String> IA = List.of("ai_share", "ai_adoption");
@@ -51,13 +60,15 @@ public final class MetricCatalog {
       List.of(
           // ---- Fluxo / IA samples (no tiers) ----
           new MetricDefinition(
+              // Throughput = count of work items completed (terminal) in the period, via the
+              // `completed` population; a work item is the unit of delivered value, not a PR.
               "throughput",
               "Throughput",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.SUM,
-              "PRs",
+              "itens",
               Direction.HIGHER_BETTER),
           new MetricDefinition(
               "pr_review_time",
@@ -100,10 +111,11 @@ public final class MetricCatalog {
               Direction.LOWER_BETTER),
           // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
           new MetricDefinition(
+              // Cycle Time = median of the work item's first-active → terminal duration.
               "cycle_time",
-              "Cycle Time (código)",
+              "Cycle Time",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.MEDIAN,
               "cycle_h",
@@ -111,35 +123,47 @@ public final class MetricCatalog {
               Direction.LOWER_BETTER,
               null),
           new MetricDefinition(
-              "coding_time",
-              "Coding",
+              // Flow Lead Time = median of creation → completion; distinct from DORA lead_time.
+              "flow_lead_time",
+              "Lead Time (fluxo)",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.MEDIAN,
-              "coding_h",
+              "lead_h",
               "h",
               Direction.LOWER_BETTER,
               null),
           new MetricDefinition(
-              "pickup_time",
-              "PR Pickup",
+              "active_time",
+              "Ativo",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.MEDIAN,
-              "pickup_h",
+              "active_h",
               "h",
               Direction.LOWER_BETTER,
               null),
           new MetricDefinition(
-              "deploy_time",
-              "Deploy",
+              "waiting_time",
+              "Espera",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.MEDIAN,
-              "deploy_h",
+              "wait_h",
+              "h",
+              Direction.LOWER_BETTER,
+              null),
+          new MetricDefinition(
+              "review_time",
+              "Review",
+              "fluxo",
+              EventType.WORKITEM,
+              AttributionScope.PERSON,
+              Aggregation.MEDIAN,
+              "review_h",
               "h",
               Direction.LOWER_BETTER,
               null),
@@ -155,16 +179,39 @@ public final class MetricCatalog {
               Direction.LOWER_BETTER,
               null),
           new MetricDefinition(
+              // Flow Efficiency = working time / (working + wait) over the work item's board life.
               "flow_efficiency",
               "Flow Efficiency",
               "fluxo",
-              EventType.PR,
+              EventType.WORKITEM,
               AttributionScope.PERSON,
               Aggregation.RATIO,
               MetricDefinition.VALUE,
               "%",
               Direction.HIGHER_BETTER,
               null),
+          // Code drill-downs kept on the PR: the AI dashboard compares AI vs non-AI over these
+          // (the AI flag lives on commits/PRs, not work items). Not shown as Fluxo cards.
+          new MetricDefinition(
+              "code_cycle_time",
+              "Cycle Time (código)",
+              "fluxo",
+              EventType.PR,
+              AttributionScope.PERSON,
+              Aggregation.MEDIAN,
+              "cycle_h",
+              "h",
+              Direction.LOWER_BETTER,
+              null),
+          new MetricDefinition(
+              "code_throughput",
+              "PRs concluídos",
+              "fluxo",
+              EventType.PR,
+              AttributionScope.PERSON,
+              Aggregation.SUM,
+              "PRs",
+              Direction.HIGHER_BETTER),
           // ---- DORA (with benchmark tiers) ----
           new MetricDefinition(
               "deploy_freq",
@@ -238,5 +285,26 @@ public final class MetricCatalog {
 
   private List<MetricDefinition> byKeys(List<String> keys) {
     return keys.stream().map(this::find).flatMap(Optional::stream).toList();
+  }
+
+  /**
+   * The event population a metric aggregates over — a filter beyond its event type. Throughput and
+   * Cycle Time count only **completed** work items; WIP counts only **in-progress** ones; every
+   * other metric aggregates its whole event type. The engine already supports a population
+   * predicate (used for the AI cohort); this wires it per metric.
+   */
+  public Predicate<RawEvent> population(String key) {
+    return POPULATIONS.getOrDefault(key, e -> true);
+  }
+
+  private static final Map<String, Predicate<RawEvent>> POPULATIONS =
+      Map.of(
+          "throughput", completed(),
+          "cycle_time", completed(),
+          "flow_lead_time", completed(),
+          "wip", e -> "1".equals(e.detail().get("in_progress")));
+
+  private static Predicate<RawEvent> completed() {
+    return e -> "1".equals(e.detail().get("completed"));
   }
 }

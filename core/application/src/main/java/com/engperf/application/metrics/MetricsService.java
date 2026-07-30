@@ -53,7 +53,16 @@ public final class MetricsService implements MetricsQueryUseCase {
     List<MetricCard> cards = new ArrayList<>();
     for (MetricDefinition def : catalog.all()) {
       List<RawEvent> window = fetch(def, frequency, reference);
-      cards.add(MetricsEngine.card(index, window, def, nodeId, frequency, reference, BUCKETS));
+      cards.add(
+          MetricsEngine.card(
+              index,
+              window,
+              def,
+              nodeId,
+              frequency,
+              reference,
+              BUCKETS,
+              catalog.population(def.key())));
     }
     return cards;
   }
@@ -63,7 +72,15 @@ public final class MetricsService implements MetricsQueryUseCase {
     MetricDefinition def = definition(metricKey);
     LocalDate reference = LocalDate.now(clock);
     List<RawEvent> window = fetch(def, frequency, reference);
-    return MetricsEngine.series(buildIndex(), window, def, nodeId, frequency, reference, BUCKETS);
+    return MetricsEngine.series(
+        buildIndex(),
+        window,
+        def,
+        nodeId,
+        frequency,
+        reference,
+        BUCKETS,
+        catalog.population(metricKey));
   }
 
   @Override
@@ -80,7 +97,7 @@ public final class MetricsService implements MetricsQueryUseCase {
         frequency,
         reference,
         BUCKETS,
-        e -> e.ai() == aiAssisted);
+        catalog.population(metricKey).and(e -> e.ai() == aiAssisted));
   }
 
   private MetricDefinition definition(String metricKey) {

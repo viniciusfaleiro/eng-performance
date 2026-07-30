@@ -1,14 +1,4 @@
-# flow-dashboard Specification
-
-## Purpose
-The Fluxo metric group over the metrics engine, anchored on the **work item** (Azure Boards) for the
-delivery metrics — Cycle Time (state segments), Throughput (completed items), WIP (count in
-progress), Flow Efficiency (active over active+wait) and Flow Lead Time (created→done) — with the PR
-review time and PR size kept as code drill-downs, plus the composed, scope-enforced Fluxo dashboard
-endpoint + screen with a coaching-safe throughput×cycle comparison of the node's children. Created
-by archiving change grupo-fluxo; re-anchored on the board by change flow-metrics-from-board.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: The Fluxo metrics are available
 The system SHALL provide the Fluxo metrics computed by the metrics engine, anchored on the **work
@@ -64,6 +54,8 @@ reflected in coverage, never counted as zero.
 - **WHEN** some of a node's work items have no usable state transition
 - **THEN** they are excluded from Flow Efficiency and lower its coverage, rather than counted as zero
 
+## ADDED Requirements
+
 ### Requirement: Throughput counts completed work items
 The system SHALL compute **Throughput** as the number of work items that reached a **terminal**
 state within the period, attributed as-of the completion, higher-is-better. It SHALL NOT count pull
@@ -109,36 +101,12 @@ counted.
 - **WHEN** one person has many work items open at once
 - **THEN** WIP counts the items and is not multiplied by each item's open duration
 
-### Requirement: The Fluxo scatter compares structures only
-The system SHALL provide a throughput×cycle comparison of the node's children — at the
-overview the verticals, within a vertical its teams, and for a team no public
-comparison. The system SHALL NOT compare people publicly (individual comparison is
-coaching-only). Entries SHALL include only nodes within the caller's access scope.
+## REMOVED Requirements
 
-#### Scenario: Overview scatter compares verticals
-- **WHEN** the scatter is requested at the overview node
-- **THEN** each vertical appears with its throughput and cycle time, and no people appear
-
-#### Scenario: A team produces no public scatter
-- **WHEN** the scatter is requested for a team
-- **THEN** no per-person comparison is produced
-
-### Requirement: The Fluxo dashboard is composed and scope-enforced
-The system SHALL expose a composed Fluxo dashboard for a node and frequency returning
-the Fluxo cards (value, evolution, coverage), the four-phase breakdown, and the
-throughput×cycle scatter of the node's children, enforcing the access scope (403 for a
-node outside scope; individuals coaching-only). The served Fluxo screen SHALL render
-this real engine data and match the prototype's design for the shipped parts at pixel
-parity, while the numbers reflect the engine.
-
-#### Scenario: Dashboard returned for an in-scope node
-- **WHEN** an authenticated user requests the Fluxo dashboard for a node within their scope
-- **THEN** the cards, phase breakdown and children scatter are returned
-
-#### Scenario: Out-of-scope node denied
-- **WHEN** a user requests the Fluxo dashboard for a node outside their scope
-- **THEN** the system responds 403
-
-#### Scenario: Fluxo screen chrome matches the prototype
-- **WHEN** the Fluxo dashboard is rendered for an admin
-- **THEN** its card grid, phase block, ranking and scatter layout match the prototype pixel-for-pixel while the numbers reflect the engine
+### Requirement: WIP measures time spent in progress states
+**Reason**: Superseded by a count-based WIP. Summing/median of each item's in-progress hours
+inflated the value for many concurrent or long-open items and read in hours despite an "items"
+intent.
+**Migration**: WIP now reads the count of work items in progress in the period (see the new
+"WIP counts work items in progress" requirement); the in-progress duration remains available through
+Cycle Time and the active/wait segments.

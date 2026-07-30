@@ -2,6 +2,7 @@
   "id": "555",
   "fields": {
     "System.WorkItemType": "Bug",
+    "System.CreatedDate": "2026-06-10T09:00:00Z",
     "System.ChangedDate": "2026-06-10T12:00:00Z",
     "System.AssignedTo": { "uniqueName": "ana@empresa.com" },
     "Microsoft.VSTS.Scheduling.CompletedWork": 6.0

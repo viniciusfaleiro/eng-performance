@@ -105,7 +105,20 @@ public final class MetricsEngine {
       Frequency freq,
       LocalDate reference,
       int bucketCount) {
-    MetricSeries s = series(index, events, def, nodeId, freq, reference, bucketCount);
+    return card(index, events, def, nodeId, freq, reference, bucketCount, e -> true);
+  }
+
+  /** As {@link #card}, but only events matching {@code population} feed the metric. */
+  public static MetricCard card(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Frequency freq,
+      LocalDate reference,
+      int bucketCount,
+      Predicate<RawEvent> population) {
+    MetricSeries s = series(index, events, def, nodeId, freq, reference, bucketCount, population);
     SeriesPoint lastPoint = s.points().get(s.points().size() - 1);
     return new MetricCard(def, lastPoint.value(), s.coverage());
   }
