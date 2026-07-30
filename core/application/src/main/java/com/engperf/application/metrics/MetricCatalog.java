@@ -87,15 +87,16 @@ public final class MetricCatalog {
               "%",
               Direction.HIGHER_BETTER),
           new MetricDefinition(
-              // WIP = median time a work item spends in in-progress states (derived from the ADO
-              // state history), reading the WORKITEM value; lower-is-better, in hours.
+              // WIP = number of work items in progress in the period (count of WORKITEM events in
+              // the bucket). A count is concurrency-safe: many simultaneous items can't inflate it
+              // the way summing each item's hours did. Lower-is-better; unit "itens", not hours.
               "wip",
               "Work in Progress",
               "fluxo",
               EventType.WORKITEM,
               AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "h",
+              Aggregation.SUM,
+              "itens",
               Direction.LOWER_BETTER),
           // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
           new MetricDefinition(

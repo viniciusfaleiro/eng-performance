@@ -18,13 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
  * Composes the individual (person) contribution panel from that person's raw events: a 12-month
  * commit calendar, PR assertiveness (first-pass approvals), the reused delivery series, code-review
  * contribution (given vs received), the work-type distribution, and recent activity for the drawer.
- * Mirrors {@link MetricsService} in taking the structure/event ports and a fixed {@link Clock}.
  */
 public final class IndividualDashboardService implements IndividualDashboardUseCase {
 
@@ -62,12 +62,11 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     Set<String> identities = identitiesOf(personNodeId);
 
     LocalDate reference = LocalDate.now(clock);
-    // The contribution calendar is a fixed rolling 12-month map (GitHub-style), intentionally
-    // independent of the selected frequency — it always shows the trailing year.
+    // Calendar = fixed rolling 12-month map (GitHub-style), independent of the selected frequency.
     Instant calFrom = startOf(reference.minusDays(CALENDAR_DAYS - 1L));
     Instant calTo = startOf(reference.plusDays(1));
-    // Everything else tracks the SELECTED period = the current bucket of `frequency`, matching the
-    // delivery tiles' current value and the panel's "vs. período anterior" framing.
+    // Everything else tracks the SELECTED period = the current bucket of `frequency` (like the
+    // delivery tiles' current value / the panel's "vs. período anterior" framing).
     LocalDate periodStart = frequency.bucketStart(reference);
     Instant periodFrom = startOf(periodStart);
     Instant periodTo = startOf(frequency.nextBucketStart(periodStart));
@@ -94,8 +93,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
             within(reviewsReceived, periodFrom, periodTo)),
         workTypes(within(workItems, periodFrom, periodTo), periodFrom, periodTo),
         activity(commitsP, prsP),
-        // Coaching flags look at the trailing 12 months, not the selected bucket, so a quiet day
-        // does not read as "no activity / unmapped identity".
+        // Coaching flags use the trailing 12 months so a quiet day isn't read as "no activity".
         conventions(
             within(commits, calFrom, calTo),
             within(prs, calFrom, calTo),
@@ -114,9 +112,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   }
 
   /**
-   * Coaching flags: which agreed conventions (docs/convencoes-adocao-times.xlsx) this person's own
-   * activity suggests may be broken, so a manager knows what to check with the dev. Heuristics over
-   * the person's events only — never compared with peers. Only raised flags are returned.
+   * Coaching flags: which agreed conventions this person's own activity suggests may be broken (see
+   * docs/convencoes-adocao-times.xlsx). Heuristics over the person's events; only raised flags.
    */
   private static List<ConventionFlag> conventions(
       List<RawEvent> commits,
@@ -293,14 +290,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     for (Map.Entry<String, String> t : WORK_TYPES) {
       hoursByType.put(t.getKey(), 0.0);
     }
-    for (RawEvent w : workItems) {
-      Double hours = itemHours(w, from, to);
-      if (hours == null) {
-        continue; // no usable state history → "no data", excluded from the distribution (not zero)
-      }
-      String type = w.detail().getOrDefault("type", "docs");
-      hoursByType.merge(hoursByType.containsKey(type) ? type : "docs", hours, Double::sum);
-    }
+    prorate(collectInProgress(workItems, from, to, hoursByType), hoursByType);
     double total = hoursByType.values().stream().mapToDouble(Double::doubleValue).sum();
     List<WorkTypeSlice> slices = new ArrayList<>();
     for (Map.Entry<String, String> t : WORK_TYPES) {
@@ -311,41 +301,67 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return slices;
   }
 
-  /**
-   * The item's in-progress hours <b>within</b> {@code [from, to)} — clipped from its stored {@code
-   * spans} so a long-open item counts only its overlap with the period, not its whole life. Falls
-   * back to the unclipped total for legacy events with no spans; {@code null} when the item has no
-   * usable state history (excluded from the distribution as "no data", never a silent zero).
-   */
-  private static Double itemHours(RawEvent w, Instant from, Instant to) {
-    String spans = w.detail().get("spans");
-    if (spans != null) {
-      return clippedHours(spans, from, to);
+  private record Span(long start, long end, String type) {}
+
+  // Each item's in-progress spans clipped to [from,to), tagged with type. Legacy events with no
+  // spans fall back to their (unclipped) total hours; items with no usable history are skipped.
+  private static List<Span> collectInProgress(
+      List<RawEvent> items, Instant from, Instant to, Map<String, Double> hoursByType) {
+    long lo0 = from.toEpochMilli();
+    long hi0 = to.toEpochMilli();
+    List<Span> spans = new ArrayList<>();
+    for (RawEvent w : items) {
+      String t0 = w.detail().getOrDefault("type", "docs");
+      String type = hoursByType.containsKey(t0) ? t0 : "docs";
+      String raw = w.detail().get("spans");
+      if (raw == null) {
+        if (w.detail().containsKey("hours")) {
+          hoursByType.merge(type, doubleDetail(w, "hours"), Double::sum);
+        }
+        continue;
+      }
+      for (String part : raw.split(",")) {
+        int c = part.indexOf(':');
+        if (c < 0) {
+          continue;
+        }
+        long a = Math.max(Long.parseLong(part.substring(0, c)), lo0);
+        long b = Math.min(Long.parseLong(part.substring(c + 1)), hi0);
+        if (b > a) {
+          spans.add(new Span(a, b, type));
+        }
+      }
     }
-    return w.detail().containsKey("hours") ? doubleDetail(w, "hours") : null;
+    return spans;
   }
 
-  /**
-   * Sums the overlap of each {@code from:to} epoch-milli span with {@code [windowFrom, windowTo)}.
-   */
-  private static double clippedHours(String spans, Instant windowFrom, Instant windowTo) {
-    long lo0 = windowFrom.toEpochMilli();
-    long hi0 = windowTo.toEpochMilli();
-    double millis = 0;
-    for (String part : spans.split(",")) {
-      int c = part.indexOf(':');
-      if (c < 0) {
-        continue; // empty (transitioned but no in-progress time) → contributes zero
+  // Splits concurrent wall-clock time among the items in progress at each instant (sweep line), so
+  // simultaneous items share the period instead of each counting it in full — the total can never
+  // exceed the wall-clock the person had at least one item in progress.
+  private static void prorate(List<Span> spans, Map<String, Double> hoursByType) {
+    TreeSet<Long> marks = new TreeSet<>();
+    for (Span s : spans) {
+      marks.add(s.start());
+      marks.add(s.end());
+    }
+    Long[] pts = marks.toArray(new Long[0]);
+    for (int i = 0; i + 1 < pts.length; i++) {
+      long t0 = pts[i];
+      long t1 = pts[i + 1];
+      List<Span> active = new ArrayList<>();
+      for (Span s : spans) {
+        if (s.start() <= t0 && s.end() >= t1) {
+          active.add(s);
+        }
       }
-      long a = Long.parseLong(part.substring(0, c));
-      long b = Long.parseLong(part.substring(c + 1));
-      long lo = Math.max(a, lo0);
-      long hi = Math.min(b, hi0);
-      if (hi > lo) {
-        millis += hi - lo;
+      if (active.isEmpty()) {
+        continue;
+      }
+      double per = (t1 - t0) / (double) active.size() / 3_600_000.0;
+      for (Span s : active) {
+        hoursByType.merge(s.type(), per, Double::sum);
       }
     }
-    return millis / 3_600_000.0;
   }
 
   private static List<ActivityItem> activity(List<RawEvent> commits, List<RawEvent> prs) {

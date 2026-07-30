@@ -106,23 +106,26 @@ class IndividualDashboardServiceTest {
   }
 
   @Test
-  void workTypeHoursClipToTheSelectedPeriodNotItemLifetime() {
+  void workTypeHoursClipToPeriodAndProrateAcrossConcurrentItems() {
     baseStructure();
-    // One long-open item (in-progress the whole year) whose ChangedDate falls in the current
-    // day/week/month (2026-06-30). Its clipped hours must scale with the selected period.
+    // Two items open in parallel the whole year, both changed in the current period (2026-06-30).
     events.add(
         workItemSpan(
             "id-ana", "2026-06-30", "feature", "2026-01-01T00:00:00Z", "2026-12-31T00:00:00Z"));
+    events.add(
+        workItemSpan(
+            "id-ana", "2026-06-30", "bug", "2026-01-01T00:00:00Z", "2026-12-31T00:00:00Z"));
 
-    assertThat(featureHours(individual.dashboard("p:ana", Frequency.DAILY))).isEqualTo(24.0);
-    assertThat(featureHours(individual.dashboard("p:ana", Frequency.WEEKLY))).isEqualTo(168.0);
-    double monthly = featureHours(individual.dashboard("p:ana", Frequency.MONTHLY));
-    assertThat(monthly).isEqualTo(720.0); // 30 days of June, not the item's ~8736h whole life
-    assertThat(monthly).isLessThan(1000.0);
+    var monthly = individual.dashboard("p:ana", Frequency.MONTHLY).workTypes();
+    double total = monthly.stream().mapToDouble(WorkTypeSlice::hours).sum();
+    // June's ~720h are SHARED by the two concurrent items (360 each) — not 720 each nor ~8736 life.
+    assertThat(total).isEqualTo(720.0);
+    assertThat(typeHours(monthly, "feature")).isEqualTo(360.0);
+    assertThat(typeHours(monthly, "bug")).isEqualTo(360.0);
   }
 
-  private static double featureHours(IndividualDashboard d) {
-    return d.workTypes().stream().filter(t -> t.type().equals("feature")).findFirst().get().hours();
+  private static double typeHours(List<WorkTypeSlice> ws, String type) {
+    return ws.stream().filter(t -> t.type().equals(type)).findFirst().get().hours();
   }
 
   private RawEvent workItemSpan(
