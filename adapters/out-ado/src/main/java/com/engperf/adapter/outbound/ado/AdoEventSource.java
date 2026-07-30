@@ -35,8 +35,7 @@ import org.springframework.stereotype.Component;
  * organizations** — no single configured org. Per repo it fetches PRs and commits; per distinct
  * {@code (organization, project)} it fetches that project's pipeline runs (attributed to their
  * source repo and classified by that repo's production-stage rule) and work items. Mapping to
- * {@link RawEvent} is done by {@link AdoMapper}; the REST paths are verified against a real org
- * during acceptance.
+ * {@link RawEvent} is done by {@link AdoMapper}; REST paths are tuned against a real org.
  */
 @Component
 public final class AdoEventSource implements AdoEventSourcePort {
@@ -113,7 +112,12 @@ public final class AdoEventSource implements AdoEventSourcePort {
           if (before(pr.path("closedDate").asText(""), since)) {
             continue;
           }
-          events.add(AdoMapper.pullRequest(pr));
+          // One extra call per PR (no batch endpoint) for commit timing + size.
+          JsonNode prCommits =
+              client.get(
+                  base + "/pullrequests/" + pr.path("pullRequestId").asLong() + "/commits?" + API,
+                  token);
+          events.add(AdoMapper.pullRequest(pr, prCommits));
           events.addAll(AdoMapper.reviews(pr));
           prs++;
         }
@@ -188,9 +192,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
                 org + "/" + proj + "/_apis/build/builds?minTime=" + enc(sinceIso) + "&" + API,
                 token))) {
       String sourceRepo = run.path("repository").path("name").asText("");
-      // ADO returns the repo name lower-cased; registered keys keep their original case, so match
-      // case-insensitively — otherwise a real production build is silently dropped as
-      // "unregistered".
+      // ADO returns the repo name lower-cased; registered keys keep their case — match
+      // case-insensitively, else a real production build is silently dropped as "unregistered".
       String stageRule = stageBySourceRepo.get(sourceRepo.toLowerCase(Locale.ROOT));
       if (stageRule == null) {
         continue; // a run whose source repository is not registered → skipped

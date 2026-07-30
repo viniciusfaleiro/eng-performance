@@ -26,8 +26,12 @@ final class AdoMapper {
 
   private AdoMapper() {}
 
-  /** A pull request → one PR event (cycle time + first-pass approval + deep-link). */
-  static RawEvent pullRequest(JsonNode pr) {
+  /**
+   * A pull request → one PR event (cycle time + first-pass approval + deep-link). {@code commits}
+   * is the PR's commit list (from {@code .../pullRequests/{id}/commits}); it feeds the active
+   * coding time, the flow-efficiency ratio and the PR size.
+   */
+  static RawEvent pullRequest(JsonNode pr, JsonNode commits) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -35,13 +39,11 @@ final class AdoMapper {
 
     Map<String, String> detail = new HashMap<>();
     detail.put("cycle_h", num(cycleH));
-    // Without commit-level timing we cannot split the four phases precisely; attribute the whole
-    // cycle to review here and refine during acceptance. pr_review_time reads numericValue below.
-    detail.put("review_h", num(cycleH));
     detail.put("first_pass", firstPass(pr) ? "1" : "0");
     detail.put("repo", pr.path("repository").path("name").asText(""));
     detail.put("summary", pr.path("title").asText(""));
     detail.put("url", webLink(pr));
+    applyCommitStats(detail, commits, cycleH);
 
     return new RawEvent(
         "pr:" + pr.path("pullRequestId").asLong(),
@@ -53,6 +55,56 @@ final class AdoMapper {
         "review",
         false,
         detail);
+  }
+
+  /**
+   * Derives the PR's active coding time, flow-efficiency ratio and size from its commits. {@code
+   * coding_h} = first→last commit; {@code flow_efficiency} = coding/cycle (active vs. waiting for
+   * review/merge, via {@code num/den}); size ({@code lines}) is the summed changed lines when the
+   * commits expose {@code changeCounts}, else the commit count as a coarse proxy. Exact ADO fields
+   * are best-effort and tuned against a real org during acceptance; a PR with no commit data is
+   * excluded from flow_efficiency (num=den=0) and leaves {@code lines} absent (no data).
+   */
+  private static void applyCommitStats(
+      Map<String, String> detail, JsonNode commits, double cycleH) {
+    Instant first = null;
+    Instant last = null;
+    long lines = 0;
+    boolean hasCounts = false;
+    int count = 0;
+    for (JsonNode c : commits.path("value")) {
+      Instant at = commitDate(c);
+      if (at == null) {
+        continue;
+      }
+      count++;
+      first = (first == null || at.isBefore(first)) ? at : first;
+      last = (last == null || at.isAfter(last)) ? at : last;
+      JsonNode cc = c.path("changeCounts");
+      if (cc.isObject()) {
+        hasCounts = true;
+        lines += cc.path("Add").asLong(0) + cc.path("Edit").asLong(0) + cc.path("Delete").asLong(0);
+      }
+    }
+    if (count == 0) {
+      detail.put("num", "0"); // no commit data → contributes nothing to flow_efficiency
+      detail.put("den", "0");
+      return;
+    }
+    double codingH = hoursBetween(first, last);
+    detail.put("coding_h", num(codingH));
+    detail.put("num", num(codingH)); // flow_efficiency numerator = active coding time
+    detail.put("den", num(cycleH)); //                  denominator = whole cycle
+    detail.put("lines", Long.toString(hasCounts ? lines : count));
+  }
+
+  private static Instant commitDate(JsonNode c) {
+    JsonNode author = c.path("author");
+    if (author.hasNonNull("date")) {
+      return parseInstant(author.path("date").asText());
+    }
+    JsonNode committer = c.path("committer");
+    return committer.hasNonNull("date") ? parseInstant(committer.path("date").asText()) : null;
   }
 
   /** A pull request's reviewer votes → one REVIEW event each (given by the reviewer). */

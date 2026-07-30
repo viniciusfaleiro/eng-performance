@@ -22,7 +22,13 @@ class AdoMapperTest {
   @Test
   void pullRequestMapsCycleFirstPassAndLink() {
     JsonNode pr = fixture("pr.json");
-    RawEvent e = AdoMapper.pullRequest(pr);
+    JsonNode commits =
+        json(
+            "{\"value\":[{\"author\":{\"date\":\"2026-06-10T10:00:00Z\"},"
+                + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
+                + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
+                + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
+    RawEvent e = AdoMapper.pullRequest(pr, commits);
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -32,6 +38,18 @@ class AdoMapperTest {
     assertThat(e.detail().get("first_pass")).isEqualTo("1"); // approved, no changes requested
     assertThat(e.detail().get("repo")).isEqualTo("checkout-service");
     assertThat(e.detail().get("url")).contains("pullrequest/42");
+    assertThat(e.detail().get("coding_h")).isEqualTo("3.0"); // first 10:00 → last 13:00 commit
+    assertThat(e.detail().get("lines")).isEqualTo("20"); // 10+5+2 + 3+0+0 changed lines
+    assertThat(e.detail().get("num")).isEqualTo("3.0"); // flow_efficiency = coding 3h / cycle 6h
+    assertThat(e.detail().get("den")).isEqualTo("6.0");
+  }
+
+  @Test
+  void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
+    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"));
+    assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
+    assertThat(e.detail().get("den")).isEqualTo("0");
+    assertThat(e.detail()).doesNotContainKey("lines"); // size is "no data", not a fake zero
   }
 
   @Test
