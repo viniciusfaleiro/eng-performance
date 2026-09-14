@@ -355,6 +355,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 .login-form input:focus{outline:none;border-color:var(--primary);}
 .login-btn{justify-content:center;padding:12px;margin-top:4px;font-size:14px;width:100%;}
 .login-hint{text-align:center;font-size:11.5px;color:var(--muted);}
+.login-link{display:block;width:100%;text-align:center;margin-top:16px;background:none;border:none;color:var(--primary);font-size:12.5px;cursor:pointer;padding:4px;}
+.login-link:hover{text-decoration:underline;}
+.lv-hidden{display:none;}
 /* Admin badges + coverage */
 .badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;border:1px solid var(--outline);white-space:nowrap;}
 .badge.role{background:var(--surface-2);color:var(--on-surface);}
@@ -413,14 +416,36 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 <div id="login" class="login">
   <div class="login-card">
     <div class="login-brand"><div class="brand-mark">EP</div><div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps · protótipo</div></div></div>
-    <div class="login-title">Entrar</div>
-    <div class="login-sub">Acesse com seu email e senha.</div>
-    <form id="loginForm" class="login-form" autocomplete="on">
-      <label>Email<input id="loginEmail" type="email" value="admin@empresa.com" autocomplete="username"></label>
-      <label>Senha<input id="loginPass" type="password" value="prototipo" autocomplete="current-password"></label>
-      <button class="btn login-btn" type="submit">Entrar</button>
-      <div class="login-hint">protótipo · qualquer credencial entra</div>
-    </form>
+    <div id="loginPane">
+      <div class="login-title">Entrar</div>
+      <div class="login-sub">Acesse com seu email e senha.</div>
+      <form id="loginForm" class="login-form" autocomplete="on">
+        <label>Email<input id="loginEmail" type="email" value="admin@empresa.com" autocomplete="username"></label>
+        <label>Senha<input id="loginPass" type="password" value="prototipo" autocomplete="current-password"></label>
+        <button class="btn login-btn" type="submit">Entrar</button>
+        <div class="login-hint">protótipo · qualquer credencial entra</div>
+      </form>
+      <button type="button" class="login-link" id="forgotLink">Esqueci minha senha</button>
+    </div>
+    <div id="forgotPane" class="lv-hidden">
+      <div class="login-title">Redefinir senha</div>
+      <div class="login-sub">Informe seu email. Se houver uma conta cadastrada, enviaremos um link de redefinição.</div>
+      <form id="forgotForm" class="login-form" autocomplete="on">
+        <label>Email<input id="forgotEmail" type="email" autocomplete="username"></label>
+        <button class="btn login-btn" type="submit">Enviar link</button>
+        <div class="login-hint" id="forgotHint">enviaremos um link se o email estiver cadastrado</div>
+      </form>
+      <button type="button" class="login-link" id="backToLoginFromForgot">Voltar para o login</button>
+    </div>
+    <div id="resetPane" class="lv-hidden">
+      <div class="login-title">Definir nova senha</div>
+      <div class="login-sub">Escolha uma nova senha para sua conta.</div>
+      <form id="resetForm" class="login-form" autocomplete="off">
+        <label>Nova senha<input id="resetPass" type="password" autocomplete="new-password"></label>
+        <button class="btn login-btn" type="submit">Salvar nova senha</button>
+        <div class="login-hint" id="resetHint">o link vale por 60 minutos e só pode ser usado uma vez</div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -526,7 +551,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   rebuildStructure();
 
   /* ---------- API wiring (S1: structure/admin) ---------- */
-  let NAME2ID={},VNAME2ID={},TNAME2ID={},ADO_CFG={},AI_CFG={};
+  let NAME2ID={},VNAME2ID={},TNAME2ID={},ADO_CFG={},AI_CFG={},EMAIL_CFG={enabled:false,transport:"none",passwordSet:false};
   const ROLE_PT={admin:"Admin",exec:"Exec",manager:"Gestor",contributor:"Colaborador"};
   const STATUS_PT={active:"Ativo",invited:"Convidado",disabled:"Desativado"};
   const ROLE_API={Admin:"admin",Exec:"exec",Gestor:"manager",Colaborador:"contributor"};
@@ -542,7 +567,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const jdel=(u)=>fetch(u,{method:"DELETE",headers:authHeaders()}).then(jcheck);
   const escHtml=(s)=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
   const apiErr=(e)=>{const m=(e&&e.message)||String(e);
-    const pt=/email already registered/i.test(m)?"Email já cadastrado":/valid email required|email must contain/i.test(m)?"Email inválido":/password must not be blank/i.test(m)?"Senha obrigatória":/not found/i.test(m)?"Registro não encontrado":/manager is not a registered person/i.test(m)?"Gestor precisa ser uma pessoa cadastrada":m;
+    const pt=/email already registered/i.test(m)?"Email já cadastrado":/valid email required|email must contain/i.test(m)?"Email inválido":/password must not be blank/i.test(m)?"Senha obrigatória":/not found/i.test(m)?"Registro não encontrado":/manager is not a registered person/i.test(m)?"Gestor precisa ser uma pessoa cadastrada":/CONFIG_ENCRYPTION_KEY/i.test(m)?"Defina a variável de ambiente CONFIG_ENCRYPTION_KEY antes de salvar a senha do SMTP":/port must be between/i.test(m)?"Porta inválida (1–65535)":/fromAddress must contain/i.test(m)?"Remetente inválido":/failed to send email via SMTP/i.test(m)?"Falha ao enviar pelo SMTP configurado: "+m.replace(/^failed to send email via SMTP:\s*/i,""):m;
     toast("Erro: "+pt);};
   const today=()=>new Date().toISOString().slice(0,10);
   async function loadFromApi(){
@@ -565,11 +590,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       COMMITTERS.length=0;REPOS.length=0;USERS.length=0;
       if(CURRENT_USER.admin){
         // Config/admin data is admin-only on the backend (403 otherwise); fetch it only for admins.
-        const [verts,teams,coms,repos,accts,ado,ai,people]=await Promise.all([
+        const [verts,teams,coms,repos,accts,ado,ai,people,email]=await Promise.all([
           jget("/api/admin/verticals"),jget("/api/admin/teams"),
           jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
           jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention"),
-          jget("/api/admin/people")]);
+          jget("/api/admin/people"),jget("/api/admin/email")]);
         // The structure tree only lists people who are on a team; a vertical manager may have none.
         // Merge the full people list so name resolution and the dropdown options cover everyone.
         peopleFull=people||[];
@@ -579,7 +604,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
         repos.forEach(r=>REPOS.push({repo:r.key,org:r.organization,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null,stage:r.productionStage}));
         accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
-        ADO_CFG=ado;AI_CFG=ai;
+        ADO_CFG=ado;AI_CFG=ai;EMAIL_CFG=email;
       }else if(state.mode==="admin"){state.mode="structure";}
       rebuildStructure();
       // Add team-less people (rebuildStructure only sees the tree) so dropdown options include them.
@@ -1311,9 +1336,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   function viewAdmin(){
-    const tabs=[["users","Usuários"],["structure","Estrutura"],["identities","Identidades"],["repos","Repositórios"],["ado","Integração ADO"],["ia","Convenção de IA"]];
+    const tabs=[["users","Usuários"],["structure","Estrutura"],["identities","Identidades"],["repos","Repositórios"],["ado","Integração ADO"],["ia","Convenção de IA"],["email","E-mail"]];
     let h='<div class="tabs">'+tabs.map(t=>'<button class="tab'+(state.adminTab===t[0]?" active":"")+'" data-atab="'+t[0]+'">'+t[1]+'</button>').join("")+'</div>';
-    const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA}[state.adminTab]||adminUsers;
+    const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA,email:adminEmail}[state.adminTab]||adminUsers;
     return h+fn();
   }
   function adminUsers(){
@@ -1425,6 +1450,28 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div style="display:flex;flex-direction:column;gap:8px"><span class="code">Co-authored-by: Copilot &lt;...&gt;</span><span class="code">Co-authored-by: Claude &lt;...&gt;</span><span class="code">Assisted-by: Cursor</span><span class="code">[ai] no início da mensagem</span></div></div>'+
       '<div class="form-grid"><label>Regex de detecção<input id="ia_regex" value="'+(AI_CFG.regex||"")+'" /></label><label>Janela de backfill (meses)<input id="ia_backfill" value="6" /></label></div>'+
       '<button class="btn" data-aact="save">Salvar convenção</button>';
+  }
+  function adminEmail(){
+    const c=EMAIL_CFG||{};
+    const modeBadge=c.enabled&&c.host?'<span class="status-dot"><i style="background:var(--good)"></i>Enviando por SMTP</span>':'<span class="status-dot"><i style="background:var(--muted)"></i>Modo log — nenhum SMTP habilitado</span>';
+    return '<div class="callout">Servidor de e-mail usado para o <b>reset de senha por token</b> (link enviado ao usuário). Sem um SMTP habilitado, o link sai apenas no <b>log da aplicação</b> — útil em desenvolvimento, mas ninguém recebe o e-mail de fato.</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin:14px 0">'+modeBadge+'</div>'+
+      '<div class="form-grid">'+
+        '<label>Habilitado<select id="em_enabled"><option value="true"'+(c.enabled?" selected":"")+'>Sim</option><option value="false"'+(!c.enabled?" selected":"")+'>Não</option></select></label>'+
+        '<label>Host<input id="em_host" value="'+escHtml(c.host||"")+'" placeholder="smtp.empresa.com" /></label>'+
+        '<label>Porta<input id="em_port" value="'+(c.port||"")+'" placeholder="587" /></label>'+
+        '<label>Transporte<select id="em_transport">'+["none","starttls","ssl"].map(t=>'<option value="'+t+'"'+(c.transport===t?" selected":"")+'>'+t.toUpperCase()+'</option>').join("")+'</select></label>'+
+        '<label>Usuário<input id="em_username" value="'+escHtml(c.username||"")+'" /></label>'+
+        '<label>Senha'+(c.passwordSet?' <span class="badge on" style="margin-left:6px">salva</span>':'')+'<input id="em_password" type="password" placeholder="'+(c.passwordSet?"deixe em branco para manter":"")+'" /></label>'+
+        '<label>Remetente<input id="em_from_address" type="email" value="'+escHtml(c.fromAddress||"")+'" placeholder="no-reply@empresa.com" /></label>'+
+        '<label>Nome do remetente<input id="em_from_name" value="'+escHtml(c.fromName||"")+'" placeholder="Eng Performance" /></label>'+
+        '<label>URL base do app<input id="em_base_url" value="'+escHtml(c.appBaseUrl||"")+'" placeholder="https://eng-performance.empresa.com" /></label>'+
+      '</div>'+
+      '<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+
+        '<button class="btn" data-aact="save">Salvar configuração</button>'+
+        '<input id="em_test_to" type="email" placeholder="enviar teste para…" style="font-family:var(--mono);font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid var(--outline);background:var(--surface-2);color:var(--on-surface)" />'+
+        '<button class="btn ghost" data-aact="email-test">Enviar e-mail de teste</button>'+
+      '</div>';
   }
 
   /* Interactive Azure DevOps sync (S9): device-code login (no PAT), then a polled progress view. */
@@ -1561,7 +1608,20 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       if(state.adminTab==="ia"){
         jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})
           .then(loadFromApi).then(()=>toast("Convenção salva")).catch(apiErr);
+      } else if(state.adminTab==="email"){
+        jput("/api/admin/email",{
+          enabled:$("em_enabled").value==="true",host:mval("em_host")||null,
+          port:mval("em_port")?parseInt(mval("em_port"),10):null,transport:$("em_transport").value,
+          username:mval("em_username")||null,password:mval("em_password")||null,
+          fromAddress:mval("em_from_address")||null,fromName:mval("em_from_name")||null,
+          appBaseUrl:mval("em_base_url")||null})
+          .then(loadFromApi).then(()=>toast("Configuração de e-mail salva")).catch(apiErr);
       } else toast("Configuração salva");
+    }
+    else if(act==="email-test"){
+      const to=mval("em_test_to");
+      if(!to){toast("Informe um email para o teste");return;}
+      jpost("/api/admin/email/test",{to:to}).then(()=>toast("E-mail de teste enviado para "+to)).catch(apiErr);
     }
   }
   function adminSet(kind,ds,value){
@@ -1728,7 +1788,51 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   });
   $("modal").addEventListener("click",e=>{if(e.target===$("modal"))closeModal();});
 
-  if(AUTH_TOKEN){$("login").classList.add("hidden");loadFromApi().catch(()=>onUnauthorized());}
+  /* ---------- Self-service password reset ---------- */
+  const forgotHintText=$("forgotHint").textContent,resetHintText=$("resetHint").textContent;
+  function showPane(name){
+    $("loginPane").classList.toggle("lv-hidden",name!=="login");
+    $("forgotPane").classList.toggle("lv-hidden",name!=="forgot");
+    $("resetPane").classList.toggle("lv-hidden",name!=="reset");
+  }
+  async function requestPasswordReset(email){
+    const r=await fetch("/api/auth/password-reset",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:email})});
+    if(!r.ok)throw new Error("HTTP "+r.status);
+  }
+  async function confirmPasswordReset(token,newPassword){
+    const r=await fetch("/api/auth/password-reset/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:token,newPassword:newPassword})});
+    if(!r.ok){let d="";try{d=(await r.json()).detail||"";}catch(e){}const err=new Error(d||("HTTP "+r.status));throw err;}
+  }
+  $("forgotLink").addEventListener("click",()=>{$("forgotHint").textContent=forgotHintText;$("forgotHint").style.color="";showPane("forgot");});
+  $("backToLoginFromForgot").addEventListener("click",()=>showPane("login"));
+  $("forgotForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    try{
+      await requestPasswordReset($("forgotEmail").value.trim());
+      $("forgotHint").textContent="se o email estiver cadastrado, você receberá um link em instantes";
+      $("forgotHint").style.color="var(--good)";
+    }catch(err){$("forgotHint").textContent="não foi possível enviar o pedido agora — tente novamente";$("forgotHint").style.color="var(--crit)";}
+  });
+  let RESET_TOKEN=null;
+  $("resetForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    try{
+      await confirmPasswordReset(RESET_TOKEN,$("resetPass").value);
+      const url=new URL(location.href);url.searchParams.delete("reset");history.replaceState(null,"",url.pathname+url.search+url.hash);
+      RESET_TOKEN=null;
+      toast("Senha redefinida — faça login com a nova senha");
+      $("resetHint").textContent=resetHintText;$("resetHint").style.color="";
+      $("resetPass").value="";
+      showPane("login");
+    }catch(err){$("resetHint").textContent="link inválido, expirado ou já usado — peça um novo";$("resetHint").style.color="var(--crit)";}
+  });
+
+  const resetParam=new URL(location.href).searchParams.get("reset");
+  if(resetParam){
+    RESET_TOKEN=resetParam;
+    $("login").classList.remove("hidden");
+    showPane("reset");
+  } else if(AUTH_TOKEN){$("login").classList.add("hidden");loadFromApi().catch(()=>onUnauthorized());}
 })();
 </script>
 

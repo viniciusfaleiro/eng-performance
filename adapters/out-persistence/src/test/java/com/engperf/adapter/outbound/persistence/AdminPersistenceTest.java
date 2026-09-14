@@ -21,7 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 /** Integration test for the accounts and config adapters against a real PostgreSQL. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaUserAccountRepository.class, JpaPlatformConfigRepository.class})
+@Import({JpaUserAccountRepository.class, JpaPlatformConfigRepository.class, SecretCipher.class})
 @Testcontainers
 class AdminPersistenceTest {
 

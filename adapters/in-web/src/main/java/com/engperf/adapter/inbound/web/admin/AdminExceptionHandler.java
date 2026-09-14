@@ -1,5 +1,6 @@
 package com.engperf.adapter.inbound.web.admin;
 
+import com.engperf.application.email.EmailDeliveryException;
 import com.engperf.domain.common.ConflictException;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -17,6 +18,11 @@ public class AdminExceptionHandler {
     return problem(HttpStatus.NOT_FOUND, ex.getMessage());
   }
 
+  @ExceptionHandler(EmailDeliveryException.class)
+  public ResponseEntity<Map<String, Object>> onEmailDeliveryFailure(EmailDeliveryException ex) {
+    return problem(HttpStatus.BAD_GATEWAY, ex.getMessage());
+  }
+
   @ExceptionHandler(ConflictException.class)
   public ResponseEntity<Map<String, Object>> onConflict(ConflictException ex) {
     return problem(HttpStatus.CONFLICT, ex.getMessage());
@@ -24,6 +30,11 @@ public class AdminExceptionHandler {
 
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<Map<String, Object>> onValidation(IllegalArgumentException ex) {
+    return problem(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+  }
+
+  @ExceptionHandler(IllegalStateException.class)
+  public ResponseEntity<Map<String, Object>> onPrecondition(IllegalStateException ex) {
     return problem(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
   }
 

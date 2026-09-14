@@ -13,6 +13,10 @@ public final class AuthDtos {
 
   public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
+  public record PasswordResetRequest(String email) {}
+
+  public record PasswordResetConfirmRequest(String token, String newPassword) {}
+
   /** The authenticated identity plus the coarse scope flags the frontend uses to render. */
   public record MeView(
       String accountId,

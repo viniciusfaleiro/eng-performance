@@ -12,6 +12,7 @@ include(
     "adapter-in-web",
     "adapter-out-persistence",
     "adapter-out-ado",
+    "adapter-out-email",
     "bootstrap",
     "architecture-tests",
 )
@@ -23,5 +24,6 @@ project(":application").projectDir = file("core/application")
 project(":adapter-in-web").projectDir = file("adapters/in-web")
 project(":adapter-out-persistence").projectDir = file("adapters/out-persistence")
 project(":adapter-out-ado").projectDir = file("adapters/out-ado")
+project(":adapter-out-email").projectDir = file("adapters/out-email")
 project(":bootstrap").projectDir = file("app/bootstrap")
 project(":architecture-tests").projectDir = file("test/architecture-tests")

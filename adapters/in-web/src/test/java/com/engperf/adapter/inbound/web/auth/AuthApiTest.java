@@ -82,7 +82,8 @@ class AuthApiTest {
 
     mvc =
         MockMvcBuilders.standaloneSetup(
-                new AuthController(authService, authz), new StructureController(structureService))
+                new AuthController(authService, authz, new NoOpPasswordReset()),
+                new StructureController(structureService))
             .setControllerAdvice(new AuthWebExceptionHandler(), new AdminExceptionHandler())
             .addFilter(new AuthTokenFilter(tokens, authz), "/api/*")
             .build();
@@ -185,6 +186,18 @@ class AuthApiTest {
     org.assertj.core.api.Assertions.assertThat(people).hasSize(1);
     org.assertj.core.api.Assertions.assertThat(people.get(0).get("id").asText())
         .isEqualTo("p:bruno");
+  }
+
+  /**
+   * Unused by these tests — password reset behaviour is covered by {@code PasswordResetApiTest}.
+   */
+  private static final class NoOpPasswordReset
+      implements com.engperf.application.port.inbound.PasswordResetUseCase {
+    @Override
+    public void requestReset(String email) {}
+
+    @Override
+    public void confirmReset(String rawToken, String newPassword) {}
   }
 
   /** In-memory token round-trip — keeps the web test independent of the JWT persistence adapter. */

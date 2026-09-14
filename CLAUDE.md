@@ -10,9 +10,31 @@ Plataforma que mede performance de times de engenharia a partir do **Azure DevOp
 [`docs/initial-spec.md`](docs/initial-spec.md) — é a fonte de verdade
 do **o quê** medimos. O protótipo navegável de UX está em `prototype/`.
 
-Hoje o repo tem o **harness de engenharia completo** + uma fatia **"echo" trivial**
-que exercita todas as camadas. O domínio real é modelado **depois**, sobre este harness
-— não faça over-modeling: só implemente o que a change atual pedir.
+Decisão de produto que atravessa tudo: **medir para melhorar o sistema, não vigiar
+pessoas** — sem ranking público e sem comparação de pessoas entre times; a visão
+individual é coaching do gestor sobre os **próprios** liderados.
+
+## Estado atual
+
+O **walking skeleton está completo ponta a ponta** (S1–S9 do
+[`openspec/roadmap.md`](openspec/roadmap.md)): estrutura & cadastro · contas, login
+e RBAC · motor de métricas + shell de navegação · dashboards **DORA**, **Fluxo** e
+**IA** · heatmap comparativo · painel individual · adapter real do **Azure DevOps**
+(login device-code, sem PAT; backfill + watermark incremental).
+
+Não faça over-modeling: só implemente o que a change atual pedir.
+
+**O motor de métricas é o coração.** Eventos são gravados **crus** em `raw_event`
+(commit, PR, deploy, work item, review com timestamps) e agregados **on-read** por
+dimensão × frequência × estatística (sum/median/ratio/snapshot). Números de time são
+recalculados sobre a população (**nunca média de médias**), a atribuição é
+**as-of-event** (o período fica com o time de registro mesmo depois de a pessoa mudar)
+e a cobertura acompanha eventos atribuídos vs. não atribuídos. O adapter do ADO só
+troca a **fonte** desses eventos — a mesma tabela `raw_event`.
+
+As métricas de **Fluxo** (cycle time, throughput, flow efficiency, flow lead time) são
+ancoradas no **work item** do Azure Boards (histórico de estados); `pr_size`,
+`pr_review_time` e as métricas de código seguem vindo do **PR**, como drill-down.
 
 ## Arquitetura (hexagonal — imposta por ArchUnit)
 
@@ -22,14 +44,22 @@ Dependências só podem apontar para dentro. Violou → o build quebra.
 |---|---|---|
 | `domain` | Regras de negócio puras. **Sem framework, sem Spring.** | — |
 | `application` | Use cases + ports (in/out). **Sem Spring.** | `domain` |
-| `adapter-in-web` | HTTP + Thymeleaf UI (inbound). | `application`, `domain` |
+| `adapter-in-web` | HTTP + a SPA servida (inbound). | `application`, `domain` |
 | `adapter-out-persistence` | Impl dos ports de saída — **PostgreSQL (JPA + Flyway)**. | `application`, `domain` |
+| `adapter-out-ado` | A fonte real (**Azure DevOps** + device-code do Entra) — **único** módulo que fala HTTP. | `application`, `domain` |
+| `adapter-out-email` | E-mail transacional — SMTP, com fallback de log sem servidor configurado. | `application`, `domain` |
 | `bootstrap` | App executável; composition root (liga ports→adapters). | todos |
 | `architecture-tests` | Regras ArchUnit que guardam as fronteiras. | todos (test) |
 
-Frontend = **design system próprio do protótipo** (`prototype/` é a spec visual),
-server-renderizado com Thymeleaf + JS vanilla, **self-contained (sem CDN)**. O
-`@material/web`/MD3 foi **descontinuado** — reusamos o CSS/markup do protótipo.
+Os módulos são agrupados em disco por camada (`core/`, `adapters/`, `app/`, `test/`),
+mas os nomes lógicos seguem planos (`:domain`, `:adapter-in-web`, …) — ver
+`settings.gradle.kts`.
+
+Frontend = **design system próprio do protótipo** (`prototype/index.html` é a spec
+visual), servido como SPA **self-contained** pelo `adapter-in-web`
+(`static/index.html` + `static/css/app.css`): CSS + JS vanilla, **sem build de
+frontend e sem CDN**. O `@material/web`/MD3 foi **descontinuado** — reusamos o
+CSS/markup do protótipo.
 
 ## Banco de dados (persistência durável — nada em memória)
 
@@ -47,9 +77,10 @@ Fixtures são semeadas no banco por um seeder **idempotente**.
 
 ## Gates de qualidade
 
-**Todos em `./gradlew build`:** Spotless (google-java-format) · Checkstyle ·
+**Todos em `./gradlew build`:** Spotless (google-java-format) · Checkstyle (`maxWarnings=0`) ·
 SpotBugs+FindSecBugs · JaCoCo (**pisos de 70% de linha e 60% de branch** em
-`domain`+`application`) · ArchUnit. A UI é vanilla JS/CSS inline (sem build de frontend).
+`domain`+`application`) · ArchUnit (fronteiras + "só o `adapter-out-ado` fala HTTP").
+A UI é vanilla JS/CSS inline (sem build de frontend).
 
 Fora de escopo por decisão do produto: **scanning de segurança** (vulnerabilidades de
 dependências, secrets) — não faz parte deste harness. SpotBugs+FindSecBugs cobre análise
@@ -82,7 +113,7 @@ Não edite specs a mão em `openspec/specs/` — use o fluxo:
 3. `/opsx:archive` — arquiva a change e promove os deltas para `openspec/specs/`.
 
 `openspec validate` valida changes/specs. O contexto do projeto e regras de artefato
-estão em `openspec/config.yaml`. O **PRD** (`initial-spec/`) é o documento de produto
+estão em `openspec/config.yaml`. O **PRD** (`docs/initial-spec.md`) é o documento de produto
 de alto nível; as **specs do openspec** são a verdade viva por capacidade.
 
 ## Comandos comuns

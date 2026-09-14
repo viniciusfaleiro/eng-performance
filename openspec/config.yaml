@@ -2,21 +2,53 @@ schema: spec-driven
 
 context: |
   Produto: plataforma que mede performance de times de engenharia a partir do
-  Azure DevOps (métricas DORA, Fluxo e IA). PRD em docs/initial-spec.md.
+  Azure DevOps (métricas DORA, Fluxo e IA), navegável por estrutura
+  (vertical → time → pessoa) e por frequência (diário/semanal/mensal), com
+  evolução período-a-período e benchmarks. PRD em docs/initial-spec.md.
+  Decisão de produto que atravessa tudo: medir para melhorar o sistema, não
+  vigiar pessoas — sem ranking público e sem comparação de pessoas entre times;
+  a visão individual é coaching do gestor sobre os próprios liderados.
 
-  Stack: Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) multi-módulo.
-  Arquitetura hexagonal (ports & adapters) imposta por ArchUnit. Módulos:
-  domain (regras puras, sem framework) < application (use cases + ports, sem Spring)
-  < adapter-in-web (HTTP + Thymeleaf/MD3) / adapter-out-persistence (impl de ports)
-  < bootstrap (composition root). architecture-tests guarda as fronteiras.
-  Frontend = Material Design 3 (@material/web) vendorizado, servido pelo próprio serviço.
+  Stack: Java 21, Spring Boot 3.4, Gradle (Kotlin DSL) multi-módulo, PostgreSQL 16
+  (JPA + Flyway), Testcontainers nos testes de integração, JWT stateless e
+  device-code do Microsoft Entra para a ingestão interativa do ADO (sem PAT).
 
-  Estado atual: harness de engenharia completo + uma fatia "echo" trivial que
-  exercita todas as camadas. O backend real é modelado depois, sobre este harness.
+  Arquitetura hexagonal (ports & adapters) imposta por ArchUnit. Módulos (nome
+  lógico plano, agrupados em disco por camada):
+  domain (core/domain — regras puras, sem framework)
+  < application (core/application — use cases + ports, sem Spring)
+  < adapter-in-web (adapters/in-web — HTTP + UI servida)
+  / adapter-out-persistence (adapters/out-persistence — PostgreSQL atrás das portas)
+  / adapter-out-ado (adapters/out-ado — Azure DevOps; único módulo que fala HTTP)
+  < bootstrap (app/bootstrap — composition root).
+  architecture-tests (test/architecture-tests) guarda as fronteiras.
+
+  Frontend: SPA self-contained servida pelo próprio serviço (adapter-in-web,
+  static/index.html + css/app.css), reusando o design system do protótipo
+  (prototype/index.html é a spec visual). CSS + JS vanilla, sem build de
+  frontend e sem CDN. O @material/web/MD3 foi descontinuado.
+
+  Motor de métricas: eventos ficam crus em raw_event (commit, PR, deploy, work
+  item, review com timestamps) e são agregados on-read por dimensão × frequência
+  × estatística (sum/median/ratio/snapshot). Números de time são recalculados
+  sobre a população (nunca média de médias), a atribuição é as-of-event (o
+  período fica com o time de registro mesmo após a pessoa mudar) e a cobertura
+  acompanha eventos atribuídos vs. não atribuídos. O adapter do ADO só troca a
+  fonte desses eventos — a mesma tabela raw_event.
+
+  Estado atual: walking skeleton completo ponta a ponta (S1–S9 do
+  openspec/roadmap.md): estrutura & cadastro, contas/login/RBAC, motor de
+  métricas + shell, dashboards DORA / Fluxo / IA, heatmap comparativo, painel
+  individual e o adapter real do ADO (device-code, backfill + watermark
+  incremental). Métricas de Fluxo (cycle time, throughput, flow efficiency,
+  flow lead time) são ancoradas no work item do Azure Boards; pr_size,
+  pr_review_time e métricas de código seguem vindo do PR como drill-down.
 
   Gates de qualidade (todos em ./gradlew build): Spotless (google-java-format),
-  Checkstyle, SpotBugs+FindSecBugs, JaCoCo (piso de 70% linha em domain+application),
-  ArchUnit. Convenção de commit: uma linha imperativa curta.
+  Checkstyle (maxWarnings=0), SpotBugs+FindSecBugs, JaCoCo (pisos de 70% de linha
+  e 60% de branch em domain+application), ArchUnit. Scanning de supply-chain
+  (CVEs de dependências, secrets) está fora de escopo por decisão do produto.
+  Convenção de commit: uma linha imperativa curta, em português.
 
 # Per-artifact rules (optional)
 rules:
@@ -26,13 +58,3 @@ rules:
   tasks:
     - A última tarefa de toda change é rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL.
     - Respeitar as fronteiras hexagonais; domínio não conhece Spring.
-
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
