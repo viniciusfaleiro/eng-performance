@@ -2,24 +2,19 @@ package com.engperf.application.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.engperf.application.port.outbound.EventStorePort;
-import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
-import com.engperf.domain.structure.Repository;
 import com.engperf.domain.structure.Team;
 import com.engperf.domain.structure.Vertical;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 
@@ -60,6 +55,25 @@ class IndividualDashboardServiceTest {
     assertThat(dash.calendar().stream().mapToInt(CalendarDay::count).sum()).isEqualTo(3);
     assertThat(day(dash, "2026-06-10")).isEqualTo(2);
     assertThat(day(dash, "2026-06-11")).isEqualTo(1);
+  }
+
+  @Test
+  void deliverySeriesCarryVolumeAlongsideThroughputAndCycleTime() {
+    baseStructure();
+    events.add(commit("id-ana", "2026-06-10"));
+    events.add(commit("id-ana", "2026-06-11"));
+    events.add(pr("id-ana", "2026-06-10", true));
+    events.add(commit("id-bruno", "2026-06-10")); // not Ana → excluded
+
+    var dash = individual.dashboard("p:ana", Frequency.MONTHLY);
+    assertThat(dash.delivery())
+        .extracting(s -> s.definition().key())
+        .containsExactly("throughput", "cycle_time", "ai_share", "commit_count", "pr_count");
+    // Same engine metrics the Fluxo dashboard serves, scoped to this person only (Bruno excluded).
+    assertThat(dash.delivery())
+        .filteredOn(s -> List.of("commit_count", "pr_count").contains(s.definition().key()))
+        .extracting(s -> s.points().get(s.points().size() - 1).value().value())
+        .containsExactly(2.0, 1.0);
   }
 
   @Test
@@ -274,126 +288,5 @@ class IndividualDashboardServiceTest {
 
   private static Instant at(String date) {
     return Instant.parse(date + "T10:00:00Z");
-  }
-
-  private static final class FakeEvents implements EventStorePort {
-    private final List<RawEvent> all = new ArrayList<>();
-
-    void add(RawEvent e) {
-      all.add(e);
-    }
-
-    @Override
-    public void saveAll(java.util.Collection<RawEvent> events) {
-      all.addAll(events);
-    }
-
-    @Override
-    public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
-      return all.stream()
-          .filter(e -> e.type() == type)
-          .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
-          .toList();
-    }
-
-    @Override
-    public long count() {
-      return all.size();
-    }
-  }
-
-  private static final class FakeStructure implements StructureRepositoryPort {
-    final List<Vertical> verticals = new ArrayList<>();
-    final List<Team> teams = new ArrayList<>();
-    final List<Person> people = new ArrayList<>();
-    final List<Repository> repositories = new ArrayList<>();
-    final List<CommitterIdentity> identities = new ArrayList<>();
-
-    @Override
-    public Vertical saveVertical(Vertical v) {
-      return v;
-    }
-
-    @Override
-    public List<Vertical> findVerticals() {
-      return verticals;
-    }
-
-    @Override
-    public Optional<Vertical> findVertical(String id) {
-      return verticals.stream().filter(v -> v.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteVertical(String id) {}
-
-    @Override
-    public Team saveTeam(Team t) {
-      return t;
-    }
-
-    @Override
-    public List<Team> findTeams() {
-      return teams;
-    }
-
-    @Override
-    public Optional<Team> findTeam(String id) {
-      return teams.stream().filter(t -> t.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteTeam(String id) {}
-
-    @Override
-    public Person savePerson(Person p) {
-      return p;
-    }
-
-    @Override
-    public List<Person> findPeople() {
-      return people;
-    }
-
-    @Override
-    public Optional<Person> findPerson(String id) {
-      return people.stream().filter(p -> p.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deletePerson(String id) {}
-
-    @Override
-    public Repository saveRepository(Repository r) {
-      return r;
-    }
-
-    @Override
-    public List<Repository> findRepositories() {
-      return repositories;
-    }
-
-    @Override
-    public Optional<Repository> findRepository(String key) {
-      return repositories.stream().filter(r -> r.key().equals(key)).findFirst();
-    }
-
-    @Override
-    public void deleteRepository(String key) {}
-
-    @Override
-    public CommitterIdentity saveIdentity(CommitterIdentity c) {
-      return c;
-    }
-
-    @Override
-    public List<CommitterIdentity> findIdentities() {
-      return identities;
-    }
-
-    @Override
-    public Optional<CommitterIdentity> findIdentity(String identity) {
-      return identities.stream().filter(c -> c.identity().equals(identity)).findFirst();
-    }
   }
 }

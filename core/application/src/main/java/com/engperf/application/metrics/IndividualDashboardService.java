@@ -23,8 +23,8 @@ import java.util.stream.Collectors;
 
 /**
  * Composes the individual (person) contribution panel from that person's raw events: a 12-month
- * commit calendar, PR assertiveness (first-pass approvals), the reused delivery series, code-review
- * contribution (given vs received), the work-type distribution, and recent activity for the drawer.
+ * commit calendar, PR assertiveness (first-pass approvals), the reused delivery + volume series,
+ * code-review contribution (given vs received), work-type distribution, and recent activity.
  */
 public final class IndividualDashboardService implements IndividualDashboardUseCase {
 
@@ -268,7 +268,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   }
 
   private List<MetricSeries> delivery(String personNodeId, Frequency frequency) {
-    return List.of("throughput", "cycle_time", "ai_share").stream()
+    return List.of("throughput", "cycle_time", "ai_share", "commit_count", "pr_count").stream()
         .map(key -> metrics.series(key, personNodeId, frequency))
         .toList();
   }

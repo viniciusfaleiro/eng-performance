@@ -1,6 +1,7 @@
 package com.engperf.application.metrics;
 
 import com.engperf.application.metrics.StructureIndex.Attribution;
+import com.engperf.domain.metrics.Aggregation;
 import com.engperf.domain.metrics.Aggregations;
 import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.Coverage;
@@ -142,7 +143,7 @@ public final class MetricsEngine {
     List<Matched> matched = match(index, events, def, nodeId, population);
     Bucket bucket = new Bucket(bucketStart, freq.nextBucketStart(bucketStart));
     List<Matched> ms = inBucket(matched, bucket);
-    return select(def, ms).stream().map(MetricsEngine::toItem).toList();
+    return select(def, ms).stream().map(s -> toItem(def, s)).toList();
   }
 
   private record Selected(Matched matched, boolean counted, String excludedReason) {}
@@ -186,7 +187,7 @@ public final class MetricsEngine {
     return out;
   }
 
-  private static MetricDrilldownItem toItem(Selected s) {
+  private static MetricDrilldownItem toItem(MetricDefinition def, Selected s) {
     Matched m = s.matched();
     RawEvent e = m.source();
     String label = e.detail().getOrDefault("summary", "");
@@ -200,9 +201,22 @@ public final class MetricsEngine {
         label,
         m.entity(),
         e.occurredAt(),
-        m.measure(),
+        contribution(def, m, s),
         s.counted(),
         s.excludedReason());
+  }
+
+  /**
+   * What this event actually added to the aggregated value. A SUM counts events ({@code
+   * aggregate()} returns {@code ms.size()}), so a counted event contributes exactly 1 — reporting
+   * its raw measure would show 0 for events that carry no numeric value, like a commit. Every other
+   * aggregation reads the measure itself.
+   */
+  private static double contribution(MetricDefinition def, Matched m, Selected s) {
+    if (def.aggregation() == Aggregation.SUM) {
+      return s.counted() ? 1 : 0;
+    }
+    return m.measure();
   }
 
   public static Coverage coverage(

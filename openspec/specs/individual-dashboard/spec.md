@@ -5,9 +5,11 @@ The person-level contribution panel over the metrics engine: the commit calendar
 assertiveness, delivery trends, code-review contribution (given vs received), the work-type
 distribution with hours, and the activity drawer with Azure DevOps deep-links. Coaching-only
 (shown to an admin or the managing/own account, never aggregated into any comparison). Created
-by archiving change painel-individual.
+by archiving change painel-individual; commit and pull-request volume series added by change
+commits-prs-fluxo.
 
 ## Requirements
+
 
 ### Requirement: The individual panel is coaching-only
 The system SHALL serve the individual panel for a person node only to an admin or the
@@ -40,13 +42,21 @@ changes requested (first-pass approvals over all PRs), person-scoped and higher-
 - **THEN** the assertiveness rate equals first-pass approvals over all their PRs
 
 ### Requirement: Delivery trends reuse the person-scoped metrics
-The system SHALL include the person's delivery trends — throughput, cycle time and % of commits
-with AI — as the same engine series computed for that person node, with correct-polarity
-evolution.
+The system SHALL include the person's delivery trends — throughput, cycle time, % of commits
+with AI, and the period's volume of **commits** and **pull requests** — as the same engine series
+computed for that person node, with correct-polarity evolution. The volume series SHALL come from
+the same `commit_count` and `pr_count` metrics served on the Fluxo dashboard, so the individual
+panel and the team view never disagree on the same person's numbers, and SHALL remain
+coaching-only: they are shown inside the individual panel and never aggregated into any public
+ranking or comparison.
 
 #### Scenario: Delivery series returned for the person
 - **WHEN** the individual panel is requested for a person and frequency
-- **THEN** throughput, cycle time and %-with-AI series for that person are returned
+- **THEN** throughput, cycle time, %-with-AI, commits and pull-requests series for that person are returned
+
+#### Scenario: Volume series stay coaching-only
+- **WHEN** a person's commit and pull-request volume is computed for the individual panel
+- **THEN** it is served only to an admin or the managing/own account and is never added to a cross-structure ranking or comparison
 
 ### Requirement: Code-review contribution reports both directions
 The system SHALL report the person's code-review contribution: comments made, approvals given
