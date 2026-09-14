@@ -83,6 +83,9 @@ class MetricsEngineItemsTest {
 
     assertThat(items).hasSize(2);
     assertThat(items).allMatch(MetricDrilldownItem::counted);
+    // A SUM counts events, so each one contributes exactly 1 — not its (absent) raw measure.
+    // Reporting the measure here would show "0" for events with no numeric value, like a commit.
+    assertThat(items).extracting(MetricDrilldownItem::measure).containsExactly(1.0, 1.0);
   }
 
   @Test

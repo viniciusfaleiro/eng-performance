@@ -82,6 +82,23 @@ class ComparisonHeatmapServiceTest {
     assertThat(h.rows()).extracting(HeatmapRow::rowType).containsOnly("Time");
   }
 
+  /**
+   * Product decision, not an accident of ordering: ranking teams publicly by commit volume is a
+   * gameable proxy, so the volume metrics live in their own catalog list and never become columns.
+   */
+  @Test
+  void volumeMetricsAreNeverHeatmapColumns() {
+    baseStructure();
+    events.add(pr("id-ana"));
+
+    for (String scope : List.of("times", "verticais")) {
+      assertThat(heatmap.heatmap("all", Frequency.MONTHLY, scope).metrics())
+          .as("heatmap columns for scope %s", scope)
+          .extracting(HeatmapMetric::key)
+          .doesNotContain("commit_count", "pr_count");
+    }
+  }
+
   @Test
   void aCellEqualsTheSameNodesDashboardCard() {
     baseStructure();

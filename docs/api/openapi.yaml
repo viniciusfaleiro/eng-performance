@@ -394,7 +394,7 @@ paths:
   /people/{personId}/delivery/series:
     get:
       tags: [Individual]
-      summary: Evolução de entrega para os cards clicáveis (throughput / ciclo / % IA).
+      summary: Evolução de entrega para os cards clicáveis (throughput / ciclo / % IA / commits / PRs).
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
@@ -402,7 +402,7 @@ paths:
         - name: metric
           in: query
           required: true
-          schema: { type: string, enum: [throughput, cycleTime, aiCommitPct] }
+          schema: { type: string, enum: [throughput, cycleTime, aiCommitPct, commitCount, prCount] }
       responses:
         "200":
           description: Série temporal da métrica selecionada.
@@ -1034,6 +1034,8 @@ components:
         - prReviewTime
         - prSize
         - flowEfficiency
+        - commitCount
+        - prCount
         - aiCommitPct
         - aiAdoption
         - aiImpact

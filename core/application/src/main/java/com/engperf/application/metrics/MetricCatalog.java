@@ -34,6 +34,14 @@ public final class MetricCatalog {
           "pr_review_time",
           "pr_size");
 
+  /**
+   * The volume metrics, shown after the Fluxo cards. Deliberately a list of its own: the comparison
+   * heatmap builds its columns from {@link #FLUXO}, and ranking teams publicly by commit volume is
+   * a gameable proxy we do not want. Keeping these out of {@code FLUXO} makes that exclusion the
+   * default instead of something the heatmap has to remember to filter.
+   */
+  public static final List<String> VOLUME = List.of("commit_count", "pr_count");
+
   /** The cycle-time segments, in flow order — from the work item's own board states. */
   public static final List<String> PHASES = List.of("waiting_time", "active_time", "review_time");
 
@@ -212,6 +220,30 @@ public final class MetricCatalog {
               Aggregation.SUM,
               "PRs",
               Direction.HIGHER_BETTER),
+          // ---- Volume: how much code work passed through, next to what got delivered ----
+          new MetricDefinition(
+              // Every commit in the period — no completion filter, so this contrasts with
+              // Throughput (completed work items) instead of restating it.
+              "commit_count",
+              "Commits",
+              "fluxo",
+              EventType.COMMIT,
+              AttributionScope.PERSON,
+              Aggregation.SUM,
+              "commits",
+              Direction.HIGHER_BETTER),
+          new MetricDefinition(
+              // Distinct from `code_throughput` on purpose: that one is the AI dashboard's cohort
+              // denominator and owns its own label/population. Sharing one definition would couple
+              // the two dashboards — changing either would break the other.
+              "pr_count",
+              "Pull Requests",
+              "fluxo",
+              EventType.PR,
+              AttributionScope.PERSON,
+              Aggregation.SUM,
+              "PRs",
+              Direction.HIGHER_BETTER),
           // ---- DORA (with benchmark tiers) ----
           new MetricDefinition(
               "deploy_freq",
@@ -276,6 +308,11 @@ public final class MetricCatalog {
 
   public List<MetricDefinition> phases() {
     return byKeys(PHASES);
+  }
+
+  /** The volume metrics ({@code commit_count}, {@code pr_count}) — see {@link #VOLUME}. */
+  public List<MetricDefinition> volume() {
+    return byKeys(VOLUME);
   }
 
   /** The IA metrics that come straight from the engine ({@code ai_share}, {@code ai_adoption}). */

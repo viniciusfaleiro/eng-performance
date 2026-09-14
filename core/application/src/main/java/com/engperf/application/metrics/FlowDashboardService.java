@@ -12,10 +12,11 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Composes the Fluxo dashboard: the node's Fluxo cards (value + evolution + coverage, no tier), the
- * four-phase cycle-time breakdown (median of each phase over the node's PR population), and a
- * throughput×cycle scatter of the node's children — verticals at the overview, teams within a
- * vertical, nothing for a team or person (coaching-only: people are never compared publicly).
+ * Composes the Fluxo dashboard: the node's Fluxo cards followed by the volume cards (value +
+ * evolution + coverage, no tier), the four-phase cycle-time breakdown (median of each phase over
+ * the node's PR population), and a throughput×cycle scatter of the node's children — verticals at
+ * the overview, teams within a vertical, nothing for a team or person (coaching-only: people are
+ * never compared publicly).
  */
 public final class FlowDashboardService implements FlowDashboardUseCase {
 
@@ -35,7 +36,9 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     Map<String, MetricCard> nodeCards = cardsByKey(nodeId, frequency);
 
     List<FlowCard> cards = new ArrayList<>();
-    for (MetricDefinition def : catalog.fluxo()) {
+    // Fluxo first, then the volume metrics — volume is context, it must not compete with the
+    // delivery headline.
+    for (MetricDefinition def : concat(catalog.fluxo(), catalog.volume())) {
       MetricCard c = nodeCards.get(def.key());
       if (c != null) {
         cards.add(new FlowCard(def, c.current(), c.coverage()));
@@ -63,6 +66,13 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     }
 
     return new FlowDashboard(nodeId, childType(nodeId), cards, phases, scatter);
+  }
+
+  private static List<MetricDefinition> concat(
+      List<MetricDefinition> first, List<MetricDefinition> second) {
+    List<MetricDefinition> out = new ArrayList<>(first);
+    out.addAll(second);
+    return out;
   }
 
   private Map<String, MetricCard> cardsByKey(String nodeId, Frequency frequency) {

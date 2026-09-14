@@ -635,6 +635,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     {key:"fe",label:"Flow Efficiency",unit:"%",higher:true,base:42},
     {key:"rt",label:"PR Review Time",unit:"h",higher:false,base:7.5},
     {key:"ps",label:"PR Size (médio)",unit:"linhas",higher:false,base:210},
+    {key:"cmt",label:"Commits",unit:"commits",higher:true,base:180,count:true},
+    {key:"prc",label:"Pull Requests",unit:"PRs",higher:true,base:34,count:true},
   ];
   const IA=[
     {key:"aic",label:"% de commits com IA",unit:"%",higher:true,base:34},
@@ -658,6 +660,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     aic:"% de commits do período marcados como assistidos por IA (convenção de trailer no commit).",
     aad:"% de devs do escopo que usaram IA no período.",
     aim:"Diferença de cycle time entre PRs feitos com IA e sem IA. Responde: 'a IA está acelerando?'.",
+    cmt:"Quantidade de commits no período — volume de trabalho de código, sem filtro de conclusão. Serve de contexto para o Throughput, não de classificação.",
+    prc:"Quantidade de PRs no período — volume de trabalho de código, sem filtro de conclusão. Serve de contexto para o Throughput, não de classificação.",
   };
 
   /* ---------- Deterministic mock ---------- */
@@ -676,7 +680,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* Dispatcher: DORA metrics (df/lt/cfr/mttr) read the real engine value from the DORA cache for
      the active node/freq; everything else stays synthetic (Fluxo/IA until S5-S6). The sparkline
      trend shape stays synthetic (decorative); the headline value + evolution + tier are real. */
-  const FLOW_KEYS=new Set(["ct","tp","flt","wip","rt","ps","fe"]);
+  const FLOW_KEYS=new Set(["ct","tp","flt","wip","rt","ps","fe","cmt","prc"]);
   const IA_KEYS=new Set(["aic","aad","aim"]);
   function snap(id,m,freq){
     if(m.dora){
@@ -704,7 +708,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* Tendências wired to the real metrics engine (S3). Prototype metric key → S3 catalog key; the
      rest stay synthetic until their group slice (S4-S6). Only the single-series Tendências chart
      + its tiles read real data; the dashboard card grids remain the mock until then. */
-  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",mttr:"mttr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",aad:"ai_adoption",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
+  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",mttr:"mttr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",aad:"ai_adoption",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency",cmt:"commit_count",prc:"pr_count"};
   const TREND={},TREND_LOADING=new Set();
   const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq;
   function ensureTrend(mk){
@@ -761,7 +765,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      4-phase breakdown, and the throughput×cycle scatter of the children. cfr-style unit fixes: fe
      (flow efficiency) comes as a 0..1 ratio, shown as a percentage. */
   const FLOW_CACHE={},FLOW_LOADING=new Set();
-  const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe"};
+  const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",commit_count:"cmt",pr_count:"prc"};
   function ensureFlow(){
     const k=state.node+"|"+state.freq;
     if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
@@ -852,9 +856,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       .finally(()=>{IND_LOADING.delete(k);render();});
   }
   const indData=()=>{const c=IND_CACHE[indKey()];return (c&&!c.error)?c:null;};
-  // Real delivery series (throughput/cycle_time/ai_share) for the person, by prototype key.
+  // Real delivery series (throughput/cycle_time/ai_share + commit/PR volume), by prototype key.
   function indDelivery(protoKey){const c=indData();if(!c)return null;
-    const map={tp:"throughput",ct:"cycle_time",aic:"ai_share"};
+    const map={tp:"throughput",ct:"cycle_time",aic:"ai_share",cmt:"commit_count",prc:"pr_count"};
     const s=(c.delivery||[]).find(x=>x.key===map[protoKey]);if(!s)return null;
     let pts=s.points.map(p=>p.value);if(protoKey==="aic")pts=pts.map(v=>v*100);
     const lp=s.points[s.points.length-1]||{};
@@ -1162,7 +1166,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const c=indData();
     const n=NODES[id],freq=state.freq;
     const dv=(k)=>indDelivery(k)||snap(id,M(k),freq);
-    const tp=dv("tp"),ct=dv("ct"),aic=dv("aic");
+    const tp=dv("tp"),ct=dv("ct"),aic=dv("aic"),cmt=dv("cmt"),prc=dv("prc");
     // Code-review stats (real when loaded, else synthetic while loading).
     const rv=c&&c.reviews?c.reviews:null;
     const reviewsDone=rv?rv.reviewsGiven:Math.round(6+hash(id+freq+"rvd")*22);
@@ -1181,11 +1185,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<div class="top-split">'+commitCalendar(id)+gauge(firstPass,"Taxa de assertividade de PRs","PRs aprovados sem pedir ajustes")+'</div>';
 
     h+=sectionHead("Entrega");
-    const IM={tp:M("tp"),ct:M("ct"),aic:M("aic")};
+    const IM={tp:M("tp"),ct:M("ct"),aic:M("aic"),cmt:M("cmt"),prc:M("prc")};
     const selKey=IM[state.indMetric]?state.indMetric:"tp";
     h+='<div class="grid tiles">'+
       selCard("tp","Throughput",fmt(tp.cur,"itens")+" itens","tasks concluídas no período",evoChip(tp),selKey==="tp")+
       selCard("ct","Cycle Time",fmt(ct.cur,"h")+" h","do 1º estado ativo à conclusão",evoChip(ct),selKey==="ct")+
+      selCard("cmt","Commits",fmt(cmt.cur,"commits")+" commits","volume de código no período",evoChip(cmt),selKey==="cmt")+
+      selCard("prc","Pull Requests",fmt(prc.cur,"PRs")+" PRs","volume de código no período",evoChip(prc),selKey==="prc")+
       selCard("aic","% commits com IA",fmt(aic.cur,"%")+"%","assistência de IA",evoChip(aic),selKey==="aic")+
       '</div>';
     const selM=IM[selKey];

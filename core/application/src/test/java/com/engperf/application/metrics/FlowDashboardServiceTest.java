@@ -2,24 +2,19 @@ package com.engperf.application.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.engperf.application.port.outbound.EventStorePort;
-import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
-import com.engperf.domain.structure.Repository;
 import com.engperf.domain.structure.Team;
 import com.engperf.domain.structure.Vertical;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 
@@ -66,6 +61,7 @@ class FlowDashboardServiceTest {
     events.add(prCode("id-ana", 2, 400));
 
     var dash = flow.dashboard("t:checkout", Frequency.MONTHLY);
+    // Volume comes last: context after the delivery headline.
     assertThat(dash.cards())
         .extracting(c -> c.definition().key())
         .containsExactly(
@@ -75,7 +71,9 @@ class FlowDashboardServiceTest {
             "wip",
             "flow_efficiency",
             "pr_review_time",
-            "pr_size");
+            "pr_size",
+            "commit_count",
+            "pr_count");
 
     var byKey = cards("t:checkout");
     assertThat(byKey.get("cycle_time").value().value()).isEqualTo(9.0); // median(8,10)
@@ -109,6 +107,48 @@ class FlowDashboardServiceTest {
         dash.scatter().stream().filter(s -> s.nodeId().equals("v:pag")).findFirst().orElseThrow();
     assertThat(pag.throughput()).isEqualTo(2);
     assertThat(pag.cycleTime()).isEqualTo(8.0); // median(8,8)
+  }
+
+  @Test
+  void volumeCountsEveryCommitAndPrIncludingWorkThatNeverCompleted() {
+    baseStructure();
+    events.add(doneItem("id-ana", 4, 2, 2)); // the only completed work item
+    events.add(commit("id-ana"));
+    events.add(commit("id-ana"));
+    events.add(commit("id-bruno"));
+    events.add(prCode("id-ana", 2, 200));
+    events.add(prCode("id-bruno", 2, 400)); // Bruno's PR belongs to no completed item
+
+    var byKey = cards("t:checkout");
+    assertThat(byKey.get("throughput").value().value()).isEqualTo(1); // only the completed item
+    // Volume ignores completion, so it reads differently from throughput — that is the point.
+    assertThat(byKey.get("commit_count").value().value()).isEqualTo(3);
+    assertThat(byKey.get("pr_count").value().value()).isEqualTo(2);
+  }
+
+  @Test
+  void volumeMetricsCarryNoBenchmarkTier() {
+    baseStructure();
+    events.add(commit("id-ana"));
+    events.add(prCode("id-ana", 2, 200));
+
+    var byKey = cards("t:checkout");
+    assertThat(byKey.get("commit_count").definition().tierBands()).isEmpty();
+    assertThat(byKey.get("pr_count").definition().tierBands()).isEmpty();
+  }
+
+  @Test
+  void volumeCardsAreServedAtEveryLevel() {
+    baseStructure();
+    events.add(commit("id-ana"));
+    events.add(prCode("id-ana", 2, 200));
+
+    for (String node : List.of("all", "v:pag", "t:checkout")) {
+      assertThat(flow.dashboard(node, Frequency.MONTHLY).cards())
+          .as("volume cards at %s", node)
+          .extracting(c -> c.definition().key())
+          .contains("commit_count", "pr_count");
+    }
   }
 
   @Test
@@ -146,6 +186,20 @@ class FlowDashboardServiceTest {
         detail);
   }
 
+  /** A bare commit — all `commit_count` needs is the event itself. */
+  private RawEvent commit(String identity) {
+    return new RawEvent(
+        "c" + (seq++),
+        EventType.COMMIT,
+        Instant.parse("2026-06-10T10:00:00Z"),
+        null,
+        identity,
+        null,
+        null,
+        false,
+        Map.of());
+  }
+
   /** A PR carrying the code drill-downs: numericValue = review hours, detail.lines = PR size. */
   private RawEvent prCode(String identity, double review, double lines) {
     return new RawEvent(
@@ -158,126 +212,5 @@ class FlowDashboardServiceTest {
         "review",
         false,
         Map.of("lines", Double.toString(lines)));
-  }
-
-  private static final class FakeEvents implements EventStorePort {
-    private final List<RawEvent> all = new ArrayList<>();
-
-    void add(RawEvent e) {
-      all.add(e);
-    }
-
-    @Override
-    public void saveAll(java.util.Collection<RawEvent> events) {
-      all.addAll(events);
-    }
-
-    @Override
-    public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
-      return all.stream()
-          .filter(e -> e.type() == type)
-          .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
-          .toList();
-    }
-
-    @Override
-    public long count() {
-      return all.size();
-    }
-  }
-
-  private static final class FakeStructure implements StructureRepositoryPort {
-    final List<Vertical> verticals = new ArrayList<>();
-    final List<Team> teams = new ArrayList<>();
-    final List<Person> people = new ArrayList<>();
-    final List<Repository> repositories = new ArrayList<>();
-    final List<CommitterIdentity> identities = new ArrayList<>();
-
-    @Override
-    public Vertical saveVertical(Vertical v) {
-      return v;
-    }
-
-    @Override
-    public List<Vertical> findVerticals() {
-      return verticals;
-    }
-
-    @Override
-    public Optional<Vertical> findVertical(String id) {
-      return verticals.stream().filter(v -> v.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteVertical(String id) {}
-
-    @Override
-    public Team saveTeam(Team t) {
-      return t;
-    }
-
-    @Override
-    public List<Team> findTeams() {
-      return teams;
-    }
-
-    @Override
-    public Optional<Team> findTeam(String id) {
-      return teams.stream().filter(t -> t.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteTeam(String id) {}
-
-    @Override
-    public Person savePerson(Person p) {
-      return p;
-    }
-
-    @Override
-    public List<Person> findPeople() {
-      return people;
-    }
-
-    @Override
-    public Optional<Person> findPerson(String id) {
-      return people.stream().filter(p -> p.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deletePerson(String id) {}
-
-    @Override
-    public Repository saveRepository(Repository r) {
-      return r;
-    }
-
-    @Override
-    public List<Repository> findRepositories() {
-      return repositories;
-    }
-
-    @Override
-    public Optional<Repository> findRepository(String key) {
-      return repositories.stream().filter(r -> r.key().equals(key)).findFirst();
-    }
-
-    @Override
-    public void deleteRepository(String key) {}
-
-    @Override
-    public CommitterIdentity saveIdentity(CommitterIdentity c) {
-      return c;
-    }
-
-    @Override
-    public List<CommitterIdentity> findIdentities() {
-      return identities;
-    }
-
-    @Override
-    public Optional<CommitterIdentity> findIdentity(String identity) {
-      return identities.stream().filter(c -> c.identity().equals(identity)).findFirst();
-    }
   }
 }
