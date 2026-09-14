@@ -116,6 +116,9 @@ final class AdoMapper {
       detail.put("decision", vote >= 5 ? "approved" : "changes_requested");
       detail.put("comments", Integer.toString(r.path("commentCount").asInt(0)));
       detail.put("author", author);
+      // A review has no standalone record in Azure DevOps — its link is the pull request's.
+      detail.put("summary", pr.path("title").asText(""));
+      detail.put("url", webLink(pr));
       out.add(
           new RawEvent(
               "review:" + prId + ":" + identity(r),
@@ -178,6 +181,8 @@ final class AdoMapper {
     detail.put("num", failed ? "1" : "0"); // CFR numerator
     detail.put("den", "1");
     detail.put("stage", stage);
+    detail.put("summary", build.path("buildNumber").asText(stage));
+    detail.put("url", webLink(build));
     return Optional.of(
         new RawEvent(
             "deploy:" + build.path("id").asText() + ":" + stageRecord.path("id").asText(),
@@ -194,19 +199,31 @@ final class AdoMapper {
             detail));
   }
 
-  /** A work item → one WORKITEM event, its flow measures reconstructed from the state history. */
+  /**
+   * A work item → one WORKITEM event, its flow measures reconstructed from the state history.
+   * {@code org}/{@code project} (already URL-path-encoded by the caller) build the item's deep-link
+   * — the workitems batch GET carries no {@code _links.web.href} to reuse.
+   */
   static RawEvent workItem(
-      JsonNode wi, JsonNode updates, Function<String, Segment> classify, Instant now) {
+      JsonNode wi,
+      JsonNode updates,
+      Function<String, Segment> classify,
+      Instant now,
+      String org,
+      String project) {
     JsonNode f = wi.path("fields");
     Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
+    String id = wi.path("id").asText();
     Map<String, String> detail = new HashMap<>();
     detail.put("type", workType(f.path("System.WorkItemType").asText("")));
+    detail.put("summary", f.path("System.Title").asText(""));
+    detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
     WorkItemFlow flow = WorkItemFlow.of(updates, classify, created, now);
     Instant occurred =
         flow.completion() != null ? flow.completion() : instant(f, "System.ChangedDate");
     flow.fill(detail);
     return new RawEvent(
-        "wi:" + wi.path("id").asText(),
+        "wi:" + id,
         EventType.WORKITEM,
         occurred,
         null,

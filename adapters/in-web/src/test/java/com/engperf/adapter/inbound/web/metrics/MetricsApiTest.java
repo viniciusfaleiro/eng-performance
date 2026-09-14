@@ -8,6 +8,7 @@ import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.MetricCard;
+import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
 import com.engperf.application.metrics.SeriesPoint;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
@@ -23,6 +24,7 @@ import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -118,6 +120,37 @@ class MetricsApiTest {
   }
 
   @Test
+  void itemsReturnsTheListForANodeInScope() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=p:bruno")
+                .requestAttr(AuthWeb.USER, user(member())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].eventId").value("pr:1"))
+        .andExpect(jsonPath("$[0].eventType").value("pr"))
+        .andExpect(jsonPath("$[0].counted").value(true));
+  }
+
+  @Test
+  void itemsDeniedForNodeOutsideScope() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=t:payments")
+                .requestAttr(AuthWeb.USER, user(member())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void itemsWithoutBucketDefaultsToTheCurrentPeriod() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all").requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].label").value("bucketStart=null"));
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&bucket=2026-05-01")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(jsonPath("$[0].label").value("bucketStart=2026-05-01"));
+  }
+
+  @Test
   void catalogNeedsNoScope() throws Exception {
     mvc.perform(get("/api/metrics/catalog").requestAttr(AuthWeb.USER, user(member())))
         .andExpect(status().isOk())
@@ -147,6 +180,22 @@ class MetricsApiTest {
         String metricKey, String nodeId, Frequency frequency, boolean aiAssisted) {
       MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
+    }
+
+    @Override
+    public List<MetricDrilldownItem> items(
+        String metricKey, String nodeId, Frequency frequency, String bucketStart) {
+      return List.of(
+          new MetricDrilldownItem(
+              "pr:1",
+              EventType.PR,
+              "https://ado/pr/1",
+              "bucketStart=" + bucketStart, // echoes the param so the test can assert it
+              nodeId,
+              Instant.parse("2026-06-10T10:00:00Z"),
+              1.0,
+              true,
+              null));
     }
   }
 }

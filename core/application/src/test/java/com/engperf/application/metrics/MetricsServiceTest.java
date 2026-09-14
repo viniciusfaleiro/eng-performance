@@ -154,6 +154,35 @@ class MetricsServiceTest {
         .isThrownBy(() -> service.series("nope", "all", Frequency.MONTHLY));
   }
 
+  @Test
+  void itemsWithNoBucketDefaultsToTheCurrentPeriod() {
+    baseStructure();
+    events.add(doneItem("id-ana")); // 2026-06-15 — the fixed clock's current month
+    events.add(doneItemOn("id-ana", "2026-05-15")); // previous month — must not appear by default
+
+    var items = service.items("throughput", "p:ana", Frequency.MONTHLY, null);
+    assertThat(items).hasSize(1);
+    assertThat(items.get(0).occurredAt()).isEqualTo(Instant.parse("2026-06-15T10:00:00Z"));
+  }
+
+  @Test
+  void itemsWithExplicitBucketMatchesThatPeriod() {
+    baseStructure();
+    events.add(doneItem("id-ana")); // 2026-06-15
+    events.add(doneItemOn("id-ana", "2026-05-15"));
+
+    var items = service.items("throughput", "p:ana", Frequency.MONTHLY, "2026-05-01");
+    assertThat(items).hasSize(1);
+    assertThat(items.get(0).occurredAt()).isEqualTo(Instant.parse("2026-05-15T10:00:00Z"));
+  }
+
+  @Test
+  void itemsRejectsUnknownMetric() {
+    baseStructure();
+    assertThatExceptionOfType(NoSuchElementException.class)
+        .isThrownBy(() -> service.items("nope", "all", Frequency.MONTHLY, null));
+  }
+
   private static double pointValue(MetricSeries s, String bucketStart) {
     return s.points().stream()
         .filter(p -> p.bucketStart().equals(bucketStart))

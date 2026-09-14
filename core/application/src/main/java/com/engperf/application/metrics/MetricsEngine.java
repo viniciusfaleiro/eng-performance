@@ -37,7 +37,8 @@ public final class MetricsEngine {
       boolean hasMeasure,
       double numerator,
       double denominator,
-      String entity) {}
+      String entity,
+      RawEvent source) {}
 
   public static MetricSeries series(
       StructureIndex index,
@@ -123,6 +124,87 @@ public final class MetricsEngine {
     return new MetricCard(def, lastPoint.value(), s.coverage());
   }
 
+  /**
+   * The raw events considered for {@code def} at {@code nodeId} in the bucket starting at {@code
+   * bucketStart} — the exact same attribution/population {@link #series} uses, so this can never
+   * list something the displayed value didn't actually use. Each item is flagged {@code counted}
+   * exactly as {@link #aggregate} would use it, mirrored case-by-case per {@link
+   * com.engperf.domain.metrics.Aggregation} so the list never drifts from the number it explains.
+   */
+  public static List<MetricDrilldownItem> items(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Frequency freq,
+      LocalDate bucketStart,
+      Predicate<RawEvent> population) {
+    List<Matched> matched = match(index, events, def, nodeId, population);
+    Bucket bucket = new Bucket(bucketStart, freq.nextBucketStart(bucketStart));
+    List<Matched> ms = inBucket(matched, bucket);
+    return select(def, ms).stream().map(MetricsEngine::toItem).toList();
+  }
+
+  private record Selected(Matched matched, boolean counted, String excludedReason) {}
+
+  private static List<Selected> select(MetricDefinition def, List<Matched> ms) {
+    return switch (def.aggregation()) {
+      // SUM/RATIO/DISTINCT_RATIO: aggregate() uses every matched event, so every item counts.
+      case SUM, RATIO, DISTINCT_RATIO -> ms.stream().map(m -> new Selected(m, true, null)).toList();
+      // MEDIAN: aggregate() filters to Matched::hasMeasure — mirror that filter here.
+      case MEDIAN ->
+          ms.stream()
+              .map(m -> new Selected(m, m.hasMeasure(), m.hasMeasure() ? null : "sem medida"))
+              .toList();
+      case SNAPSHOT -> selectSnapshot(ms);
+    };
+  }
+
+  /** Mirrors {@link #snapshot}: only each entity's latest measured event counts. */
+  private static List<Selected> selectSnapshot(List<Matched> ms) {
+    Map<String, Matched> latestByEntity = new HashMap<>();
+    for (Matched m : ms) {
+      if (!m.hasMeasure()) {
+        continue;
+      }
+      Matched cur = latestByEntity.get(m.entity());
+      if (cur == null || m.at().isAfter(cur.at())) {
+        latestByEntity.put(m.entity(), m);
+      }
+    }
+    List<Selected> out = new ArrayList<>();
+    for (Matched m : ms) {
+      if (!m.hasMeasure()) {
+        out.add(new Selected(m, false, "sem medida"));
+        continue;
+      }
+      boolean counted = latestByEntity.get(m.entity()) == m;
+      out.add(
+          new Selected(
+              m, counted, counted ? null : "superado por evento mais recente da mesma entidade"));
+    }
+    return out;
+  }
+
+  private static MetricDrilldownItem toItem(Selected s) {
+    Matched m = s.matched();
+    RawEvent e = m.source();
+    String label = e.detail().getOrDefault("summary", "");
+    if (label.isBlank()) {
+      label = e.id();
+    }
+    return new MetricDrilldownItem(
+        e.id(),
+        e.type(),
+        e.detail().getOrDefault("url", ""),
+        label,
+        m.entity(),
+        e.occurredAt(),
+        m.measure(),
+        s.counted(),
+        s.excludedReason());
+  }
+
   public static Coverage coverage(
       StructureIndex index, List<RawEvent> events, MetricDefinition def) {
     return coverage(index, events, def, e -> true);
@@ -169,7 +251,8 @@ public final class MetricsEngine {
                 measure.present(),
                 detail(e, "num", e.ai() ? 1.0 : 0.0),
                 detail(e, "den", 1.0),
-                attr.get().entityKey()));
+                attr.get().entityKey(),
+                e));
       }
     }
     return matched;

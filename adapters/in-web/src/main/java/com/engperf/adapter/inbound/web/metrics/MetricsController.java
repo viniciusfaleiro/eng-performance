@@ -4,6 +4,7 @@ import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.adapter.inbound.web.auth.ForbiddenException;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CardDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CatalogItemDto;
+import com.engperf.adapter.inbound.web.metrics.MetricsDtos.DrilldownItemDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
@@ -51,6 +52,19 @@ public class MetricsController {
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
     return SeriesDto.from(metrics.series(key, node, frequency(freq)));
+  }
+
+  @GetMapping("/api/metrics/{key}/items")
+  public List<DrilldownItemDto> items(
+      @PathVariable String key,
+      @RequestParam(defaultValue = "all") String node,
+      @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String bucket,
+      @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
+    requireView(user, node);
+    return metrics.items(key, node, frequency(freq), bucket).stream()
+        .map(DrilldownItemDto::from)
+        .toList();
   }
 
   private static void requireView(AuthenticatedUser user, String node) {

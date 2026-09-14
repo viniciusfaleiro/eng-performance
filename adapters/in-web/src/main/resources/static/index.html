@@ -704,7 +704,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* Tendências wired to the real metrics engine (S3). Prototype metric key → S3 catalog key; the
      rest stay synthetic until their group slice (S4-S6). Only the single-series Tendências chart
      + its tiles read real data; the dashboard card grids remain the mock until then. */
-  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
+  const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",mttr:"mttr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",aad:"ai_adoption",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency"};
   const TREND={},TREND_LOADING=new Set();
   const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq;
   function ensureTrend(mk){
@@ -1652,9 +1652,30 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<div class="kv"><div><span class="k">Atual</span><span class="val num">'+fmt(s.cur,m.unit)+' <span style="font-size:13px;color:var(--on-surface-var)">'+m.unit+'</span></span></div><div><span class="k">Anterior</span><span class="val num">'+fmt(s.prev,m.unit)+'</span></div><div><span class="k">Evolução</span><span style="margin-top:4px;display:inline-block">'+evoChip(s)+'</span></div>'+(tier?'<div><span class="k">Benchmark</span><span style="margin-top:4px;display:inline-block">'+tier+'</span></div>':'')+'</div>';
     h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Evolução (12 '+state.freq.toLowerCase()+'s)</div>'+lineChart(ser,labels,m.unit,220)+'</div>';
     if(m.phases)h+=phaseBlock(state.node,m);
+    const mk=PROTO2METRIC[m.key];
+    if(mk)h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Itens considerados no cálculo</div><div id="drawerItems"><div class="card-note">Carregando…</div></div></div>';
     h+='</div>';
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
+    if(mk)loadDrawerItems(mk,m.unit);
+  }
+  function loadDrawerItems(mk,unit){
+    const box=$("drawerItems");if(!box)return;
+    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+      .then(items=>{
+        const box2=$("drawerItems");if(!box2)return; // drawer may have been closed/reopened meanwhile
+        if(!items.length){box2.innerHTML='<div class="card-note">Nenhum item no período atual.</div>';return;}
+        box2.innerHTML='<div class="act-list">'+items.map(it=>{
+          const excluded=!it.counted;
+          const tag=excluded?' <span class="badge unmapped">não contou'+(it.excludedReason?" · "+escHtml(it.excludedReason):"")+'</span>':"";
+          const meta='<span>'+escHtml(it.entity||"")+'</span><span>'+new Date(it.occurredAt).toLocaleDateString("pt-BR")+'</span><span>'+fmt(it.measure,unit)+' '+unit+'</span>'+tag;
+          const body='<div class="act-main" style="'+(excluded?"opacity:.55":"")+'"><div class="act-title">'+escHtml(it.label)+'</div><div class="act-meta">'+meta+'</div></div>';
+          return it.url
+            ?'<a class="act-item" href="'+escHtml(it.url)+'" target="_blank" rel="noopener">'+body+'<span class="act-ext">↗</span></a>'
+            :'<div class="act-item">'+body+'</div>';
+        }).join("")+'</div>';
+      })
+      .catch(()=>{const box3=$("drawerItems");if(box3)box3.innerHTML='<div class="callout danger">Não foi possível carregar os itens.</div>';});
   }
   function closeDrawer(){$("drawer").classList.remove("open");$("scrim").classList.remove("open");}
   $("scrim").addEventListener("click",closeDrawer);
