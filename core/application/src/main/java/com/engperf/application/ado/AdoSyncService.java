@@ -81,7 +81,7 @@ public final class AdoSyncService implements AdoSyncUseCase {
   private void run(Job job, DeviceCodePrompt prompt, boolean fullBackfill) {
     boolean incremental = !fullBackfill && syncState.load().isPresent();
     try {
-      String token = awaitToken(job, prompt);
+      String token = DeviceCodeAwaiter.await(auth, clock, prompt);
       job.phase = "syncing";
       Instant since = incremental ? watermarkOrBackfill() : backfillWindow();
       LOG.info(
@@ -113,35 +113,12 @@ public final class AdoSyncService implements AdoSyncUseCase {
     }
   }
 
-  private String awaitToken(Job job, DeviceCodePrompt prompt) {
-    Instant deadline = clock.instant().plusSeconds(prompt.expiresInSeconds());
-    while (true) {
-      Optional<String> token = auth.poll(prompt.deviceCode());
-      if (token.isPresent()) {
-        return token.get();
-      }
-      if (clock.instant().isAfter(deadline)) {
-        throw new AdoAuthException("device code expired");
-      }
-      sleep(prompt.intervalSeconds());
-    }
-  }
-
   private Instant watermarkOrBackfill() {
     return syncState.load().map(SyncState::watermark).orElseGet(this::backfillWindow);
   }
 
   private Instant backfillWindow() {
     return clock.instant().minusSeconds((long) BACKFILL_MONTHS * 30 * 24 * 3600);
-  }
-
-  private static void sleep(int seconds) {
-    try {
-      Thread.sleep(Math.max(1, seconds) * 1000L);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new AdoAuthException("interrupted while waiting for login");
-    }
   }
 
   /** Mutable in-memory job state; snapshotted into an immutable {@link SyncStatus} on read. */

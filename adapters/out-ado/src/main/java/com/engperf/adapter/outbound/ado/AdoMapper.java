@@ -250,7 +250,7 @@ final class AdoMapper {
     return approved;
   }
 
-  private static boolean matchesProduction(String stage, String rule) {
+  static boolean matchesProduction(String stage, String rule) {
     if (rule == null || rule.isBlank()) {
       // No explicit rule: match the common production spellings. "prd" (without the "o") is a
       // frequent convention and is NOT a substring of "prod", so check for it explicitly.
