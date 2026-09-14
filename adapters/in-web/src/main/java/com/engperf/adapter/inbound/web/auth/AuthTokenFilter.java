@@ -20,7 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <ul>
  *   <li>{@code /api/auth/login}, {@code /api/auth/password-reset} and {@code
- *       /api/auth/password-reset/confirm} are public;
+ *       /api/auth/password-reset/confirm} and {@code /api/version} are public;
  *   <li>every other {@code /api/**} route requires a valid token (401 otherwise);
  *   <li>{@code /api/admin/**} additionally requires the admin flag (403 otherwise).
  * </ul>
@@ -100,7 +100,9 @@ public class AuthTokenFilter extends OncePerRequestFilter {
   private static boolean isPublic(String path) {
     return path.equals("/api/auth/login")
         || path.equals("/api/auth/password-reset")
-        || path.equals("/api/auth/password-reset/confirm");
+        || path.equals("/api/auth/password-reset/confirm")
+        // The running build's identity — readable from the login screen, before any token exists.
+        || path.equals("/api/version");
   }
 
   private static String path(HttpServletRequest request) {
