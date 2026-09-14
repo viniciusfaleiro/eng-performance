@@ -1,8 +1,5 @@
-# repository-mapping Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change estrutura-cadastro. Update Purpose after archive.
-## Requirements
 ### Requirement: One repository maps to one team
 The system SHALL let an admin register repositories **one by one** — each with its Azure DevOps
 **organization**, project, repository key, and a **production-stage rule** — and map each to at most
@@ -28,12 +25,3 @@ for attributing repository- and pipeline-scoped metrics (DORA) to a team.
 #### Scenario: Discovered repositories still require manual team assignment
 - **WHEN** a repository is registered through discovery's diff-apply rather than the manual form
 - **THEN** it is stored with no team, same as a manually registered repository, until an admin assigns one
-
-### Requirement: Unmapped repositories are out of DORA scope
-A repository not mapped to any team SHALL be flagged as unattributed and
-excluded from team-level DORA scope.
-
-#### Scenario: Unmapped repository is flagged
-- **WHEN** the repositories view is shown and a repository has no team
-- **THEN** that repository is marked as out of DORA scope
-

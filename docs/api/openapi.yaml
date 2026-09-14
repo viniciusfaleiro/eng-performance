@@ -839,6 +839,69 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /admin/repositories/discover:
+    post:
+      tags: [Admin]
+      summary: Inicia a descoberta de repositórios de um (organização, projeto) no ADO.
+      description: |
+        Autentica via device-code (mesmo fluxo do sync de eventos, sem PAT) e lista, em
+        background, os repositórios reais do projeto para comparar com o cadastro —
+        consulte o resultado (o diff) em `GET .../discover/status`. Nada é inserido ou
+        removido do cadastro só por chamar este endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RepoDiscoveryRequest" }
+      responses:
+        "200":
+          description: Sessão iniciada; prompt de login device-code para o admin completar.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RepoDiscoveryStart" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/repositories/discover/status:
+    get:
+      tags: [Admin]
+      summary: Progresso/diff de uma sessão de descoberta de repositórios.
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            Status da sessão; `toInsert`/`toRemove` só vêm preenchidos quando `done=true` e
+            `failed=false`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RepoDiscoveryStatus" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/repositories/discover/apply:
+    post:
+      tags: [Admin]
+      summary: Aplica o diff de uma sessão de descoberta terminada (insere/remove no cadastro).
+      description: |
+        Tudo-ou-nada: registra (sem time) cada repositório de `toInsert` — com o stage de
+        produção sugerido, quando houver — e remove cada repositório de `toRemove`.
+        Chamar de novo numa sessão já aplicada é um no-op.
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Diff aplicado (ou já havia sido aplicado antes). }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: A sessão ainda não terminou (ou falhou) — nada foi aplicado.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
   /admin/coverage:
     get:
       tags: [Admin]
@@ -1680,6 +1743,51 @@ components:
         state: { type: string, enum: [ok, running, failed, never] }
         backfillFrom: { type: string, format: date, nullable: true }
         message: { type: string, nullable: true }
+
+    RepoDiscoveryRequest:
+      type: object
+      required: [organization, project]
+      properties:
+        organization: { type: string, description: "Organização ADO (URL completa ou nome curto)." }
+        project: { type: string }
+    RepoDiscoveryStart:
+      type: object
+      required: [sessionId, userCode, verificationUri, intervalSeconds]
+      properties:
+        sessionId: { type: string }
+        userCode: { type: string, description: Código que o admin digita na página de login. }
+        verificationUri: { type: string, format: uri }
+        intervalSeconds: { type: integer, description: Intervalo mínimo entre pollings de status. }
+    DiscoveredRepositoryItem:
+      type: object
+      required: [key]
+      properties:
+        key: { type: string, description: Nome do repositório no ADO. }
+        suggestedProductionStage:
+          type: string
+          nullable: true
+          description: |
+            Stage de produção detectado a partir dos pipelines recentes; `null` quando
+            nenhum ou mais de um candidato foi encontrado.
+    RepoDiscoveryStatus:
+      type: object
+      required: [sessionId, phase, done, failed, toInsert, toRemove, applied]
+      properties:
+        sessionId: { type: string }
+        phase: { type: string, enum: [awaiting-login, listing, done, failed] }
+        done: { type: boolean }
+        failed: { type: boolean }
+        message: { type: string }
+        toInsert:
+          type: array
+          items: { $ref: "#/components/schemas/DiscoveredRepositoryItem" }
+        toRemove:
+          type: array
+          items: { type: string }
+          description: Chaves de repositórios cadastrados que não existem mais no ADO.
+        applied:
+          type: boolean
+          description: Se o diff desta sessão já foi aplicado ao cadastro.
 
     # ---- Errors ----
     Problem:

@@ -1393,7 +1393,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     }).join("");
     return '<div class="callout">Cadastre cada repositório do Azure DevOps <b>um a um</b> (organização · projeto · repo) e vincule a um time — regra <b>1 repositório → 1 time</b>. A sincronização percorre só os repos cadastrados, em <b>qualquer organização</b>. O <b>stage de produção</b> por repo classifica os deploys (DORA).</div>'+
       '<div class="admin-bar"><button class="btn" data-aact="add-repo">+ Repositório</button></div>'+
-      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Organização</th><th>Projeto</th><th>Time</th><th>Stage prod.</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Repositório</th><th>Organização</th><th>Projeto</th><th>Time</th><th>Stage prod.</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+      '<div class="chart-title" style="margin:22px 0 8px">Descobrir repositórios de um projeto ADO</div>'+
+      '<div class="callout">Informe organização e projeto — a plataforma lista os repositórios reais desse projeto no Azure DevOps e compara com o que já está cadastrado. Nada muda no cadastro até você revisar o diff e clicar em <b>Aplicar</b>.</div>'+
+      '<div class="modal-grid" style="margin-bottom:10px">'+fInput("rd_org","Organização (URL ou nome)","")+fInput("rd_project","Projeto ADO","")+'</div>'+
+      '<button class="btn ghost" data-aact="repo-discover">Descobrir repositórios</button>'+
+      '<div id="repo_discovery_box"></div>';
   }
   function repoModal(){
     const body='<div class="modal-grid">'+fInput("mr_key","Repositório (nome no ADO)","")+fInput("mr_org","Organização (URL ou nome)","")+fInput("mr_project","Projeto ADO","")+fSelect("mr_team","Time",["—"].concat(ALL_TEAMS),"—")+fInput("mr_stage","Stage de produção","production")+'</div>';
@@ -1521,6 +1526,54 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     }).catch(apiErr);
   }
 
+  /* Repository discovery: device-code login (reusing the ADO sync flow), then diff + apply. */
+  const RD_PHASE={"awaiting-login":"Aguardando login…","listing":"Listando repositórios…","done":"Concluído","failed":"Falhou"};
+  function startRepoDiscovery(){
+    const org=mval("rd_org"),project=mval("rd_project");
+    if(!org||!project){toast("Informe organização e projeto");return;}
+    const box=$("repo_discovery_box");if(!box)return;
+    box.innerHTML='<div class="callout">Iniciando descoberta…</div>';
+    jpost("/api/admin/repositories/discover",{organization:org,project:project}).then(d=>{
+      box.innerHTML='<div class="callout"><b>Faça login na Microsoft</b><br>1. Abra <a href="'+d.verificationUri+'" target="_blank" rel="noopener">'+d.verificationUri+'</a><br>2. Código: <span class="code">'+d.userCode+'</span> <button class="btn ghost sm" id="rd_copy">copiar</button></div><div id="rd_prog"></div>';
+      const c=$("rd_copy");if(c)c.addEventListener("click",()=>{if(navigator.clipboard)navigator.clipboard.writeText(d.userCode);toast("Código copiado");});
+      repoDiscoveryPoll(d.sessionId,Date.now());
+    }).catch(apiErr);
+  }
+  function repoDiscoveryPoll(sid,t0){
+    jget("/api/admin/repositories/discover/status?sessionId="+encodeURIComponent(sid)).then(s=>{
+      const prog=$("rd_prog");if(!prog)return;
+      const el=fmtElapsed(Date.now()-t0);
+      if(s.done&&s.failed){
+        toast("Falha na descoberta");
+        prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title" style="color:var(--crit)">✕ Descoberta falhou · '+el+'</div><div class="callout danger" style="margin-bottom:0"><b>'+escHtml(s.message||"erro desconhecido")+'</b></div></div>';
+        return;
+      }
+      if(s.done){renderRepoDiscoveryDiff(sid,s,prog);return;}
+      prog.innerHTML='<div class="panel" style="margin-top:10px"><div class="chart-title">'+escHtml(RD_PHASE[s.phase]||s.phase)+' · '+el+'</div><div class="progbar"><i></i></div></div>';
+      setTimeout(()=>repoDiscoveryPoll(sid,t0),2000);
+    }).catch(apiErr);
+  }
+  function renderRepoDiscoveryDiff(sid,s,prog){
+    if(s.applied){prog.innerHTML='<div class="callout">Diff já aplicado.</div>';return;}
+    const insertRows=s.toInsert.length?s.toInsert.map(r=>'<tr><td><span class="code">'+escHtml(r.key)+'</span></td><td>'+(r.suggestedProductionStage?escHtml(r.suggestedProductionStage):'<span style="color:var(--muted)">— revisar depois</span>')+'</td></tr>').join(""):'<tr><td colspan="2" class="card-note">Nada a inserir.</td></tr>';
+    const removeRows=s.toRemove.length?s.toRemove.map(k=>'<tr><td><span class="code">'+escHtml(k)+'</span></td></tr>').join(""):'<tr><td class="card-note">Nada a remover.</td></tr>';
+    prog.innerHTML='<div class="panel" style="margin-top:10px;padding:14px">'+
+      '<div class="chart-title" style="margin-bottom:8px">Diff — '+s.toInsert.length+' a inserir, '+s.toRemove.length+' a remover</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">'+
+        '<div><div class="card-note" style="margin-bottom:6px">A inserir (sem time — associe depois)</div><table class="tbl"><thead><tr><th>Repositório</th><th>Stage sugerido</th></tr></thead><tbody>'+insertRows+'</tbody></table></div>'+
+        '<div><div class="card-note" style="margin-bottom:6px">A remover (não existem mais no ADO)</div><table class="tbl"><thead><tr><th>Repositório</th></tr></thead><tbody>'+removeRows+'</tbody></table></div>'+
+      '</div>'+
+      '<button class="btn" id="rd_apply" style="margin-top:14px">Aplicar</button>'+
+      '</div>';
+    const btn=$("rd_apply");
+    if(btn)btn.addEventListener("click",()=>{
+      btn.disabled=true;
+      jpost("/api/admin/repositories/discover/apply?sessionId="+encodeURIComponent(sid),{})
+        .then(loadFromApi).then(()=>{toast("Diff aplicado");prog.innerHTML='<div class="callout">Diff aplicado — associe os repositórios novos a um time na tabela acima.</div>';})
+        .catch(e=>{btn.disabled=false;apiErr(e);});
+    });
+  }
+
   /* ---------- Admin: modal, toast & actions ---------- */
   let toastTimer;
   function toast(msg){const el=$("toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
@@ -1612,6 +1665,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else if(act==="reload-identities")jpost("/api/admin/ado/committers/reload",{}).then(r=>loadFromApi().then(()=>toast(r.discovered+" identidade(s) carregada(s) · "+r.linked+" associada(s)"))).catch(apiErr);
     else if(act==="ado-sync")startAdoSync(false);
     else if(act==="ado-backfill")startAdoSync(true);
+    else if(act==="repo-discover")startRepoDiscovery();
     else if(act==="save"){
       if(state.adminTab==="ia"){
         jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})

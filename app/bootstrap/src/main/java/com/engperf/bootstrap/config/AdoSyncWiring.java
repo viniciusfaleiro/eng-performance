@@ -1,13 +1,17 @@
 package com.engperf.bootstrap.config;
 
+import com.engperf.application.ado.AdoDiscoveryService;
 import com.engperf.application.ado.AdoStatsService;
 import com.engperf.application.ado.AdoSyncService;
+import com.engperf.application.port.inbound.AdoDiscoveryUseCase;
 import com.engperf.application.port.inbound.AdoStatsUseCase;
 import com.engperf.application.port.inbound.AdoSyncUseCase;
 import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
+import com.engperf.application.port.inbound.RepositoryUseCase;
 import com.engperf.application.port.outbound.AdoAuthPort;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
+import com.engperf.application.port.outbound.AdoRepositoryDiscoveryPort;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.application.port.outbound.SyncStatePort;
@@ -47,6 +51,16 @@ public class AdoSyncWiring {
       Executor adoSyncExecutor) {
     return new AdoSyncService(
         auth, source, store, syncState, config, identities, adoSyncExecutor, Clock.systemUTC());
+  }
+
+  @Bean
+  AdoDiscoveryUseCase adoDiscoveryUseCase(
+      AdoAuthPort auth,
+      AdoRepositoryDiscoveryPort discovery,
+      RepositoryUseCase repositories,
+      Executor adoSyncExecutor) {
+    return new AdoDiscoveryService(
+        auth, discovery, repositories, adoSyncExecutor, Clock.systemUTC());
   }
 
   @Bean
