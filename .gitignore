@@ -19,3 +19,6 @@ node_modules/
 
 # Docker image staging (transient)
 app.jar
+
+# Segredos locais (CONFIG_ENCRYPTION_KEY e afins) lidos pelo docker compose
+.env

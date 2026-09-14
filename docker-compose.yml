@@ -32,6 +32,10 @@ services:
       DB_URL: jdbc:postgresql://db:5432/engperf
       DB_USERNAME: engperf
       DB_PASSWORD: engperf
+      # Cifra a senha do SMTP antes de gravá-la. Sem ela o app sobe, mas recusa salvar a
+      # configuração de e-mail. Gere com `openssl rand -base64 32` e mantenha estável entre
+      # deploys: trocar a chave torna a senha já salva indecifrável.
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:-}
     ports:
       - "8080:8080"
 
