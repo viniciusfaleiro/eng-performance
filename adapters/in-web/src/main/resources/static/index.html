@@ -717,7 +717,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
           dir:(lp.sentiment==="good"?"up":lp.sentiment==="bad"?"down":"flat")};})
       .catch(()=>{TREND[k]={error:true};})
-      .finally(()=>{TREND_LOADING.delete(k);render();});
+      .finally(()=>{TREND_LOADING.delete(k);render();
+        if(state.openDrawerKey&&PROTO2METRIC[state.openDrawerKey]===mk)openDrawer(state.openDrawerKey);});
   }
   // ai_share arrives as a 0..1 ratio; shown as a percentage like the prototype's aic axis.
   const TREND_SCALE={aic:100};
@@ -872,7 +873,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all"};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -1706,8 +1707,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   /* ---------- Drawer (metric detail) ---------- */
   function openDrawer(key){
-    const m=M(key);const s=snap(state.node,m,state.freq);const labels=periodLabels(state.freq,12);
-    const ser=[{name:m.label,color:"var(--cat-1)",pts:series(state.node,m,state.freq,12)}];
+    state.openDrawerKey=key;
+    const m=M(key);const s=trendSnap(m);const labels=periodLabels(state.freq,12);
+    const ser=[{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}];
     let tier=m.dora?'<span class="tier '+TC[tierOf(m.key,s.cur)]+'">'+tierOf(m.key,s.cur)+'</span>':'';
     let h='<div class="drawer-head"><div><div class="crumb-level">'+NODES[state.node].label+' · '+state.freq+'</div><h2 style="font-size:20px;margin-top:2px">'+m.label+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
     h+='<div class="drawer-body"><div class="def">'+DEFS[m.key]+'</div>';
@@ -1739,7 +1741,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       })
       .catch(()=>{const box3=$("drawerItems");if(box3)box3.innerHTML='<div class="callout danger">Não foi possível carregar os itens.</div>';});
   }
-  function closeDrawer(){$("drawer").classList.remove("open");$("scrim").classList.remove("open");}
+  function closeDrawer(){state.openDrawerKey=null;$("drawer").classList.remove("open");$("scrim").classList.remove("open");}
   $("scrim").addEventListener("click",closeDrawer);
 
   function openActivityDrawer(id){
