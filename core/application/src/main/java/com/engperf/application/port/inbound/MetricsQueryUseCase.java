@@ -1,6 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.MetricCard;
+import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
@@ -26,4 +27,12 @@ public interface MetricsQueryUseCase {
    */
   MetricSeries cohortSeries(
       String metricKey, String nodeId, Frequency frequency, boolean aiAssisted);
+
+  /**
+   * The raw events considered for {@code metricKey} at {@code nodeId} in the bucket starting at
+   * {@code bucketStart} (ISO date, e.g. {@code "2026-06-01"}) — {@code null} defaults to the
+   * current (most recent) bucket, the same period a card/drawer shows by default.
+   */
+  List<MetricDrilldownItem> items(
+      String metricKey, String nodeId, Frequency frequency, String bucketStart);
 }

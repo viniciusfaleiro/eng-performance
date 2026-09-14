@@ -100,6 +100,20 @@ public final class MetricsService implements MetricsQueryUseCase {
         catalog.population(metricKey).and(e -> e.ai() == aiAssisted));
   }
 
+  @Override
+  public List<MetricDrilldownItem> items(
+      String metricKey, String nodeId, Frequency frequency, String bucketStart) {
+    MetricDefinition def = definition(metricKey);
+    LocalDate reference = LocalDate.now(clock);
+    LocalDate bucket =
+        bucketStart == null || bucketStart.isBlank()
+            ? frequency.bucketStart(reference)
+            : LocalDate.parse(bucketStart);
+    List<RawEvent> window = fetch(def, frequency, reference);
+    return MetricsEngine.items(
+        buildIndex(), window, def, nodeId, frequency, bucket, catalog.population(metricKey));
+  }
+
   private MetricDefinition definition(String metricKey) {
     return catalog
         .find(metricKey)

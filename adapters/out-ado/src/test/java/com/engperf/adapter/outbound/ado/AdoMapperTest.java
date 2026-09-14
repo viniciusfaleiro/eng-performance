@@ -63,6 +63,7 @@ class AdoMapperTest {
     assertThat(r.detail().get("author")).isEqualTo("ana@empresa.com"); // reviewed PR's author
     assertThat(r.detail().get("decision")).isEqualTo("approved");
     assertThat(r.detail().get("comments")).isEqualTo("2");
+    assertThat(r.detail().get("url")).contains("pullrequest/42"); // links back to the PR
   }
 
   @Test
@@ -101,6 +102,8 @@ class AdoMapperTest {
     assertThat(e.detail().get("outcome")).isEqualTo("success");
     assertThat(e.detail().get("num")).isEqualTo("0"); // not failed → CFR numerator 0
     assertThat(e.value()).isEqualTo(0.5); // lead: queue 10:00 → stage finish 10:30
+    assertThat(e.detail().get("summary")).isEqualTo("20260610.3");
+    assertThat(e.detail().get("url")).contains("_build/results?buildId=77");
   }
 
   @Test
@@ -141,11 +144,14 @@ class AdoMapperTest {
             stateUpdate("2026-06-10T14:00:00Z", "Closed")); // completion
     Instant now = Instant.parse("2026-06-11T00:00:00Z");
 
-    RawEvent e = AdoMapper.workItem(fixture("workitem.json"), updates, CLASSIFY, now);
+    RawEvent e =
+        AdoMapper.workItem(fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj");
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
     assertThat(e.occurredAt().toString()).isEqualTo("2026-06-10T14:00:00Z"); // dated at completion
+    assertThat(e.detail().get("summary")).isEqualTo("Checkout falha com CPF inválido");
+    assertThat(e.detail().get("url")).isEqualTo("org/Proj/_workitems/edit/555");
     assertThat(e.detail().get("active_h")).isEqualTo("1.0"); // 11:00 → 12:00
     assertThat(e.detail().get("wait_h")).isEqualTo("1.0"); // Blocked 12:00 → 13:00
     assertThat(e.detail().get("review_h")).isEqualTo("1.0"); // Code Review 13:00 → 14:00
@@ -161,7 +167,12 @@ class AdoMapperTest {
     JsonNode oneState = updates(stateUpdate("2026-06-10T10:00:00Z", "New"));
     RawEvent e =
         AdoMapper.workItem(
-            fixture("workitem.json"), oneState, CLASSIFY, Instant.parse("2026-06-11T00:00:00Z"));
+            fixture("workitem.json"),
+            oneState,
+            CLASSIFY,
+            Instant.parse("2026-06-11T00:00:00Z"),
+            "org",
+            "Proj");
     assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
     assertThat(e.detail()).doesNotContainKey("active_h").doesNotContainKey("completed");
   }
@@ -174,7 +185,12 @@ class AdoMapperTest {
             stateUpdate("2026-06-10T11:00:00Z", "Active")); // still active, never closed
     RawEvent e =
         AdoMapper.workItem(
-            fixture("workitem.json"), updates, CLASSIFY, Instant.parse("2026-06-10T13:00:00Z"));
+            fixture("workitem.json"),
+            updates,
+            CLASSIFY,
+            Instant.parse("2026-06-10T13:00:00Z"),
+            "org",
+            "Proj");
     assertThat(e.detail().get("in_progress")).isEqualTo("1");
     assertThat(e.detail()).doesNotContainKey("completed").doesNotContainKey("cycle_h");
     assertThat(e.detail().get("active_h")).isEqualTo("2.0"); // 11:00 → now 13:00

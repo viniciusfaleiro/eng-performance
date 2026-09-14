@@ -245,7 +245,9 @@ public final class AdoEventSource implements AdoEventSourcePort {
     if (ids.isEmpty()) {
       return 0;
     }
-    String fields = "System.WorkItemType,System.ChangedDate,System.CreatedDate,System.AssignedTo";
+    String fields =
+        "System.WorkItemType,System.Title,System.ChangedDate,System.CreatedDate,"
+            + "System.AssignedTo";
     Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
     Instant now = Instant.now();
     int n = 0;
@@ -265,7 +267,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
             client.get(
                 org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
                 token);
-        events.add(AdoMapper.workItem(wi, updates, classify, now));
+        events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj));
         n++;
       }
     }

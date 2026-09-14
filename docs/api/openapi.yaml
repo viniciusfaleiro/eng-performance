@@ -247,6 +247,33 @@ paths:
               schema: { $ref: "#/components/schemas/SeriesBundle" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /metrics/{metricKey}/items:
+    get:
+      tags: [Metrics]
+      summary: Itens crus considerados no cálculo de uma métrica, para troubleshooting.
+      description: |
+        Lista exatamente os eventos que a agregação da métrica usou para o nó e o
+        período — o mesmo subconjunto que produz o valor exibido, nunca uma
+        recomputação separada. Itens excluídos (ex.: sem a medida, numa métrica
+        `MEDIAN`) aparecem com `counted: false` em vez de desaparecer.
+      parameters:
+        - $ref: "#/components/parameters/MetricKeyPath"
+        - $ref: "#/components/parameters/NodeId"
+        - $ref: "#/components/parameters/Frequency"
+        - name: bucket
+          in: query
+          schema: { type: string, format: date }
+          description: Início do período (mesmo valor de `bucket` de um ponto da série). Omitido = período atual.
+      responses:
+        "200":
+          description: Itens do período.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DrilldownItem" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   # ---------------------------------------------------------------- Dashboards
   /dashboards/{group}:
@@ -1089,6 +1116,28 @@ components:
           type: array
           description: Uma série (default) ou duas (com IA vs. sem IA quando split=ai).
           items: { $ref: "#/components/schemas/Series" }
+    DrilldownItem:
+      type: object
+      required: [eventId, eventType, label, entity, occurredAt, measure, counted]
+      properties:
+        eventId: { type: string }
+        eventType: { type: string, enum: [commit, pr, deploy, workitem, review] }
+        url:
+          type: string
+          format: uri
+          nullable: true
+          description: Link para o registro no Azure DevOps, quando capturado na ingestão.
+        label: { type: string, description: "Título/resumo do item; cai para o id quando ausente." }
+        entity: { type: string, description: "A quem o evento foi atribuído (pessoa ou time)." }
+        occurredAt: { type: string, format: date-time }
+        measure: { type: number, description: "O valor bruto que este item carregou para o cálculo." }
+        counted:
+          type: boolean
+          description: Se este item efetivamente entrou no valor agregado exibido.
+        excludedReason:
+          type: string
+          nullable: true
+          description: "Preenchido quando counted=false (ex.: 'sem medida')."
 
     # ---- Rankings / stats ----
     RankingEntry:

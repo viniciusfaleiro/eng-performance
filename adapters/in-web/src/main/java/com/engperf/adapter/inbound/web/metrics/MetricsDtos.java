@@ -1,6 +1,7 @@
 package com.engperf.adapter.inbound.web.metrics;
 
 import com.engperf.application.metrics.MetricCard;
+import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
 import com.engperf.application.metrics.SeriesPoint;
 import com.engperf.domain.metrics.Coverage;
@@ -98,6 +99,31 @@ public final class MetricsDtos {
           d.direction().name().toLowerCase(Locale.ROOT),
           cov.percent(),
           s.points().stream().map(PointDto::from).toList());
+    }
+  }
+
+  public record DrilldownItemDto(
+      String eventId,
+      String eventType,
+      String url,
+      String label,
+      String entity,
+      String occurredAt,
+      double measure,
+      boolean counted,
+      String excludedReason) {
+
+    public static DrilldownItemDto from(MetricDrilldownItem i) {
+      return new DrilldownItemDto(
+          i.eventId(),
+          i.eventType().name().toLowerCase(Locale.ROOT),
+          i.url(),
+          i.label(),
+          i.entity(),
+          i.occurredAt().toString(),
+          i.measure(),
+          i.counted(),
+          i.excludedReason());
     }
   }
 }
