@@ -84,7 +84,7 @@ class AdminAccountsApiTest {
     var accountRepo = new FakeAccounts();
     var configPort = new FakeConfig();
     var userService = new UserAccountService(accountRepo, HASHER, NOOP_IDENTITIES);
-    var configService = new PlatformConfigService(configPort);
+    var configService = new PlatformConfigService(configPort, new FakeEmail());
 
     ObjectMapper mapper =
         new ObjectMapper()
@@ -193,6 +193,57 @@ class AdminAccountsApiTest {
         .andExpect(jsonPath("$.status").value("disabled"));
   }
 
+  @Test
+  void emailSettingsAreSavedAndPasswordIsNeverReturned() throws Exception {
+    mvc.perform(get("/api/admin/email"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.passwordSet").value(false));
+
+    mvc.perform(
+            put("/api/admin/email")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"enabled\":true,\"host\":\"smtp.empresa.com\",\"port\":587,"
+                        + "\"transport\":\"starttls\",\"username\":\"no-reply\","
+                        + "\"password\":\"s3cret\",\"fromAddress\":\"no-reply@empresa.com\","
+                        + "\"appBaseUrl\":\"https://empresa.com\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.host").value("smtp.empresa.com"))
+        .andExpect(jsonPath("$.passwordSet").value(true))
+        .andExpect(jsonPath("$.password").doesNotExist());
+  }
+
+  @Test
+  void savingEmailSettingsWithoutAPasswordKeepsTheStoredOne() throws Exception {
+    mvc.perform(
+            put("/api/admin/email")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"enabled\":true,\"host\":\"smtp.empresa.com\",\"port\":587,"
+                        + "\"transport\":\"none\",\"password\":\"s3cret\","
+                        + "\"fromAddress\":\"no-reply@empresa.com\"}"))
+        .andExpect(status().isOk());
+
+    mvc.perform(
+            put("/api/admin/email")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"enabled\":true,\"host\":\"smtp.empresa.com\",\"port\":2525,"
+                        + "\"transport\":\"none\",\"fromAddress\":\"no-reply@empresa.com\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.port").value(2525))
+        .andExpect(jsonPath("$.passwordSet").value(true));
+  }
+
+  @Test
+  void testEmailIsSentThroughThePort() throws Exception {
+    mvc.perform(
+            post("/api/admin/email/test")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"to\":\"dest@empresa.com\"}"))
+        .andExpect(status().isNoContent());
+  }
+
   private static final class FakeAccounts implements UserAccountRepositoryPort {
     private final Map<String, UserAccount> byId = new LinkedHashMap<>();
 
@@ -226,6 +277,17 @@ class AdminAccountsApiTest {
   private static final class FakeConfig implements PlatformConfigPort {
     private AdoIntegration ado = new AdoIntegration(false, null);
     private AiConvention ai = new AiConvention(AiStrategy.TRAILER, null, null, null, false);
+    private com.engperf.domain.config.SmtpSettings smtp =
+        new com.engperf.domain.config.SmtpSettings(
+            false,
+            null,
+            null,
+            com.engperf.domain.config.MailTransport.NONE,
+            null,
+            null,
+            null,
+            null,
+            null);
 
     @Override
     public AdoIntegration getAdoIntegration() {
@@ -247,6 +309,28 @@ class AdminAccountsApiTest {
     public AiConvention saveAiConvention(AiConvention convention) {
       this.ai = convention;
       return convention;
+    }
+
+    @Override
+    public com.engperf.domain.config.SmtpSettings getSmtpSettings() {
+      return smtp;
+    }
+
+    @Override
+    public com.engperf.domain.config.SmtpSettings saveSmtpSettings(
+        com.engperf.domain.config.SmtpSettings settings) {
+      this.smtp = settings.password() == null ? settings.withPassword(smtp.password()) : settings;
+      return this.smtp;
+    }
+  }
+
+  private static final class FakeEmail
+      implements com.engperf.application.port.outbound.EmailSenderPort {
+    String to;
+
+    @Override
+    public void send(String to, String subject, String body) {
+      this.to = to;
     }
   }
 }

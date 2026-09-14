@@ -19,7 +19,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * populates the request with the authenticated principal + scope, and enforces the coarse gate:
  *
  * <ul>
- *   <li>{@code /api/auth/login} is public;
+ *   <li>{@code /api/auth/login}, {@code /api/auth/password-reset} and {@code
+ *       /api/auth/password-reset/confirm} are public;
  *   <li>every other {@code /api/**} route requires a valid token (401 otherwise);
  *   <li>{@code /api/admin/**} additionally requires the admin flag (403 otherwise).
  * </ul>
@@ -97,7 +98,9 @@ public class AuthTokenFilter extends OncePerRequestFilter {
   }
 
   private static boolean isPublic(String path) {
-    return path.equals("/api/auth/login");
+    return path.equals("/api/auth/login")
+        || path.equals("/api/auth/password-reset")
+        || path.equals("/api/auth/password-reset/confirm");
   }
 
   private static String path(HttpServletRequest request) {

@@ -63,11 +63,13 @@ flowchart LR
   web["adapter-in-web<br/>HTTP + UI"] --> app
   pg["adapter-out-persistence<br/>PostgreSQL / JPA / Flyway"] --> app
   ado["adapter-out-ado<br/>Azure DevOps + Entra device-code"] --> app
+  mail["adapter-out-email<br/>SMTP + log fallback"] --> app
   app["application<br/>use cases + ports"] --> dom["domain<br/>pure business rules"]
   web --> dom
   pg --> dom
   ado --> dom
-  boot["bootstrap · composition root"] -.wires.-> web & pg & ado & app & dom
+  mail --> dom
+  boot["bootstrap · composition root"] -.wires.-> web & pg & ado & mail & app & dom
 ```
 
 | Module | Responsibility | May depend on |
@@ -77,6 +79,7 @@ flowchart LR
 | `adapter-in-web` | HTTP API + served UI (inbound) | `application`, `domain` |
 | `adapter-out-persistence` | Outbound ports over **PostgreSQL** (JPA + Flyway) | `application`, `domain` |
 | `adapter-out-ado` | The real **Azure DevOps** source (device-code auth + REST) — the *only* module that speaks HTTP | `application`, `domain` |
+| `adapter-out-email` | Transactional email — SMTP, with a log fallback when none is configured | `application`, `domain` |
 | `bootstrap` | Executable app; composition root wiring ports → adapters | all |
 | `architecture-tests` | ArchUnit rules guarding the boundaries | all (test) |
 
@@ -168,6 +171,21 @@ the Gradle workflow). The app reaches Postgres at `db:5432` inside the compose n
 **Default logins** (seeded; password `prototipo`): `admin@empresa.com` (admin) ·
 `paula@empresa.com` (exec) · `ana.souza@empresa.com` (manager) · `bruno.lima@empresa.com` (contributor).
 
+### ✉️ Password reset email
+
+Forgotten-password self-service (**Admin → E-mail**) sends a single-use reset link by SMTP. With
+no server configured, the link is written to the application log instead — the flow stays
+exercisable in dev/local without a mail server. Only the SMTP **password** needs an env var; it is
+encrypted at rest with **AES-256-GCM**, keyed by:
+
+```bash
+CONFIG_ENCRYPTION_KEY=<base64 of 32 random bytes>   # e.g. openssl rand -base64 32
+```
+
+Saving a password in the Admin screen without this key set is rejected. Host, port, transport,
+sender and the app's base URL (used to build the link) are configured entirely in the Admin
+screen — no restart needed to change them.
+
 ## 🗂 Project layout
 
 The Gradle modules are grouped by hexagon layer on disk; their logical names stay flat
@@ -175,7 +193,7 @@ The Gradle modules are grouped by hexagon layer on disk; their logical names sta
 
 ```
 core/          domain · application            # inner layers (no framework)
-adapters/      in-web · out-persistence · out-ado
+adapters/      in-web · out-persistence · out-ado · out-email
 app/           bootstrap                        # executable / composition root
 test/          architecture-tests              # ArchUnit boundary rules
 docs/          initial-spec.md · api/openapi.yaml · …   # product PRD + API contract

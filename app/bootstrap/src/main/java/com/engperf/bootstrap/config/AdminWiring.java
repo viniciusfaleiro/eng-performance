@@ -5,6 +5,7 @@ import com.engperf.application.config.PlatformConfigService;
 import com.engperf.application.port.inbound.IdentityUseCase;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.inbound.UserAccountUseCase;
+import com.engperf.application.port.outbound.EmailSenderPort;
 import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
@@ -24,7 +25,8 @@ public class AdminWiring {
   }
 
   @Bean
-  PlatformConfigUseCase platformConfigUseCase(PlatformConfigPort port) {
-    return new PlatformConfigService(port);
+  PlatformConfigUseCase platformConfigUseCase(
+      PlatformConfigPort port, EmailSenderPort emailSender) {
+    return new PlatformConfigService(port, emailSender);
   }
 }

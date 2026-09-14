@@ -174,6 +174,29 @@ class AdoSyncServiceTest {
         AiStrategy strategy, String trailer, String tag, String regex, boolean caseSensitive) {
       return aiConvention();
     }
+
+    @Override
+    public com.engperf.domain.config.SmtpSettings smtpSettings() {
+      return new com.engperf.domain.config.SmtpSettings(
+          false,
+          null,
+          null,
+          com.engperf.domain.config.MailTransport.NONE,
+          null,
+          null,
+          null,
+          null,
+          null);
+    }
+
+    @Override
+    public com.engperf.domain.config.SmtpSettings saveSmtpSettings(
+        com.engperf.domain.config.SmtpSettings settings) {
+      return smtpSettings();
+    }
+
+    @Override
+    public void sendTestEmail(String to) {}
   }
 
   private static final class FakeIdentities implements IdentityUseCase {
