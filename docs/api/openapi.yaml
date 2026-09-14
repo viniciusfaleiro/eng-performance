@@ -49,8 +49,32 @@ tags:
     description: Painel de contribuição de uma pessoa e drawer de atividade.
   - name: Admin
     description: Mapa organizacional, integração ADO e convenção de IA.
+  - name: Meta
+    description: Identidade do build em execução.
 
 paths:
+  # ---------------------------------------------------------------- Meta
+  /version:
+    get:
+      tags: [Meta]
+      summary: Build em execução — versão, commit e hora de compilação.
+      description: >
+        Público: serve para confirmar qual artefato está no ar antes de investigar
+        uma funcionalidade "faltando" (a SPA é servida do jar com nome fixo, então
+        uma página em cache é indistinguível de um deploy que não subiu).
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string, example: "0.1.0-SNAPSHOT" }
+                  commit:  { type: string, example: "99f131a" }
+                  builtAt: { type: string, format: date-time, nullable: true }
+
   # ---------------------------------------------------------------- Auth
   /auth/login:
     post:
