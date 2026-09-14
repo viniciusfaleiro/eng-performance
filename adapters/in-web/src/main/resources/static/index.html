@@ -877,7 +877,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
   function evoChip(s){const a=s.pct>0?"▲":s.pct<0?"▼":"▬";const sg=s.pct>0?"+":"";return '<span class="chip '+s.dir+'"><span class="arrow">'+a+'</span><span class="num">'+sg+s.pct+'%</span></span>';}
-  function sparkline(trend){const w=200,h=32,p=3,mn=Math.min(...trend),mx=Math.max(...trend),sp=mx-mn||1;const x=i=>p+i*(w-2*p)/(trend.length-1),y=v=>h-p-((v-mn)/sp)*(h-2*p);let d="";trend.forEach((v,i)=>{d+=(i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)+" ";});const area=d+"L"+x(trend.length-1).toFixed(1)+" "+h+" L"+x(0).toFixed(1)+" "+h+" Z";return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true"><path d="'+area+'" fill="var(--spark-fill)"/><path d="'+d+'" fill="none" stroke="var(--spark)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="'+x(trend.length-1).toFixed(1)+'" cy="'+y(trend[trend.length-1]).toFixed(1)+'" r="3" fill="var(--spark)"/></svg>';}
+  function sparkline(trend){
+    const w=200,h=32,p=2,n=trend.length,mn=Math.min(...trend),mx=Math.max(...trend),sp=mx-mn||1;
+    const slot=(w-2*p)/n,barW=slot*0.62,gap=(slot-barW)/2,y=v=>p+(1-(v-mn)/sp)*(h-2*p);
+    let bars="";trend.forEach((v,i)=>{const bx=p+i*slot+gap,by=y(v),bh=Math.max(0,h-p-by),last=i===n-1;bars+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="1" fill="var(--spark)"'+(last?"":' opacity="0.55"')+'/>';});
+    return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'+bars+'</svg>';
+  }
 
   function metricCard(id,m,freq,hero){
     const s=snap(id,m,freq);let tier="";
@@ -891,16 +896,19 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function sectionHead(t){return '<div class="section-head"><h2>'+t+'</h2><div class="rule"></div></div>';}
 
   // Generic line chart: series=[{name,color,pts:[]}]
-  function lineChart(seriesArr,labels,unit,height){
+  function barChart(seriesArr,labels,unit,height){
     const w=760,h=height||240,L=44,R=14,T=14,B=26;
-    let mn=Infinity,mx=-Infinity;seriesArr.forEach(s=>s.pts.forEach(v=>{mn=Math.min(mn,v);mx=Math.max(mx,v);}));
-    const pad=(mx-mn)*0.15||1;mn=Math.max(0,mn-pad);mx=mx+pad;
-    const n=labels.length;const x=i=>L+i*(w-L-R)/(n-1),y=v=>T+(1-(v-mn)/(mx-mn))*(h-T-B);
+    let mx=-Infinity;seriesArr.forEach(s=>s.pts.forEach(v=>{mx=Math.max(mx,v);}));
+    mx=(mx*1.1)||1;const mn=0; // bar magnitude must read honestly from a zero baseline
+    const n=labels.length,ns=seriesArr.length;
+    const y=v=>T+(1-(v-mn)/(mx-mn))*(h-T-B);
+    const plotW=w-L-R,slot=plotW/n,groupPad=slot*0.18,barGap=ns>1?slot*0.06:0;
+    const barW=(slot-groupPad*2-(ns-1)*barGap)/ns;
     let g="";for(let k=0;k<=3;k++){const gv=mn+(mx-mn)*k/3,gy=y(gv).toFixed(1);g+='<line x1="'+L+'" y1="'+gy+'" x2="'+(w-R)+'" y2="'+gy+'" stroke="var(--grid)" stroke-width="1"/>'+'<text x="'+(L-8)+'" y="'+(+gy+4)+'" text-anchor="end" font-size="11" fill="var(--muted)">'+fmt(gv,unit)+'</text>';}
-    let xl="";[0,Math.floor((n-1)/2),n-1].forEach(i=>{xl+='<text x="'+x(i).toFixed(1)+'" y="'+(h-8)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+labels[i]+'</text>';});
-    let paths="";seriesArr.forEach((s,si)=>{let d="";s.pts.forEach((v,i)=>{d+=(i?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1)+" ";});if(seriesArr.length===1){const area=d+"L"+x(n-1).toFixed(1)+" "+(h-B)+" L"+x(0).toFixed(1)+" "+(h-B)+" Z";paths+='<path d="'+area+'" fill="var(--spark-fill)"/>';}paths+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';paths+='<circle cx="'+x(n-1).toFixed(1)+'" cy="'+y(s.pts[n-1]).toFixed(1)+'" r="3.5" fill="'+s.color+'"/>';});
-    let hits="";for(let i=0;i<n;i++){const cx=x(i);const bw=(w-L-R)/(n-1);let tip=labels[i];seriesArr.forEach(s=>{tip+=" · "+s.name+": "+fmt(s.pts[i],unit)+unit;});hits+='<rect class="hit" x="'+(cx-bw/2).toFixed(1)+'" y="'+T+'" width="'+bw.toFixed(1)+'" height="'+(h-T-B)+'"><title>'+tip+'</title></rect>';for(let si=0;si<seriesArr.length;si++){hits+='<circle cx="'+cx.toFixed(1)+'" cy="'+y(seriesArr[si].pts[i]).toFixed(1)+'" r="9" fill="transparent"><title>'+labels[i]+' — '+seriesArr[si].name+': '+fmt(seriesArr[si].pts[i],unit)+unit+'</title></circle>';}}
-    return '<div class="chart"><svg viewBox="0 0 '+w+' '+h+'" role="img">'+g+xl+paths+hits+'</svg></div>';
+    let xl="";[0,Math.floor((n-1)/2),n-1].forEach(i=>{const cx=L+slot*i+slot/2;xl+='<text x="'+cx.toFixed(1)+'" y="'+(h-8)+'" text-anchor="middle" font-size="11" fill="var(--muted)">'+labels[i]+'</text>';});
+    let bars="";for(let i=0;i<n;i++){const groupX=L+slot*i+groupPad;const partial=i===n-1;for(let si=0;si<ns;si++){const v=seriesArr[si].pts[i];const bx=groupX+si*(barW+barGap);const by=y(v);const bh=Math.max(0,(h-B)-by);bars+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="2" fill="'+seriesArr[si].color+'"'+(partial?' opacity="0.5" stroke="'+seriesArr[si].color+'" stroke-width="1.5" stroke-dasharray="3,2"':'')+'/>';}}
+    let hits="";for(let i=0;i<n;i++){const hx=L+slot*i;let tip=labels[i];seriesArr.forEach(s=>{tip+=" · "+s.name+": "+fmt(s.pts[i],unit)+unit;});hits+='<rect class="hit" x="'+hx.toFixed(1)+'" y="'+T+'" width="'+slot.toFixed(1)+'" height="'+(h-T-B)+'"><title>'+tip+'</title></rect>';}
+    return '<div class="chart"><svg viewBox="0 0 '+w+' '+h+'" role="img">'+g+xl+bars+hits+'</svg></div>';
   }
   function periodLabels(freq,n){const out=[];for(let i=n-1;i>0;i--)out.push(({"Diário":"D-","Semanal":"S-","Mensal":"M-"}[freq])+i);out.push("atual");return out;}
 
@@ -915,7 +923,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return null;}
   function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd&&nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
-  function areaTrend(title,m){const labels=periodLabels(state.freq,12);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+lineChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
+  function areaTrend(title,m){const labels=periodLabels(state.freq,12);const s=trendSnap(m);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-head" style="margin-bottom:8px"><div class="chart-title">'+title+'</div>'+evoChip(s)+'</div>'+barChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
     const rows=ids.map(id=>({n:NODES[id],val:nodeVal(id,m)})).sort((a,b)=>m.higher?b.val-a.val:a.val-b.val);
     const max=Math.max(...rows.map(r=>r.val))||1;
@@ -1006,7 +1014,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const labels=periodLabels(state.freq,12);
     const comIA=(c&&c.withAi&&c.withAi.length===12)?c.withAi:series(state.node,M("ct"),state.freq,12,"ia").map(v=>v*0.82),
           semIA=(c&&c.withoutAi&&c.withoutAi.length===12)?c.withoutAi:series(state.node,M("ct"),state.freq,12,"noia").map(v=>v*1.08);
-    h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-head"><div class="chart-title">Cycle Time: PRs com IA vs. sem IA</div><div class="legend"><span><i style="background:var(--cat-1)"></i>com IA</span><span><i style="background:var(--cat-5)"></i>sem IA</span></div></div>'+lineChart([{name:"com IA",color:"var(--cat-1)",pts:comIA},{name:"sem IA",color:"var(--cat-5)",pts:semIA}],labels,"h",230)+'</div>';
+    h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-head"><div class="chart-title">Cycle Time: PRs com IA vs. sem IA</div><div class="legend"><span><i style="background:var(--cat-1)"></i>com IA</span><span><i style="background:var(--cat-5)"></i>sem IA</span></div></div>'+barChart([{name:"com IA",color:"var(--cat-1)",pts:comIA},{name:"sem IA",color:"var(--cat-5)",pts:semIA}],labels,"h",230)+'</div>';
     const topA=best(ids,M("aad"),"max"),lowA=best(ids,M("aad"),"min"),imp=best(ids,M("aim"),"max"),grew=bestEvo(ids,M("aic"));
     h+=statStrip([
       {label:"Maior adoção",value:Math.round(topA.v)+"%",sub:topA.n.label,tone:"good"},
@@ -1062,7 +1070,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<div class="chart-wrap"><div class="chart-head"><div class="chart-title">'+m.label+' — evolução</div>'+
        (canAI?'<button class="toggle-chip'+(state.trendAI?" on":"")+'" id="aiToggle">Comparar com/sem IA</button>':'')+'</div>';
     if(ser.length>1)h+='<div class="legend" style="margin-bottom:8px">'+ser.map(x=>'<span><i style="background:'+x.color+'"></i>'+x.name+'</span>').join("")+'</div>';
-    h+=lineChart(ser,labels,m.unit,250)+'</div>';
+    h+=barChart(ser,labels,m.unit,250)+'</div>';
     if(m.phases)h+=phaseBlock(state.node,m);
     return h;
   }
@@ -1181,7 +1189,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '</div>';
     const selM=IM[selKey];
     const selPts=(indDelivery(selKey)||{}).pts||series(id,selM,freq,12);
-    h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+selM.label+' — evolução <span class="card-note" style="font-weight:400">· clique num card acima</span></div>'+lineChart([{name:selM.label,color:"var(--cat-1)",pts:selPts}],labels,selM.unit,220)+'</div>';
+    h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+selM.label+' — evolução <span class="card-note" style="font-weight:400">· clique num card acima</span></div>'+barChart([{name:selM.label,color:"var(--cat-1)",pts:selPts}],labels,selM.unit,220)+'</div>';
     h+=phaseBlock(id,M("ct"));
 
     h+=sectionHead("Code reviews");
@@ -1650,7 +1658,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     let h='<div class="drawer-head"><div><div class="crumb-level">'+NODES[state.node].label+' · '+state.freq+'</div><h2 style="font-size:20px;margin-top:2px">'+m.label+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
     h+='<div class="drawer-body"><div class="def">'+DEFS[m.key]+'</div>';
     h+='<div class="kv"><div><span class="k">Atual</span><span class="val num">'+fmt(s.cur,m.unit)+' <span style="font-size:13px;color:var(--on-surface-var)">'+m.unit+'</span></span></div><div><span class="k">Anterior</span><span class="val num">'+fmt(s.prev,m.unit)+'</span></div><div><span class="k">Evolução</span><span style="margin-top:4px;display:inline-block">'+evoChip(s)+'</span></div>'+(tier?'<div><span class="k">Benchmark</span><span style="margin-top:4px;display:inline-block">'+tier+'</span></div>':'')+'</div>';
-    h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Evolução (12 '+state.freq.toLowerCase()+'s)</div>'+lineChart(ser,labels,m.unit,220)+'</div>';
+    h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Evolução (12 '+state.freq.toLowerCase()+'s)</div>'+barChart(ser,labels,m.unit,220)+'</div>';
     if(m.phases)h+=phaseBlock(state.node,m);
     const mk=PROTO2METRIC[m.key];
     if(mk)h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Itens considerados no cálculo</div><div id="drawerItems"><div class="card-note">Carregando…</div></div></div>';
