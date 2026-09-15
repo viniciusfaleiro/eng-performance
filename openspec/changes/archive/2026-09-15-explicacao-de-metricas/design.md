@@ -46,18 +46,26 @@ levaram 10h, 20h, 30h, 40h e 50h; a mediana é 30h — não a média, que seria 
 teste de completude verificar que a fonte e a exclusão foram descritas, e a UI não consegue dar
 hierarquia visual ao texto.
 
-### 2. Mora no `domain`, junto da definição da métrica
+### 2. Mora no `MetricDefinition`, mas o texto ficou em arquivo vizinho
 
-`MetricDefinition` ganha a explicação. É o lugar onde as outras propriedades descritivas já
-moram (`label`, `unit`, `direction`), e mantém explicação e cálculo **no mesmo arquivo** —
-`MetricCatalog`. Quem muda a agregação de uma métrica vê o texto que a descreve na linha seguinte.
+`MetricDefinition` ganha a explicação como componente — é onde as outras propriedades descritivas
+já moram (`label`, `unit`, `direction`), e é o que garante que catálogo, drawer e modal leiam a
+mesma coisa.
 
-Isso é a principal defesa contra a divergência que o `proposal.md` admite como risco: não elimina o
-problema, mas coloca os dois lados à vista um do outro. O `DEFS` do frontend falhava exatamente
-por estar longe.
+A intenção original era escrever os textos **dentro do `MetricCatalog`**, adjacentes à definição
+que descrevem, para que mudar a agregação pusesse o texto à vista na linha seguinte. **Isso não
+sobreviveu à implementação:** o `MetricCatalog` já estava a 53 linhas do teto de 400 do Checkstyle
+e as explicações ocupam ~250. Elas ficaram em `MetricExplanations`, ligadas por
+`MetricExplanations.attach(...)` na construção da lista.
 
-*Alternativa considerada:* um arquivo de mensagens separado (`explanations.properties`). Rejeitada
-pelo mesmo motivo: distância entre o texto e o código que ele descreve.
+A consequência é honesta e precisa ser dita: **a proximidade que justificava esta decisão ficou
+mais fraca**. Quem altera a agregação de uma métrica não vê mais o texto ao lado — vê um arquivo
+adiante. Isso não torna o modelo errado, mas transfere peso para a decisão 3: o teste de
+completude passa a ser a única barreira automática, e a revisão humana passa a ser a única defesa
+contra divergência de conteúdo.
+
+*Alternativa considerada:* um arquivo de mensagens (`explanations.properties`). Continua rejeitada
+— um `.properties` perderia a estrutura de cinco campos, e é justamente ela que o teste verifica.
 
 ### 3. Teste de completude, não de conteúdo
 
