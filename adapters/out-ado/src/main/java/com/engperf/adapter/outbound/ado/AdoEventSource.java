@@ -130,7 +130,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
                         + "&$top=1000&"
                         + API,
                     token))) {
-          events.add(AdoMapper.commit(c, repo.key(), isAi));
+          events.add(
+              AdoMapper.commit(CommitComments.full(client, base, c, token), repo.key(), isAi));
           commits++;
         }
         progress.update("commits", "commits", commits);

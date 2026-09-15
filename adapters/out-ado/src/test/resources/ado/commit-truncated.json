@@ -1,0 +1,7 @@
+{
+  "commitId": "def456",
+  "comment": "feat: nova régua de limite\n\nExplicação longa que o Azure DevOps corta em ~400 caracteres, empurrando os trailers do rodapé para fora do que a listagem devolve",
+  "commentTruncated": true,
+  "author": { "email": "bruno@empresa.com", "date": "2026-06-11T09:00:00Z" },
+  "remoteUrl": "https://dev.azure.com/org/_git/checkout/commit/def456"
+}

@@ -1,6 +1,7 @@
 package com.engperf.adapter.outbound.ado;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
@@ -80,6 +81,34 @@ class AdoEventSourceTest {
     assertThat(client.batchSizes).isNotEmpty().allMatch(size -> size <= 200);
   }
 
+  /**
+   * The AI dashboard depends on trailers that live in the commit body, and the commits list cuts
+   * that body off. Only the flagged commit pays for an extra call.
+   */
+  @Test
+  void reloadsOnlyTheCommitsWhoseMessageAzureDevOpsTruncated() {
+    FakeStructure structure =
+        new FakeStructure(List.of(new Repository("repoA", "orgX", "ProjP", "t:1", "Production")));
+    TruncatingClient client = new TruncatingClient();
+    AdoEventSource source = new AdoEventSource(client, new FakeConfig(), structure);
+
+    List<RawEvent> commits =
+        source
+            .fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {})
+            .stream()
+            .filter(e -> e.type() == EventType.COMMIT)
+            .toList();
+
+    // Exactly one detail call: the untruncated commit is mapped straight from the list.
+    assertThat(client.urls.stream().filter(u -> u.contains("/commits/")).toList())
+        .containsExactly(
+            "https://dev.azure.com/orgX/ProjP/_apis/git/repositories/repoA/commits/truncated?api-version=7.1");
+    // The trailer only exists in the reloaded body — without the reload this would be false.
+    assertThat(commits)
+        .extracting(RawEvent::id, RawEvent::ai)
+        .containsExactlyInAnyOrder(tuple("commit:plain", false), tuple("commit:truncated", true));
+  }
+
   private static JsonNode json(String s) {
     try {
       return JSON.readTree(s);
@@ -114,6 +143,37 @@ class AdoEventSourceTest {
     @Override
     public JsonNode post(String url, String token, String body) {
       urls.add(url);
+      return json("{\"workItems\":[]}");
+    }
+  }
+
+  /** A commits list where one entry arrived truncated; its full body carries the AI trailer. */
+  private static final class TruncatingClient implements AdoRestClient {
+    final List<String> urls = new ArrayList<>();
+
+    @Override
+    public JsonNode get(String url, String token) {
+      urls.add(url);
+      if (url.contains("/commits/")) {
+        return json(
+            "{\"commitId\":\"truncated\",\"comment\":\"feat: régua\\n\\ncorpo longo"
+                + "\\n\\nCo-authored-by: Copilot <copilot@github.com>\","
+                + "\"author\":{\"email\":\"bruno@empresa.com\",\"date\":\"2026-06-11T09:00:00Z\"}}");
+      }
+      if (url.contains("/commits?")) {
+        return json(
+            "{\"value\":["
+                + "{\"commitId\":\"plain\",\"comment\":\"fix: ajuste simples\","
+                + "\"author\":{\"email\":\"ana@empresa.com\",\"date\":\"2026-06-10T10:00:00Z\"}},"
+                + "{\"commitId\":\"truncated\",\"comment\":\"feat: régua\","
+                + "\"commentTruncated\":true,"
+                + "\"author\":{\"email\":\"bruno@empresa.com\",\"date\":\"2026-06-11T09:00:00Z\"}}]}");
+      }
+      return json("{\"value\":[]}");
+    }
+
+    @Override
+    public JsonNode post(String url, String token, String body) {
       return json("{\"workItems\":[]}");
     }
   }
