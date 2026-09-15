@@ -4,9 +4,9 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.Bucket;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Clock;
 import java.time.Instant;
@@ -59,71 +59,56 @@ public final class MetricsService implements MetricsQueryUseCase {
   }
 
   @Override
-  public List<MetricCard> cards(String nodeId, Frequency frequency) {
-    LocalDate reference = LocalDate.now(clock);
+  public List<MetricCard> cards(String nodeId, Period period) {
+    LocalDate today = LocalDate.now(clock);
     StructureIndex index = buildIndex();
     List<MetricCard> cards = new ArrayList<>();
     for (MetricDefinition def : catalog.all()) {
-      List<RawEvent> window = fetch(def, frequency, reference);
+      List<RawEvent> window = fetch(def, period);
       cards.add(
           MetricsEngine.card(
-              index,
-              window,
-              def,
-              nodeId,
-              frequency,
-              reference,
-              BUCKETS,
-              catalog.population(def.key())));
+              index, window, def, nodeId, period, today, BUCKETS, catalog.population(def.key())));
     }
     return cards;
   }
 
   @Override
-  public MetricSeries series(String metricKey, String nodeId, Frequency frequency) {
+  public MetricSeries series(String metricKey, String nodeId, Period period) {
     MetricDefinition def = definition(metricKey);
-    LocalDate reference = LocalDate.now(clock);
-    List<RawEvent> window = fetch(def, frequency, reference);
+    List<RawEvent> window = fetch(def, period);
     return MetricsEngine.series(
         buildIndex(),
         window,
         def,
         nodeId,
-        frequency,
-        reference,
+        period,
+        LocalDate.now(clock),
         BUCKETS,
         catalog.population(metricKey));
   }
 
   @Override
   public MetricSeries cohortSeries(
-      String metricKey, String nodeId, Frequency frequency, boolean aiAssisted) {
+      String metricKey, String nodeId, Period period, boolean aiAssisted) {
     MetricDefinition def = definition(metricKey);
-    LocalDate reference = LocalDate.now(clock);
-    List<RawEvent> window = fetch(def, frequency, reference);
+    List<RawEvent> window = fetch(def, period);
     return MetricsEngine.series(
         buildIndex(),
         window,
         def,
         nodeId,
-        frequency,
-        reference,
+        period,
+        LocalDate.now(clock),
         BUCKETS,
         catalog.population(metricKey).and(e -> e.ai() == aiAssisted));
   }
 
   @Override
-  public List<MetricDrilldownItem> items(
-      String metricKey, String nodeId, Frequency frequency, String bucketStart) {
+  public List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period) {
     MetricDefinition def = definition(metricKey);
-    LocalDate reference = LocalDate.now(clock);
-    LocalDate bucket =
-        bucketStart == null || bucketStart.isBlank()
-            ? frequency.bucketStart(reference)
-            : LocalDate.parse(bucketStart);
-    List<RawEvent> window = fetch(def, frequency, reference);
+    List<RawEvent> window = fetch(def, period);
     return MetricsEngine.items(
-        buildIndex(), window, def, nodeId, frequency, bucket, catalog.population(metricKey));
+        buildIndex(), window, def, nodeId, period, catalog.population(metricKey));
   }
 
   private MetricDefinition definition(String metricKey) {
@@ -140,8 +125,9 @@ public final class MetricsService implements MetricsQueryUseCase {
         structure.findIdentities());
   }
 
-  private List<RawEvent> fetch(MetricDefinition def, Frequency frequency, LocalDate reference) {
-    List<Bucket> buckets = frequency.lastBuckets(reference, BUCKETS);
+  /** The event window the series needs: BUCKETS buckets ending at the period being computed. */
+  private List<RawEvent> fetch(MetricDefinition def, Period period) {
+    List<Bucket> buckets = period.frequency().lastBuckets(period.start(), BUCKETS);
     Instant from = buckets.get(0).start().atStartOfDay(ZoneOffset.UTC).toInstant();
     Instant to =
         buckets.get(buckets.size() - 1).endExclusive().atStartOfDay(ZoneOffset.UTC).toInstant();

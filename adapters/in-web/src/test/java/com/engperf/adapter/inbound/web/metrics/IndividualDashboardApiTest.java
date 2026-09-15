@@ -8,14 +8,19 @@ import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.IndividualDashboard;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.metrics.ReviewStats;
 import com.engperf.application.metrics.WorkTypeSlice;
 import com.engperf.application.port.inbound.IndividualDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,12 +31,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 /** Individual panel API: coaching-only — own/managing/admin get 200, others 403. */
 class IndividualDashboardApiTest {
 
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
+
   private MockMvc mvc;
 
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new IndividualDashboardController(new FakeIndividual()))
+        MockMvcBuilders.standaloneSetup(
+                new IndividualDashboardController(new FakeIndividual(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -70,7 +79,7 @@ class IndividualDashboardApiTest {
 
   private static final class FakeIndividual implements IndividualDashboardUseCase {
     @Override
-    public IndividualDashboard dashboard(String personNodeId, Frequency frequency) {
+    public IndividualDashboard dashboard(String personNodeId, Period period) {
       return new IndividualDashboard(
           personNodeId,
           "Ana",

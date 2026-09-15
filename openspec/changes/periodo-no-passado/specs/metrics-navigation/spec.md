@@ -1,0 +1,77 @@
+## ADDED Requirements
+
+### Requirement: The viewed period can be moved into the past
+The system SHALL let the user choose which period is displayed, at the selected frequency — a day,
+a week or a month — and SHALL recompute every displayed number for that period. The control SHALL
+offer stepping one period at a time in both directions, jumping to a recent period from a list, and
+returning to the current period. The chosen period SHALL be presented in a form that matches the
+frequency.
+
+#### Scenario: Opening a past month
+- **WHEN** the frequency is monthly and the user selects a past month
+- **THEN** every metric on screen is recomputed for that month, and the comparison is against the
+  month immediately before it
+
+#### Scenario: The control follows the frequency
+- **WHEN** the user switches frequency while a past period is selected
+- **THEN** the period control presents the equivalent period at the new frequency — a day, a week,
+  or a month — and the displayed numbers follow
+
+#### Scenario: Stepping back and forth
+- **WHEN** the user steps one period back and then one period forward
+- **THEN** the view returns to the period it started from
+
+#### Scenario: Returning to the present
+- **WHEN** the user activates the shortcut back to the current period
+- **THEN** the view shows the current period and the control no longer signals a past period
+
+### Requirement: The selected period applies to the whole navigation
+When a past period is selected, the system SHALL apply it to every surface that displays metrics —
+dashboard cards, trends, the comparison heatmap, the individual panel and metric drilldowns — so
+that no two panels on screen describe different intervals. The trend window SHALL end at the
+selected period rather than at the present.
+
+#### Scenario: Trends end at the selected period
+- **WHEN** a past period is selected and a trend is displayed
+- **THEN** the last point of the series is the selected period
+
+#### Scenario: Drilldown matches the card
+- **WHEN** the user opens the drilldown of a card while a past period is selected
+- **THEN** the listed items are the ones from that same period
+
+#### Scenario: The heatmap follows the period
+- **WHEN** a past period is selected and the comparison heatmap is opened
+- **THEN** its cells report the values of that period
+
+### Requirement: A viewed period is shareable as a link
+The system SHALL carry the selected node, frequency and period in the address, so that opening the
+same address later shows the same period. The address SHALL identify the period absolutely, not
+relative to the present.
+
+#### Scenario: Reopening a shared address
+- **WHEN** an address captured while viewing a past period is opened on a later day
+- **THEN** it still shows that same period
+
+#### Scenario: Address without a period
+- **WHEN** an address carries no period
+- **THEN** the current period is displayed
+
+## MODIFIED Requirements
+
+### Requirement: Navigation shell selects frequency and view
+The system SHALL provide a navigation shell that lets the user switch frequency
+(Diário/Semanal/Mensal), period, and view, recomputing the displayed metrics for the selected
+structure node without reloading the structure tree. The shell SHALL reuse the
+prototype's design system and be self-contained (no external CDN).
+
+#### Scenario: Changing frequency recomputes the view
+- **WHEN** the user switches the frequency selector
+- **THEN** the displayed metrics recompute for the new frequency without reloading the tree
+
+#### Scenario: Selecting a node updates the panel
+- **WHEN** the user selects a node in the scope-filtered tree
+- **THEN** the panel updates to that node's metrics
+
+#### Scenario: Changing period recomputes the view
+- **WHEN** the user changes the selected period
+- **THEN** the displayed metrics recompute for that period without reloading the tree

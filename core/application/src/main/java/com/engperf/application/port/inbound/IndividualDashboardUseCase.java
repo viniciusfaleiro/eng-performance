@@ -1,7 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.IndividualDashboard;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 
 /**
  * Inbound port for the composed individual (person) contribution panel. Coaching-only access
@@ -10,5 +10,5 @@ import com.engperf.domain.metrics.Frequency;
  */
 public interface IndividualDashboardUseCase {
 
-  IndividualDashboard dashboard(String personNodeId, Frequency frequency);
+  IndividualDashboard dashboard(String personNodeId, Period period);
 }

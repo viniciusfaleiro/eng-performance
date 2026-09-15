@@ -6,6 +6,7 @@ import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.Tier;
 import com.engperf.domain.structure.CommitterIdentity;
@@ -49,6 +50,12 @@ class DoraDashboardServiceTest {
     structure.repositories.add(new Repository("r:orphan", "org", "P", null, null));
   }
 
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
+  }
+
   @Test
   void dashboardHasFourDoraCardsWithTiers() {
     structure2Verticals();
@@ -61,7 +68,7 @@ class DoraDashboardServiceTest {
     events.add(deploy("r:checkout", "failed", 10, null));
     events.add(deploy("r:checkout", "recovery", 10, 0.5));
 
-    var dash = dora.dashboard("t:checkout", Frequency.MONTHLY);
+    var dash = dora.dashboard("t:checkout", period(Frequency.MONTHLY));
     assertThat(dash.cards())
         .extracting(c -> c.definition().key())
         .containsExactly("deploy_freq", "lead_time", "cfr", "mttr");
@@ -84,7 +91,7 @@ class DoraDashboardServiceTest {
     events.add(deploy("r:checkout", "recovery", 5, 2.0));
     events.add(deploy("r:checkout", "recovery", 5, 6.0));
     events.add(deploy("r:checkout", "recovery", 5, 4.0));
-    var byKey = index(dora.dashboard("t:checkout", Frequency.MONTHLY));
+    var byKey = index(dora.dashboard("t:checkout", period(Frequency.MONTHLY)));
     assertThat(byKey.get("mttr").value().value()).isEqualTo(4.0); // median(2,6,4)
   }
 
@@ -95,7 +102,7 @@ class DoraDashboardServiceTest {
     events.add(deploy("r:checkout", "recovery", 5, 3.0));
     events.add(deploy("r:checkout", "success", 5, null));
     // 1 failed / 3 deploys.
-    var byKey = index(dora.dashboard("t:checkout", Frequency.MONTHLY));
+    var byKey = index(dora.dashboard("t:checkout", period(Frequency.MONTHLY)));
     assertThat(byKey.get("cfr").value().value())
         .isCloseTo(1.0 / 3.0, org.assertj.core.data.Offset.offset(1e-9));
   }
@@ -110,7 +117,7 @@ class DoraDashboardServiceTest {
     for (int i = 0; i < 3; i++) {
       events.add(deploy("r:core", "success", 5, null));
     }
-    var dash = dora.dashboard("all", Frequency.MONTHLY);
+    var dash = dora.dashboard("all", period(Frequency.MONTHLY));
     assertThat(dash.childType()).isEqualTo("vertical");
     assertThat(dash.ranking()).extracting(RankingRow::nodeId).containsExactly("v:pag", "v:plat");
     // No ranking row is a person.
@@ -120,7 +127,7 @@ class DoraDashboardServiceTest {
   @Test
   void teamNodeHasNoRanking() {
     structure2Verticals();
-    var dash = dora.dashboard("t:checkout", Frequency.MONTHLY);
+    var dash = dora.dashboard("t:checkout", period(Frequency.MONTHLY));
     assertThat(dash.childType()).isNull();
     assertThat(dash.ranking()).isEmpty();
   }

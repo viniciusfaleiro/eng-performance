@@ -6,9 +6,11 @@ import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CardDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CatalogItemDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.DrilldownItemDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.ExplanationsDto;
+import com.engperf.adapter.inbound.web.metrics.MetricsDtos.PeriodDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.List;
 import java.util.Locale;
@@ -26,9 +28,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MetricsController {
 
   private final MetricsQueryUseCase metrics;
+  private final PeriodResolverUseCase periods;
 
-  public MetricsController(MetricsQueryUseCase metrics) {
+  public MetricsController(MetricsQueryUseCase metrics, PeriodResolverUseCase periods) {
     this.metrics = metrics;
+    this.periods = periods;
   }
 
   @GetMapping("/api/metrics/catalog")
@@ -45,13 +49,29 @@ public class MetricsController {
     return ExplanationsDto.from(metrics.attributionNote(), metrics.viewExplanations());
   }
 
+  /**
+   * The period a request would be computed for. The browser must not decide this on its own: the
+   * server's "today" can be pinned ({@code METRICS_REFERENCE_DATE}), and a UI that guessed from the
+   * local clock would label a card with a period the engine never used.
+   */
+  @GetMapping("/api/metrics/period")
+  public PeriodDto period(
+      @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period) {
+    return PeriodDto.from(
+        periods.resolve(frequency(freq), period), periods.resolve(frequency(freq), null));
+  }
+
   @GetMapping("/api/metrics/cards")
   public List<CardDto> cards(
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.cards(node, frequency(freq)).stream().map(CardDto::from).toList();
+    return metrics.cards(node, periods.resolve(frequency(freq), period)).stream()
+        .map(CardDto::from)
+        .toList();
   }
 
   @GetMapping("/api/metrics/{key}/series")
@@ -59,9 +79,10 @@ public class MetricsController {
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return SeriesDto.from(metrics.series(key, node, frequency(freq)));
+    return SeriesDto.from(metrics.series(key, node, periods.resolve(frequency(freq), period)));
   }
 
   @GetMapping("/api/metrics/{key}/items")
@@ -69,10 +90,10 @@ public class MetricsController {
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String bucket,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.items(key, node, frequency(freq), bucket).stream()
+    return metrics.items(key, node, periods.resolve(frequency(freq), period)).stream()
         .map(DrilldownItemDto::from)
         .toList();
   }

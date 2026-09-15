@@ -6,6 +6,7 @@ import com.engperf.adapter.inbound.web.metrics.ComparisonDtos.ComparisonHeatmapD
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.ComparisonHeatmap;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,9 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ComparisonHeatmapController {
 
   private final ComparisonHeatmapUseCase comparison;
+  private final PeriodResolverUseCase periods;
 
-  public ComparisonHeatmapController(ComparisonHeatmapUseCase comparison) {
+  public ComparisonHeatmapController(
+      ComparisonHeatmapUseCase comparison, PeriodResolverUseCase periods) {
     this.comparison = comparison;
+    this.periods = periods;
   }
 
   @GetMapping("/api/comparison/heatmap")
@@ -32,11 +36,13 @@ public class ComparisonHeatmapController {
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
       @RequestParam(defaultValue = "times") String scope,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
-    ComparisonHeatmap heatmap = comparison.heatmap(node, frequency(freq), scope);
+    ComparisonHeatmap heatmap =
+        comparison.heatmap(node, periods.resolve(frequency(freq), period), scope);
     return ComparisonHeatmapDto.from(heatmap, user.scope());
   }
 

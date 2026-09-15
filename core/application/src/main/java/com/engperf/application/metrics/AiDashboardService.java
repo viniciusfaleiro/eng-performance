@@ -5,9 +5,9 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Direction;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -38,8 +38,8 @@ public final class AiDashboardService implements AiDashboardUseCase {
   }
 
   @Override
-  public AiDashboard dashboard(String nodeId, Frequency frequency) {
-    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, frequency);
+  public AiDashboard dashboard(String nodeId, Period period) {
+    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period);
 
     List<AiCard> cards = new ArrayList<>();
     for (MetricDefinition def : catalog.ia()) {
@@ -48,12 +48,12 @@ public final class AiDashboardService implements AiDashboardUseCase {
         cards.add(new AiCard(def, c.current(), c.coverage()));
       }
     }
-    Impact impact = computeImpact(nodeId, frequency);
+    Impact impact = computeImpact(nodeId, period);
     cards.add(new AiCard(MetricCatalog.AI_IMPACT, impact.value(), impact.coverage()));
 
     List<AdoptionRank> adoption = new ArrayList<>();
     for (Child ch : children(nodeId)) {
-      Map<String, MetricCard> childCards = cardsByKey(ch.id(), frequency);
+      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period);
       adoption.add(new AdoptionRank(ch.id(), ch.label(), value(childCards, "ai_adoption")));
     }
     adoption.sort(Comparator.comparingDouble(AdoptionRank::adoption).reversed());
@@ -66,14 +66,14 @@ public final class AiDashboardService implements AiDashboardUseCase {
   }
 
   @Override
-  public AiCard impact(String nodeId, Frequency frequency) {
-    Impact i = computeImpact(nodeId, frequency);
+  public AiCard impact(String nodeId, Period period) {
+    Impact i = computeImpact(nodeId, period);
     return new AiCard(MetricCatalog.AI_IMPACT, i.value(), i.coverage());
   }
 
-  private Impact computeImpact(String nodeId, Frequency frequency) {
-    List<Double> withAi = seriesValues(nodeId, frequency, true);
-    List<Double> withoutAi = seriesValues(nodeId, frequency, false);
+  private Impact computeImpact(String nodeId, Period period) {
+    List<Double> withAi = seriesValues(nodeId, period, true);
+    List<Double> withoutAi = seriesValues(nodeId, period, false);
     int last = withAi.size() - 1;
     double aiNow = withAi.get(last);
     double nonNow = withoutAi.get(last);
@@ -90,10 +90,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
     }
     // Coverage = share of the node's PRs that are AI-assisted (AI PRs over all PRs; the two
     // cohorts partition the population).
-    long ai =
-        Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, frequency, true)));
+    long ai = Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, period, true)));
     long non =
-        Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, frequency, false)));
+        Math.round(lastValue(metrics.cohortSeries("code_throughput", nodeId, period, false)));
     return new Impact(value, new Coverage(ai, ai + non), withAi, withoutAi);
   }
 
@@ -102,8 +101,8 @@ public final class AiDashboardService implements AiDashboardUseCase {
     return nonAi == 0.0 ? 0.0 : (nonAi - ai) / nonAi * 100.0;
   }
 
-  private List<Double> seriesValues(String nodeId, Frequency frequency, boolean aiAssisted) {
-    return metrics.cohortSeries(CYCLE_TIME, nodeId, frequency, aiAssisted).points().stream()
+  private List<Double> seriesValues(String nodeId, Period period, boolean aiAssisted) {
+    return metrics.cohortSeries(CYCLE_TIME, nodeId, period, aiAssisted).points().stream()
         .map(p -> p.value().value())
         .toList();
   }
@@ -113,9 +112,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
     return pts.isEmpty() ? 0.0 : pts.get(pts.size() - 1).value().value();
   }
 
-  private Map<String, MetricCard> cardsByKey(String nodeId, Frequency frequency) {
+  private Map<String, MetricCard> cardsByKey(String nodeId, Period period) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, frequency)) {
+    for (MetricCard card : metrics.cards(nodeId, period)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
@@ -47,8 +48,16 @@ class FlowDashboardServiceTest {
 
   private Map<String, FlowCard> cards(String node) {
     var m = new java.util.HashMap<String, FlowCard>();
-    flow.dashboard(node, Frequency.MONTHLY).cards().forEach(c -> m.put(c.definition().key(), c));
+    flow.dashboard(node, period(Frequency.MONTHLY))
+        .cards()
+        .forEach(c -> m.put(c.definition().key(), c));
     return m;
+  }
+
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
   }
 
   @Test
@@ -60,7 +69,7 @@ class FlowDashboardServiceTest {
     events.add(prCode("id-ana", 2, 200));
     events.add(prCode("id-ana", 2, 400));
 
-    var dash = flow.dashboard("t:checkout", Frequency.MONTHLY);
+    var dash = flow.dashboard("t:checkout", period(Frequency.MONTHLY));
     // Volume comes last: context after the delivery headline.
     assertThat(dash.cards())
         .extracting(c -> c.definition().key())
@@ -98,7 +107,7 @@ class FlowDashboardServiceTest {
     events.add(doneItem("id-bruno", 4, 2, 2));
     events.add(doneItem("id-carla", 4, 2, 2));
 
-    var dash = flow.dashboard("all", Frequency.MONTHLY);
+    var dash = flow.dashboard("all", period(Frequency.MONTHLY));
     assertThat(dash.childType()).isEqualTo("vertical");
     assertThat(dash.scatter()).extracting(ScatterPoint::nodeId).containsExactly("v:pag", "v:plat");
     assertThat(dash.scatter()).noneMatch(s -> s.nodeId().startsWith("p:"));
@@ -144,7 +153,7 @@ class FlowDashboardServiceTest {
     events.add(prCode("id-ana", 2, 200));
 
     for (String node : List.of("all", "v:pag", "t:checkout")) {
-      assertThat(flow.dashboard(node, Frequency.MONTHLY).cards())
+      assertThat(flow.dashboard(node, period(Frequency.MONTHLY)).cards())
           .as("volume cards at %s", node)
           .extracting(c -> c.definition().key())
           .contains("commit_count", "pr_count");
@@ -154,7 +163,7 @@ class FlowDashboardServiceTest {
   @Test
   void teamNodeHasNoScatter() {
     baseStructure();
-    var dash = flow.dashboard("t:checkout", Frequency.MONTHLY);
+    var dash = flow.dashboard("t:checkout", period(Frequency.MONTHLY));
     assertThat(dash.childType()).isNull();
     assertThat(dash.scatter()).isEmpty();
   }

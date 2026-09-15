@@ -6,6 +6,7 @@ import com.engperf.adapter.inbound.web.metrics.IndividualDtos.IndividualDashboar
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.IndividualDashboard;
 import com.engperf.application.port.inbound.IndividualDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,20 +24,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class IndividualDashboardController {
 
   private final IndividualDashboardUseCase individual;
+  private final PeriodResolverUseCase periods;
 
-  public IndividualDashboardController(IndividualDashboardUseCase individual) {
+  public IndividualDashboardController(
+      IndividualDashboardUseCase individual, PeriodResolverUseCase periods) {
     this.individual = individual;
+    this.periods = periods;
   }
 
   @GetMapping("/api/individuals/{node}")
   public IndividualDashboardDto dashboard(
       @PathVariable String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!node.startsWith("p:") || !user.scope().canViewIndividual(node)) {
       throw new ForbiddenException("individual outside coaching scope: " + node);
     }
-    IndividualDashboard dash = individual.dashboard(node, frequency(freq));
+    IndividualDashboard dash = individual.dashboard(node, periods.resolve(frequency(freq), period));
     return IndividualDashboardDto.from(dash);
   }
 

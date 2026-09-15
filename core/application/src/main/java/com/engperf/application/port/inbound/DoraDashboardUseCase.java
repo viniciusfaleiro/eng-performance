@@ -1,7 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.DoraDashboard;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 
 /**
  * Inbound port for the composed DORA dashboard. Node-scope enforcement (403 outside scope,
@@ -9,5 +9,5 @@ import com.engperf.domain.metrics.Frequency;
  */
 public interface DoraDashboardUseCase {
 
-  DoraDashboard dashboard(String nodeId, Frequency frequency);
+  DoraDashboard dashboard(String nodeId, Period period);
 }

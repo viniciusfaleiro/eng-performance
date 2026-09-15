@@ -1,7 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.FlowDashboard;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 
 /**
  * Inbound port for the composed Fluxo dashboard. Node-scope enforcement (403 outside scope,
@@ -9,5 +9,5 @@ import com.engperf.domain.metrics.Frequency;
  */
 public interface FlowDashboardUseCase {
 
-  FlowDashboard dashboard(String nodeId, Frequency frequency);
+  FlowDashboard dashboard(String nodeId, Period period);
 }

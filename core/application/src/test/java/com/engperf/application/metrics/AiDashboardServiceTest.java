@@ -6,6 +6,7 @@ import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
@@ -52,8 +53,16 @@ class AiDashboardServiceTest {
 
   private Map<String, AiCard> cards(String node) {
     var m = new java.util.HashMap<String, AiCard>();
-    ai.dashboard(node, Frequency.MONTHLY).cards().forEach(c -> m.put(c.definition().key(), c));
+    ai.dashboard(node, period(Frequency.MONTHLY))
+        .cards()
+        .forEach(c -> m.put(c.definition().key(), c));
     return m;
+  }
+
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
   }
 
   @Test
@@ -101,7 +110,7 @@ class AiDashboardServiceTest {
     events.add(commit("id-bruno", false)); // v:pag active, not adopter
     events.add(commit("id-carla", true)); // v:plat adopter (only person)
 
-    var dash = ai.dashboard("all", Frequency.MONTHLY);
+    var dash = ai.dashboard("all", period(Frequency.MONTHLY));
     assertThat(dash.childType()).isEqualTo("vertical");
     // v:plat adoption 1/1 > v:pag adoption 1/2 → v:plat first.
     assertThat(dash.adoption()).extracting(AdoptionRank::nodeId).containsExactly("v:plat", "v:pag");
@@ -131,7 +140,7 @@ class AiDashboardServiceTest {
     events.add(pr("id-bruno", 10, false));
 
     var fromDashboard = cards("t:checkout").get("ai_impact");
-    var standalone = ai.impact("t:checkout", Frequency.MONTHLY);
+    var standalone = ai.impact("t:checkout", period(Frequency.MONTHLY));
     assertThat(standalone.value().value()).isEqualTo(fromDashboard.value().value());
     assertThat(standalone.coverage().percent()).isEqualTo(fromDashboard.coverage().percent());
   }
@@ -146,11 +155,14 @@ class AiDashboardServiceTest {
     events.add(pr("id-bruno", 10, false));
 
     double aiPrs =
-        last(metrics.cohortSeries("code_throughput", "t:checkout", Frequency.MONTHLY, true));
+        last(
+            metrics.cohortSeries("code_throughput", "t:checkout", period(Frequency.MONTHLY), true));
     double nonPrs =
-        last(metrics.cohortSeries("code_throughput", "t:checkout", Frequency.MONTHLY, false));
+        last(
+            metrics.cohortSeries(
+                "code_throughput", "t:checkout", period(Frequency.MONTHLY), false));
     double all =
-        metrics.cards("t:checkout", Frequency.MONTHLY).stream()
+        metrics.cards("t:checkout", period(Frequency.MONTHLY)).stream()
             .filter(c -> c.definition().key().equals("code_throughput"))
             .mapToDouble(c -> c.current().value())
             .findFirst()

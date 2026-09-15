@@ -8,6 +8,7 @@ import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -46,10 +47,10 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Frequency freq,
-      LocalDate reference,
+      Period period,
+      LocalDate today,
       int bucketCount) {
-    return series(index, events, def, nodeId, freq, reference, bucketCount, e -> true);
+    return series(index, events, def, nodeId, period, today, bucketCount, e -> true);
   }
 
   /** As {@link #series}, but only events matching {@code population} feed the metric. */
@@ -58,13 +59,14 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Frequency freq,
-      LocalDate reference,
+      Period period,
+      LocalDate today,
       int bucketCount,
       Predicate<RawEvent> population) {
 
+    Frequency freq = period.frequency();
     List<Matched> matched = match(index, events, def, nodeId, population);
-    List<Bucket> buckets = freq.lastBuckets(reference, bucketCount);
+    List<Bucket> buckets = freq.lastBuckets(period.start(), bucketCount);
 
     double[] values = new double[buckets.size()];
     for (int i = 0; i < buckets.size(); i++) {
@@ -74,7 +76,9 @@ public final class MetricsEngine {
     int last = buckets.size() - 1;
     Bucket current = buckets.get(last);
     int fullDays = (int) (current.endExclusive().toEpochDay() - current.start().toEpochDay());
-    int elapsed = freq.elapsedDays(current.start(), reference);
+    // A fatia decorrida só existe para o período que ainda está correndo. Um período passado já
+    // terminou: comparar "1 dia de julho" contra "1 dia de junho" seria inventar um recorte.
+    int elapsed = period.inProgress(today) ? freq.elapsedDays(current.start(), today) : fullDays;
     boolean partial = elapsed < fullDays;
 
     List<SeriesPoint> points = new ArrayList<>();
@@ -104,10 +108,10 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Frequency freq,
-      LocalDate reference,
+      Period period,
+      LocalDate today,
       int bucketCount) {
-    return card(index, events, def, nodeId, freq, reference, bucketCount, e -> true);
+    return card(index, events, def, nodeId, period, today, bucketCount, e -> true);
   }
 
   /** As {@link #card}, but only events matching {@code population} feed the metric. */
@@ -116,11 +120,11 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Frequency freq,
-      LocalDate reference,
+      Period period,
+      LocalDate today,
       int bucketCount,
       Predicate<RawEvent> population) {
-    MetricSeries s = series(index, events, def, nodeId, freq, reference, bucketCount, population);
+    MetricSeries s = series(index, events, def, nodeId, period, today, bucketCount, population);
     SeriesPoint lastPoint = s.points().get(s.points().size() - 1);
     return new MetricCard(def, lastPoint.value(), s.coverage());
   }
@@ -137,11 +141,10 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Frequency freq,
-      LocalDate bucketStart,
+      Period period,
       Predicate<RawEvent> population) {
     List<Matched> matched = match(index, events, def, nodeId, population);
-    Bucket bucket = new Bucket(bucketStart, freq.nextBucketStart(bucketStart));
+    Bucket bucket = new Bucket(period.start(), period.end());
     List<Matched> ms = inBucket(matched, bucket);
     return select(def, ms).stream().map(s -> toItem(def, s)).toList();
   }

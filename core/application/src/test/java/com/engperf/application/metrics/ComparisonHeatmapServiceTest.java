@@ -6,6 +6,7 @@ import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
@@ -67,6 +68,12 @@ class ComparisonHeatmapServiceTest {
     structure.identities.add(new CommitterIdentity("id-carla", "Carla", "p:carla", 0));
   }
 
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
+  }
+
   @Test
   void matrixIsChildrenByAllMetricsInCatalogOrder() {
     baseStructure();
@@ -74,7 +81,7 @@ class ComparisonHeatmapServiceTest {
     events.add(pr("id-bruno"));
     events.add(pr("id-carla"));
 
-    var h = heatmap.heatmap("all", Frequency.MONTHLY, "times");
+    var h = heatmap.heatmap("all", period(Frequency.MONTHLY), "times");
     assertThat(h.metrics()).extracting(HeatmapMetric::key).containsExactlyElementsOf(COLUMN_ORDER);
     // Default overview scope compares the teams.
     assertThat(h.rows()).extracting(HeatmapRow::nodeId).containsExactly("t:checkout", "t:core");
@@ -92,7 +99,7 @@ class ComparisonHeatmapServiceTest {
     events.add(pr("id-ana"));
 
     for (String scope : List.of("times", "verticais")) {
-      assertThat(heatmap.heatmap("all", Frequency.MONTHLY, scope).metrics())
+      assertThat(heatmap.heatmap("all", period(Frequency.MONTHLY), scope).metrics())
           .as("heatmap columns for scope %s", scope)
           .extracting(HeatmapMetric::key)
           .doesNotContain("commit_count", "pr_count");
@@ -106,7 +113,7 @@ class ComparisonHeatmapServiceTest {
     events.add(doneItem("id-ana"));
     events.add(doneItem("id-bruno"));
 
-    var h = heatmap.heatmap("all", Frequency.MONTHLY, "times");
+    var h = heatmap.heatmap("all", period(Frequency.MONTHLY), "times");
     int throughputCol = COLUMN_ORDER.indexOf("throughput");
     double cell =
         h.rows().stream()
@@ -116,7 +123,7 @@ class ComparisonHeatmapServiceTest {
             .values()
             .get(throughputCol);
     double card =
-        metrics.cards("t:checkout", Frequency.MONTHLY).stream()
+        metrics.cards("t:checkout", period(Frequency.MONTHLY)).stream()
             .filter(c -> c.definition().key().equals("throughput"))
             .mapToDouble(c -> c.current().value())
             .findFirst()
@@ -128,18 +135,18 @@ class ComparisonHeatmapServiceTest {
   void rowsAreNodeAware() {
     baseStructure();
 
-    assertThat(heatmap.heatmap("all", Frequency.MONTHLY, "verticais").rows())
+    assertThat(heatmap.heatmap("all", period(Frequency.MONTHLY), "verticais").rows())
         .extracting(HeatmapRow::nodeId)
         .containsExactly("v:pag", "v:plat");
-    assertThat(heatmap.heatmap("all", Frequency.MONTHLY, "verticais").rows())
+    assertThat(heatmap.heatmap("all", period(Frequency.MONTHLY), "verticais").rows())
         .extracting(HeatmapRow::rowType)
         .containsOnly("Vertical");
 
-    assertThat(heatmap.heatmap("v:pag", Frequency.MONTHLY, "times").rows())
+    assertThat(heatmap.heatmap("v:pag", period(Frequency.MONTHLY), "times").rows())
         .extracting(HeatmapRow::nodeId)
         .containsExactly("t:checkout");
 
-    var teamRows = heatmap.heatmap("t:checkout", Frequency.MONTHLY, "times").rows();
+    var teamRows = heatmap.heatmap("t:checkout", period(Frequency.MONTHLY), "times").rows();
     assertThat(teamRows).extracting(HeatmapRow::nodeId).containsExactly("p:ana", "p:bruno");
     assertThat(teamRows).extracting(HeatmapRow::rowType).containsOnly("Pessoa");
   }

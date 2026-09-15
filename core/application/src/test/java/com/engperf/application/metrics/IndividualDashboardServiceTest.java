@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
@@ -42,6 +43,35 @@ class IndividualDashboardServiceTest {
     structure.identities.add(new CommitterIdentity("id-bruno", "Bruno", "p:bruno", 0));
   }
 
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
+  }
+
+  /**
+   * Decisão de desenho: as seções acompanham o período escolhido, mas o calendário de 12 meses
+   * **termina** nele em vez de encolher — espremer a janela longa destruiria o que ela mostra, e
+   * deixá-la em hoje enquanto o resto mostra maio diria duas coisas ao mesmo tempo.
+   */
+  @Test
+  void aPastPeriodMovesTheSectionsAndEndsTheLongWindowThere() {
+    baseStructure();
+    events.add(commit("id-ana", "2026-05-20"));
+    events.add(commit("id-ana", "2026-06-20"));
+
+    var may =
+        individual.dashboard("p:ana", Period.of(Frequency.MONTHLY, LocalDate.parse("2026-05-01")));
+
+    assertThat(may.calendar()).hasSize(371); // a janela longa mantém a duração
+    assertThat(may.calendar().get(may.calendar().size() - 1).date())
+        .as("o calendário termina no último dia do período exibido")
+        .isEqualTo("2026-05-31");
+    assertThat(may.calendar().stream().mapToInt(CalendarDay::count).sum())
+        .as("o commit de junho está fora da janela que termina em maio")
+        .isEqualTo(1);
+  }
+
   @Test
   void calendarCountsCommitsPerDay() {
     baseStructure();
@@ -50,7 +80,7 @@ class IndividualDashboardServiceTest {
     events.add(commit("id-ana", "2026-06-11"));
     events.add(commit("id-bruno", "2026-06-10")); // not Ana → excluded
 
-    var dash = individual.dashboard("p:ana", Frequency.MONTHLY);
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
     assertThat(dash.calendar()).hasSize(371);
     assertThat(dash.calendar().stream().mapToInt(CalendarDay::count).sum()).isEqualTo(3);
     assertThat(day(dash, "2026-06-10")).isEqualTo(2);
@@ -65,7 +95,7 @@ class IndividualDashboardServiceTest {
     events.add(pr("id-ana", "2026-06-10", true));
     events.add(commit("id-bruno", "2026-06-10")); // not Ana → excluded
 
-    var dash = individual.dashboard("p:ana", Frequency.MONTHLY);
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
     assertThat(dash.delivery())
         .extracting(s -> s.definition().key())
         .containsExactly("throughput", "cycle_time", "ai_share", "commit_count", "pr_count");
@@ -83,7 +113,7 @@ class IndividualDashboardServiceTest {
     events.add(pr("id-ana", "2026-06-11", true));
     events.add(pr("id-ana", "2026-06-12", false));
 
-    var dash = individual.dashboard("p:ana", Frequency.MONTHLY);
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
     assertThat(dash.assertivenessPct()).isCloseTo(200.0 / 3.0, Offset.offset(1e-9));
   }
 
@@ -95,7 +125,7 @@ class IndividualDashboardServiceTest {
     events.add(review("id-ana", "id-bruno", "2026-06-11", false, 5));
     events.add(review("id-bruno", "id-ana", "2026-06-10", true, 2));
 
-    var r = individual.dashboard("p:ana", Frequency.MONTHLY).reviews();
+    var r = individual.dashboard("p:ana", period(Frequency.MONTHLY)).reviews();
     assertThat(r.reviewsGiven()).isEqualTo(2);
     assertThat(r.reviewsReceived()).isEqualTo(1);
     assertThat(r.commentsGiven()).isEqualTo(8);
@@ -110,7 +140,7 @@ class IndividualDashboardServiceTest {
     events.add(workItem("id-ana", "2026-06-11", "feature", 4));
     events.add(workItem("id-ana", "2026-06-12", "bug", 10));
 
-    var types = individual.dashboard("p:ana", Frequency.MONTHLY).workTypes();
+    var types = individual.dashboard("p:ana", period(Frequency.MONTHLY)).workTypes();
     assertThat(types)
         .extracting(WorkTypeSlice::type)
         .containsExactly("feature", "bug", "tech_debt", "maintenance", "docs");
@@ -130,7 +160,7 @@ class IndividualDashboardServiceTest {
         workItemSpan(
             "id-ana", "2026-06-30", "bug", "2026-01-01T00:00:00Z", "2026-12-31T00:00:00Z"));
 
-    var monthly = individual.dashboard("p:ana", Frequency.MONTHLY).workTypes();
+    var monthly = individual.dashboard("p:ana", period(Frequency.MONTHLY)).workTypes();
     double total = monthly.stream().mapToDouble(WorkTypeSlice::hours).sum();
     // June's ~720h are SHARED by the two concurrent items (360 each) — not 720 each nor ~8736 life.
     assertThat(total).isEqualTo(720.0);
@@ -164,7 +194,7 @@ class IndividualDashboardServiceTest {
     baseStructure();
     events.add(pr("id-ana", "2026-06-10", true));
 
-    var activity = individual.dashboard("p:ana", Frequency.MONTHLY).activity();
+    var activity = individual.dashboard("p:ana", period(Frequency.MONTHLY)).activity();
     assertThat(activity).isNotEmpty();
     assertThat(activity.get(0).url()).contains("dev.azure.com");
     assertThat(activity.get(0).kind()).isEqualTo("pr");
@@ -175,7 +205,7 @@ class IndividualDashboardServiceTest {
     baseStructure();
     events.add(commit("id-ana", "2026-06-10")); // ai=false, no PR, no work item
 
-    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    var flags = individual.dashboard("p:ana", period(Frequency.MONTHLY)).conventions();
     assertThat(flags)
         .extracting(ConventionFlag::reference)
         .contains("Convenção 16 · Assistência de IA");
@@ -191,7 +221,7 @@ class IndividualDashboardServiceTest {
     events.add(aiCommit("id-ana", "2026-06-10")); // AI present, so no IA flag
     events.add(pr("id-ana", "2026-06-10", true)); // authored PR, but nobody reviewed it
 
-    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    var flags = individual.dashboard("p:ana", period(Frequency.MONTHLY)).conventions();
     assertThat(flags).anyMatch(f -> f.reference().startsWith("Convenção 13"));
     assertThat(flags).noneMatch(f -> f.reference().startsWith("Convenção 16"));
   }
@@ -200,7 +230,7 @@ class IndividualDashboardServiceTest {
   void flagsNoActivityAsUnmappedIdentity() {
     baseStructure(); // Ana has an identity but no events at all
 
-    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    var flags = individual.dashboard("p:ana", period(Frequency.MONTHLY)).conventions();
     assertThat(flags).hasSize(1);
     assertThat(flags.get(0).reference()).startsWith("Convenções 1");
   }
@@ -213,7 +243,7 @@ class IndividualDashboardServiceTest {
     events.add(workItem("id-ana", "2026-06-11", "feature", 6));
     events.add(review("id-bruno", "id-ana", "2026-06-10", true, 2)); // Ana's PR got reviewed
 
-    var flags = individual.dashboard("p:ana", Frequency.MONTHLY).conventions();
+    var flags = individual.dashboard("p:ana", period(Frequency.MONTHLY)).conventions();
     assertThat(flags).isEmpty();
   }
 

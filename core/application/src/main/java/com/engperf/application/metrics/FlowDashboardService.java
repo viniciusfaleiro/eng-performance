@@ -3,8 +3,8 @@ package com.engperf.application.metrics;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.Period;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,8 +32,8 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
   }
 
   @Override
-  public FlowDashboard dashboard(String nodeId, Frequency frequency) {
-    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, frequency);
+  public FlowDashboard dashboard(String nodeId, Period period) {
+    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period);
 
     List<FlowCard> cards = new ArrayList<>();
     // Fluxo first, then the volume metrics — volume is context, it must not compete with the
@@ -56,7 +56,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     List<Child> children = children(nodeId);
     List<ScatterPoint> scatter = new ArrayList<>();
     for (Child ch : children) {
-      Map<String, MetricCard> childCards = cardsByKey(ch.id(), frequency);
+      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period);
       scatter.add(
           new ScatterPoint(
               ch.id(),
@@ -75,9 +75,9 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     return out;
   }
 
-  private Map<String, MetricCard> cardsByKey(String nodeId, Frequency frequency) {
+  private Map<String, MetricCard> cardsByKey(String nodeId, Period period) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, frequency)) {
+    for (MetricCard card : metrics.cards(nodeId, period)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

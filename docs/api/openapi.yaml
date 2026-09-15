@@ -75,6 +75,32 @@ paths:
                   commit:  { type: string, example: "99f131a" }
                   builtAt: { type: string, format: date-time, nullable: true }
 
+  /metrics/period:
+    get:
+      tags: [Catalog]
+      summary: Resolve o período de uma consulta e informa qual é o corrente.
+      description: >
+        O "hoje" do servidor pode estar fixado por configuração, então o cliente não deve deduzir o
+        período corrente do relógio local — um rótulo calculado no browser diria um mês que o motor
+        nunca usou.
+      parameters:
+        - { name: freq, in: query, schema: { type: string }, example: Mensal }
+        - $ref: "#/components/parameters/Period"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  start:        { type: string, format: date }
+                  end:          { type: string, format: date, description: Primeiro dia após o período. }
+                  currentStart: { type: string, format: date }
+                  current:      { type: boolean }
+        "400":
+          description: Período ainda não começou.
+
   /metrics/explanations:
     get:
       tags: [Catalog]
@@ -256,6 +282,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - name: group
           in: query
           required: true
@@ -280,6 +307,7 @@ paths:
         - $ref: "#/components/parameters/MetricKeyPath"
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - $ref: "#/components/parameters/Periods"
         - name: split
           in: query
@@ -305,6 +333,7 @@ paths:
         - $ref: "#/components/parameters/MetricKeyPath"
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - name: bucket
           in: query
           schema: { type: string, format: date }
@@ -336,6 +365,7 @@ paths:
           schema: { type: string, enum: [dora, flow, ai] }
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
       responses:
         "200":
           description: Painel do grupo.
@@ -356,6 +386,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - name: metricKey
           in: query
           required: true
@@ -383,6 +414,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - name: scope
           in: query
           description: |
@@ -409,6 +441,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
       responses:
         "200":
           description: Resumo individual.
@@ -443,6 +476,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
         - $ref: "#/components/parameters/Periods"
         - name: metric
           in: query
@@ -462,6 +496,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
       responses:
         "200":
           description: Métricas de review.
@@ -476,6 +511,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
       responses:
         "200":
           description: Esforço por tipo.
@@ -954,6 +990,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
+        - $ref: "#/components/parameters/Period"
       responses:
         "200":
           description: Percentuais de cobertura por dimensão.
@@ -1004,6 +1041,16 @@ components:
       in: path
       required: true
       schema: { $ref: "#/components/schemas/MetricKey" }
+    Period:
+      name: period
+      in: query
+      required: false
+      description: >
+        Qualquer data ISO dentro do período desejado (ex. `2026-07-15`); o servidor resolve para o
+        balde da frequência escolhida (julho, no exemplo mensal). Omitido, usa o período que contém
+        o presente. Um período que ainda não começou é recusado com 400; um período passado sem
+        eventos responde 200 com zero — são respostas diferentes de propósito.
+      schema: { type: string, format: date }
     Frequency:
       name: frequency
       in: query

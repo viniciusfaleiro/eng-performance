@@ -11,13 +11,19 @@ import com.engperf.application.metrics.AdoptionRank;
 import com.engperf.application.metrics.AiCard;
 import com.engperf.application.metrics.AiDashboard;
 import com.engperf.application.metrics.MetricCatalog;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,12 +36,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
  */
 class AiDashboardApiTest {
 
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
+
   private MockMvc mvc;
 
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new AiDashboardController(new FakeAi()))
+        MockMvcBuilders.standaloneSetup(new AiDashboardController(new FakeAi(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -87,7 +96,7 @@ class AiDashboardApiTest {
 
   private static final class FakeAi implements AiDashboardUseCase {
     @Override
-    public AiDashboard dashboard(String nodeId, com.engperf.domain.metrics.Frequency frequency) {
+    public AiDashboard dashboard(String nodeId, Period period) {
       List<AiCard> cards =
           List.of(
               new AiCard(
@@ -111,7 +120,7 @@ class AiDashboardApiTest {
     }
 
     @Override
-    public AiCard impact(String nodeId, com.engperf.domain.metrics.Frequency frequency) {
+    public AiCard impact(String nodeId, Period period) {
       return new AiCard(
           MetricCatalog.AI_IMPACT,
           MetricValue.of(40.0, null, Direction.HIGHER_BETTER),
