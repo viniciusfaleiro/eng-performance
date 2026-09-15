@@ -9,7 +9,9 @@ import java.util.Optional;
  * {@code aggregation} to compute values, {@code measure} to pick which per-event field it reads
  * (the event's numeric {@code value} or a named detail key), and {@code direction} to resolve the
  * change {@link Sentiment}. {@code eventType} selects which raw events feed it. {@code bands}, when
- * present, classify the value into a benchmark {@link Tier} (DORA metrics only).
+ * present, classify the value into a benchmark {@link Tier} (DORA metrics only). {@code
+ * explanation} is what the UI shows when a reader asks how the number was produced — it lives here,
+ * next to the fields that decide the calculation, so that changing one puts the other in view.
  */
 public record MetricDefinition(
     String key,
@@ -21,7 +23,8 @@ public record MetricDefinition(
     String measure,
     String unit,
     Direction direction,
-    TierBands bands) {
+    TierBands bands,
+    MetricExplanation explanation) {
 
   /** The default measure: the event's own numeric value. */
   public static final String VALUE = "value";
@@ -48,7 +51,18 @@ public record MetricDefinition(
       Aggregation aggregation,
       String unit,
       Direction direction) {
-    this(key, label, group, eventType, scope, aggregation, VALUE, unit, direction, null);
+    this(key, label, group, eventType, scope, aggregation, VALUE, unit, direction, null, null);
+  }
+
+  /** The same definition, carrying the text that explains it to a reader. */
+  public MetricDefinition withExplanation(MetricExplanation text) {
+    return new MetricDefinition(
+        key, label, group, eventType, scope, aggregation, measure, unit, direction, bands, text);
+  }
+
+  /** Absent while a metric has not been explained yet — see the catalog's completeness test. */
+  public Optional<MetricExplanation> explained() {
+    return Optional.ofNullable(explanation);
   }
 
   public boolean readsDefaultMeasure() {

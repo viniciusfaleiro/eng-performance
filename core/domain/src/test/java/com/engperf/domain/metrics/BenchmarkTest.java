@@ -18,7 +18,8 @@ class BenchmarkTest {
         MetricDefinition.VALUE,
         "u",
         dir,
-        bands);
+        bands,
+        null);
   }
 
   private static final MetricDefinition LEAD_TIME =

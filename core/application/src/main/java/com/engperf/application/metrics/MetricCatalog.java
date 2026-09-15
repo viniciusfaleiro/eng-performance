@@ -5,6 +5,7 @@ import com.engperf.domain.metrics.AttributionScope;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.TierBands;
 import java.util.List;
@@ -55,243 +56,281 @@ public final class MetricCatalog {
    */
   public static final MetricDefinition AI_IMPACT =
       new MetricDefinition(
-          "ai_impact",
-          "Cycle time mais rápido c/ IA",
-          "ia",
-          EventType.PR,
-          AttributionScope.PERSON,
-          Aggregation.RATIO,
-          "%",
-          Direction.HIGHER_BETTER);
+              "ai_impact",
+              "Cycle time mais rápido c/ IA",
+              "ia",
+              EventType.PR,
+              AttributionScope.PERSON,
+              Aggregation.RATIO,
+              "%",
+              Direction.HIGHER_BETTER)
+          .withExplanation(MetricExplanations.texts().get("ai_impact"));
 
   private static final List<MetricDefinition> DEFINITIONS =
-      List.of(
-          // ---- Fluxo / IA samples (no tiers) ----
-          new MetricDefinition(
-              // Throughput = count of work items completed (terminal) in the period, via the
-              // `completed` population; a work item is the unit of delivered value, not a PR.
-              "throughput",
-              "Throughput",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.SUM,
-              "itens",
-              Direction.HIGHER_BETTER),
-          new MetricDefinition(
-              "pr_review_time",
-              "PR Review Time",
-              "fluxo",
-              EventType.PR,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "h",
-              Direction.LOWER_BETTER),
-          new MetricDefinition(
-              "ai_share",
-              "% de commits com IA",
-              "ia",
-              EventType.COMMIT,
-              AttributionScope.PERSON,
-              Aggregation.RATIO,
-              "%",
-              Direction.HIGHER_BETTER),
-          new MetricDefinition(
-              "ai_adoption",
-              "Adoção de IA (devs)",
-              "ia",
-              EventType.COMMIT,
-              AttributionScope.PERSON,
-              Aggregation.DISTINCT_RATIO,
-              "%",
-              Direction.HIGHER_BETTER),
-          new MetricDefinition(
-              // WIP = number of work items in progress in the period (count of WORKITEM events in
-              // the bucket). A count is concurrency-safe: many simultaneous items can't inflate it
-              // the way summing each item's hours did. Lower-is-better; unit "itens", not hours.
-              "wip",
-              "Work in Progress",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.SUM,
-              "itens",
-              Direction.LOWER_BETTER),
-          // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
-          new MetricDefinition(
-              // Cycle Time = median of the work item's first-active → terminal duration.
-              "cycle_time",
-              "Cycle Time",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "cycle_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              // Flow Lead Time = median of creation → completion; distinct from DORA lead_time.
-              "flow_lead_time",
-              "Lead Time (fluxo)",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "lead_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              "active_time",
-              "Ativo",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "active_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              "waiting_time",
-              "Espera",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "wait_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              "review_time",
-              "Review",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "review_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              "pr_size",
-              "PR Size (médio)",
-              "fluxo",
-              EventType.PR,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "lines",
-              "linhas",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              // Flow Efficiency = working time / (working + wait) over the work item's board life.
-              "flow_efficiency",
-              "Flow Efficiency",
-              "fluxo",
-              EventType.WORKITEM,
-              AttributionScope.PERSON,
-              Aggregation.RATIO,
-              MetricDefinition.VALUE,
-              "%",
-              Direction.HIGHER_BETTER,
-              null),
-          // Code drill-downs kept on the PR: the AI dashboard compares AI vs non-AI over these
-          // (the AI flag lives on commits/PRs, not work items). Not shown as Fluxo cards.
-          new MetricDefinition(
-              "code_cycle_time",
-              "Cycle Time (código)",
-              "fluxo",
-              EventType.PR,
-              AttributionScope.PERSON,
-              Aggregation.MEDIAN,
-              "cycle_h",
-              "h",
-              Direction.LOWER_BETTER,
-              null),
-          new MetricDefinition(
-              "code_throughput",
-              "PRs concluídos",
-              "fluxo",
-              EventType.PR,
-              AttributionScope.PERSON,
-              Aggregation.SUM,
-              "PRs",
-              Direction.HIGHER_BETTER),
-          // ---- Volume: how much code work passed through, next to what got delivered ----
-          new MetricDefinition(
-              // Every commit in the period — no completion filter, so this contrasts with
-              // Throughput (completed work items) instead of restating it.
-              "commit_count",
-              "Commits",
-              "fluxo",
-              EventType.COMMIT,
-              AttributionScope.PERSON,
-              Aggregation.SUM,
-              "commits",
-              Direction.HIGHER_BETTER),
-          new MetricDefinition(
-              // Distinct from `code_throughput` on purpose: that one is the AI dashboard's cohort
-              // denominator and owns its own label/population. Sharing one definition would couple
-              // the two dashboards — changing either would break the other.
-              "pr_count",
-              "Pull Requests",
-              "fluxo",
-              EventType.PR,
-              AttributionScope.PERSON,
-              Aggregation.SUM,
-              "PRs",
-              Direction.HIGHER_BETTER),
-          // ---- DORA (with benchmark tiers) ----
-          new MetricDefinition(
-              "deploy_freq",
-              "Deployment Frequency",
-              "dora",
-              EventType.DEPLOY,
-              AttributionScope.REPO,
-              Aggregation.SUM,
-              MetricDefinition.VALUE,
-              "deploys",
-              Direction.HIGHER_BETTER,
-              new TierBands(1.0, 1.0 / 7.0, 1.0 / 30.0)),
-          new MetricDefinition(
-              "lead_time",
-              "Lead Time for Changes",
-              "dora",
-              EventType.DEPLOY,
-              AttributionScope.REPO,
-              Aggregation.MEDIAN,
-              MetricDefinition.VALUE,
-              "h",
-              Direction.LOWER_BETTER,
-              new TierBands(24, 168, 720)),
-          new MetricDefinition(
-              "cfr",
-              "Change Failure Rate",
-              "dora",
-              EventType.DEPLOY,
-              AttributionScope.REPO,
-              Aggregation.RATIO,
-              MetricDefinition.VALUE,
-              "%",
-              Direction.LOWER_BETTER,
-              new TierBands(0.15, 0.30, 0.45)),
-          new MetricDefinition(
-              "mttr",
-              "Mean Time to Restore",
-              "dora",
-              EventType.DEPLOY,
-              AttributionScope.REPO,
-              Aggregation.MEDIAN,
-              "recovery_hours",
-              "h",
-              Direction.LOWER_BETTER,
-              new TierBands(1, 24, 168)));
+      MetricExplanations.attach(
+          List.of(
+              // ---- Fluxo / IA samples (no tiers) ----
+              new MetricDefinition(
+                  // Throughput = count of work items completed (terminal) in the period, via the
+                  // `completed` population; a work item is the unit of delivered value, not a PR.
+                  "throughput",
+                  "Throughput",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.SUM,
+                  "itens",
+                  Direction.HIGHER_BETTER),
+              new MetricDefinition(
+                  "pr_review_time",
+                  "PR Review Time",
+                  "fluxo",
+                  EventType.PR,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "h",
+                  Direction.LOWER_BETTER),
+              new MetricDefinition(
+                  "ai_share",
+                  "% de commits com IA",
+                  "ia",
+                  EventType.COMMIT,
+                  AttributionScope.PERSON,
+                  Aggregation.RATIO,
+                  "%",
+                  Direction.HIGHER_BETTER),
+              new MetricDefinition(
+                  "ai_adoption",
+                  "Adoção de IA (devs)",
+                  "ia",
+                  EventType.COMMIT,
+                  AttributionScope.PERSON,
+                  Aggregation.DISTINCT_RATIO,
+                  "%",
+                  Direction.HIGHER_BETTER),
+              new MetricDefinition(
+                  // WIP = number of work items in progress in the period (count of WORKITEM events
+                  // in
+                  // the bucket). A count is concurrency-safe: many simultaneous items can't inflate
+                  // it
+                  // the way summing each item's hours did. Lower-is-better; unit "itens", not
+                  // hours.
+                  "wip",
+                  "Work in Progress",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.SUM,
+                  "itens",
+                  Direction.LOWER_BETTER),
+              // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
+              new MetricDefinition(
+                  // Cycle Time = median of the work item's first-active → terminal duration.
+                  "cycle_time",
+                  "Cycle Time",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "cycle_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  // Flow Lead Time = median of creation → completion; distinct from DORA lead_time.
+                  "flow_lead_time",
+                  "Lead Time (fluxo)",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "lead_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  "active_time",
+                  "Ativo",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "active_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  "waiting_time",
+                  "Espera",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "wait_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  "review_time",
+                  "Review",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "review_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  "pr_size",
+                  "PR Size (médio)",
+                  "fluxo",
+                  EventType.PR,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "lines",
+                  "linhas",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  // Flow Efficiency = working time / (working + wait) over the work item's board
+                  // life.
+                  "flow_efficiency",
+                  "Flow Efficiency",
+                  "fluxo",
+                  EventType.WORKITEM,
+                  AttributionScope.PERSON,
+                  Aggregation.RATIO,
+                  MetricDefinition.VALUE,
+                  "%",
+                  Direction.HIGHER_BETTER,
+                  null,
+                  null),
+              // Code drill-downs kept on the PR: the AI dashboard compares AI vs non-AI over these
+              // (the AI flag lives on commits/PRs, not work items). Not shown as Fluxo cards.
+              new MetricDefinition(
+                  "code_cycle_time",
+                  "Cycle Time (código)",
+                  "fluxo",
+                  EventType.PR,
+                  AttributionScope.PERSON,
+                  Aggregation.MEDIAN,
+                  "cycle_h",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  null,
+                  null),
+              new MetricDefinition(
+                  "code_throughput",
+                  "PRs concluídos",
+                  "fluxo",
+                  EventType.PR,
+                  AttributionScope.PERSON,
+                  Aggregation.SUM,
+                  "PRs",
+                  Direction.HIGHER_BETTER),
+              // ---- Volume: how much code work passed through, next to what got delivered ----
+              new MetricDefinition(
+                  // Every commit in the period — no completion filter, so this contrasts with
+                  // Throughput (completed work items) instead of restating it.
+                  "commit_count",
+                  "Commits",
+                  "fluxo",
+                  EventType.COMMIT,
+                  AttributionScope.PERSON,
+                  Aggregation.SUM,
+                  "commits",
+                  Direction.HIGHER_BETTER),
+              new MetricDefinition(
+                  // Distinct from `code_throughput` on purpose: that one is the AI dashboard's
+                  // cohort
+                  // denominator and owns its own label/population. Sharing one definition would
+                  // couple
+                  // the two dashboards — changing either would break the other.
+                  "pr_count",
+                  "Pull Requests",
+                  "fluxo",
+                  EventType.PR,
+                  AttributionScope.PERSON,
+                  Aggregation.SUM,
+                  "PRs",
+                  Direction.HIGHER_BETTER),
+              // ---- DORA (with benchmark tiers) ----
+              new MetricDefinition(
+                  "deploy_freq",
+                  "Deployment Frequency",
+                  "dora",
+                  EventType.DEPLOY,
+                  AttributionScope.REPO,
+                  Aggregation.SUM,
+                  MetricDefinition.VALUE,
+                  "deploys",
+                  Direction.HIGHER_BETTER,
+                  new TierBands(1.0, 1.0 / 7.0, 1.0 / 30.0),
+                  null),
+              new MetricDefinition(
+                  "lead_time",
+                  "Lead Time for Changes",
+                  "dora",
+                  EventType.DEPLOY,
+                  AttributionScope.REPO,
+                  Aggregation.MEDIAN,
+                  MetricDefinition.VALUE,
+                  "h",
+                  Direction.LOWER_BETTER,
+                  new TierBands(24, 168, 720),
+                  null),
+              new MetricDefinition(
+                  "cfr",
+                  "Change Failure Rate",
+                  "dora",
+                  EventType.DEPLOY,
+                  AttributionScope.REPO,
+                  Aggregation.RATIO,
+                  MetricDefinition.VALUE,
+                  "%",
+                  Direction.LOWER_BETTER,
+                  new TierBands(0.15, 0.30, 0.45),
+                  null),
+              new MetricDefinition(
+                  "mttr",
+                  "Mean Time to Restore",
+                  "dora",
+                  EventType.DEPLOY,
+                  AttributionScope.REPO,
+                  Aggregation.MEDIAN,
+                  "recovery_hours",
+                  "h",
+                  Direction.LOWER_BETTER,
+                  new TierBands(1, 24, 168),
+                  null)));
+
+  /**
+   * How attribution works — identical for every metric, so the UI says it once per explanation
+   * instead of every definition repeating it.
+   */
+  public String attributionNote() {
+    return MetricExplanations.attribution();
+  }
+
+  /**
+   * Explanations for the charts and panels that are not a single metric, keyed by view. Same shape
+   * as a metric's explanation, so the UI renders both with one component.
+   */
+  public Map<String, MetricExplanation> viewExplanations() {
+    return ViewExplanations.all();
+  }
 
   public List<MetricDefinition> all() {
-    return DEFINITIONS;
+    // Defensive copy: the list is assembled by MetricExplanations.attach, and static analysis
+    // cannot see through the call to prove it is immutable. 21 entries — the copy is free.
+    return List.copyOf(DEFINITIONS);
   }
 
   public Optional<MetricDefinition> find(String key) {

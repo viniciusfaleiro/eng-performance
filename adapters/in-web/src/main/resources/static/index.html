@@ -1,5 +1,5 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
-<title>Eng Performance — Protótipo completo</title>
+<title>Eng Performance</title>
 <style>
 /* ===== Tech-dark identity (dark is the default; light is a clean counterpart) ===== */
 :root, :root[data-theme="dark"]{
@@ -58,6 +58,14 @@ h1,h2,h3{margin:0;}
 .brand-sub{font-size:10px;color:var(--on-surface-var);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
 .sidebar-scroll{overflow-y:auto;flex:1;min-height:0;padding:4px 10px 24px;}
 .sidebar-foot{flex:0 0 auto;border-top:1px solid var(--outline-var);padding:10px 18px;font-size:10px;letter-spacing:.6px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.info-btn{all:unset;display:inline-grid;place-items:center;width:15px;height:15px;margin-left:6px;border-radius:50%;border:1px solid var(--outline-var);color:var(--muted);font-size:9px;font-weight:700;font-family:var(--mono);cursor:pointer;vertical-align:middle;line-height:1;}
+.info-btn:hover,.info-btn:focus-visible{color:var(--on-surface);border-color:var(--primary);background:color-mix(in srgb,var(--primary) 12%,transparent);}
+.xp-rule{font-size:14px;line-height:1.55;margin-bottom:14px;}
+.xp-row,.xp-ex{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--outline-var);}
+.xp-k{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-family:var(--mono);padding-top:2px;}
+.xp-v{font-size:13px;line-height:1.5;}
+.xp-ex{background:color-mix(in srgb,var(--primary) 7%,transparent);border-radius:8px;padding:10px;margin-top:10px;border-top:none;}
+.xp-attr{margin-top:12px;font-size:11px;color:var(--muted);line-height:1.5;}
 .rail-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);padding:14px 12px 6px;font-family:var(--mono);}
 .rail-item{display:flex;align-items:center;gap:11px;width:100%;border:none;background:none;cursor:pointer;color:var(--on-surface-var);text-align:left;padding:9px 12px;border-radius:10px;font-size:13.5px;font-family:inherit;}
 .rail-item:hover{background:var(--surface-3);color:var(--on-surface);}
@@ -329,7 +337,6 @@ table.tbl td{padding:9px 10px;border-bottom:1px solid var(--outline-var);}
 .donut-legend i{width:11px;height:11px;border-radius:3px;flex:none;}
 .donut-legend b{margin-left:auto;font-family:var(--mono);}
 .scatter-lab{font-size:10px;fill:var(--muted);font-family:var(--mono);}
-.mock-tag{position:fixed;bottom:12px;right:14px;background:var(--surface-2);color:var(--muted);border:1px solid var(--outline-var);border-radius:999px;padding:5px 12px;font-size:10.5px;font-family:var(--mono);z-index:20;}
 a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
 @media (prefers-reduced-motion:reduce){*{transition:none !important;}}
 
@@ -406,7 +413,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   @page { size: A4 landscape; margin: 10mm; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   html, body { background: var(--surface) !important; }
-  .sidebar, .navscrim, .topbar, .menu-btn, #toast, .mock-tag, .drawer, .modal { display: none !important; }
+  .sidebar, .navscrim, .topbar, .menu-btn, #toast, .drawer, .modal { display: none !important; }
   .app, .main { display: block !important; }
   .content { padding: 0 !important; overflow: visible !important; }
   .card, .panel, .chart, .cov-wrap, table, tr, .phase-item { break-inside: avoid; page-break-inside: avoid; }
@@ -416,15 +423,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
 <div id="login" class="login">
   <div class="login-card">
-    <div class="login-brand"><div class="brand-mark">EP</div><div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps · protótipo</div></div></div>
+    <div class="login-brand"><div class="brand-mark">EP</div><div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps</div></div></div>
     <div id="loginPane">
       <div class="login-title">Entrar</div>
       <div class="login-sub">Acesse com seu email e senha.</div>
       <form id="loginForm" class="login-form" autocomplete="on">
-        <label>Email<input id="loginEmail" type="email" value="admin@empresa.com" autocomplete="username"></label>
-        <label>Senha<input id="loginPass" type="password" value="prototipo" autocomplete="current-password"></label>
+        <label>Email<input id="loginEmail" type="email" autocomplete="username" placeholder="voce@empresa.com"></label>
+        <label>Senha<input id="loginPass" type="password" autocomplete="current-password"></label>
         <button class="btn login-btn" type="submit">Entrar</button>
-        <div class="login-hint">protótipo · qualquer credencial entra</div>
+        <div class="login-hint" id="loginHint"></div>
       </form>
       <button type="button" class="login-link" id="forgotLink">Esqueci minha senha</button>
     </div>
@@ -454,7 +461,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="brand-mark">EP</div>
-      <div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps · protótipo</div></div>
+      <div><div class="brand-name">Eng Performance</div><div class="brand-sub">Azure DevOps</div></div>
     </div>
     <div class="sidebar-scroll">
       <div class="rail-label">Estrutura</div>
@@ -496,7 +503,6 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 <div class="drawer" id="drawer" role="dialog" aria-label="Detalhe da métrica"></div>
 <div class="modal" id="modal" role="dialog" aria-modal="true"><div class="modal-card" id="modalBody"></div></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<div class="mock-tag">dados fictícios · protótipo de validação</div>
 
 <script>
 (function(){
@@ -573,6 +579,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     toast("Erro: "+pt);};
   const today=()=>new Date().toISOString().slice(0,10);
   async function loadFromApi(){
+    loadExplanations().then(render); // não bloqueia a carga principal; o ícone aparece quando chega
     try{
       CURRENT_USER=await jget("/api/auth/me");
       // The org tree the backend returns is ALREADY pruned to this user's scope — it is the single
@@ -647,24 +654,41 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   ];
   const ALL=[...DORA,...FLUXO,...IA];
   const M=(k)=>ALL.find(m=>m.key===k);
-  const DEFS={
-    df:"Nº de deploys que chegam a produção no período. Fonte: releases do Azure Pipelines no stage de produção.",
-    lt:"Tempo do 1º commit de uma mudança até ela estar em produção. Mede a velocidade do fluxo de entrega ponta a ponta.",
-    cfr:"% de deploys que falharam ou exigiram rollback/hotfix. Derivado de releases com falha nos Pipelines.",
-    mttr:"Tempo entre a falha de um deploy e o deploy de recuperação. Mede resiliência.",
-    ct:"Tempo do work item do 1º estado ativo até a conclusão (Espera → Ativo → Review → Done). Mostra onde o trabalho trava.",
-    tp:"Quantidade de work items (tasks) concluídos no período. Sinaliza vazão do time.",
-    flt:"Tempo do work item da criação até a conclusão (lead time de fluxo). Distinto do lead time de DORA (mudança → produção).",
-    wip:"Quantidade de work items em progresso no período. WIP alto costuma indicar excesso de context-switching.",
-    rt:"Tempo entre o PR ficar pronto para review e ser aprovado (drill-down de código).",
-    ps:"Tamanho médio dos PRs em linhas alteradas, drill-down de código. PRs menores tendem a fluir mais rápido.",
-    fe:"% do tempo do item em que o trabalho esteve ativo (vs. esperando/bloqueado). Eficiência do fluxo.",
-    aic:"% de commits do período marcados como assistidos por IA (convenção de trailer no commit).",
-    aad:"% de devs do escopo que usaram IA no período.",
-    aim:"Diferença de cycle time entre PRs feitos com IA e sem IA. Responde: 'a IA está acelerando?'.",
-    cmt:"Quantidade de commits no período — volume de trabalho de código, sem filtro de conclusão. Serve de contexto para o Throughput, não de classificação.",
-    prc:"Quantidade de PRs no período — volume de trabalho de código, sem filtro de conclusão. Serve de contexto para o Throughput, não de classificação.",
-  };
+  /* Explicações: como cada número é calculado. Vêm do catálogo (fonte única com o motor), não
+     de um mapa local — um texto no frontend inevitavelmente diverge do cálculo no backend. */
+  const EXPLAIN={metrics:{},views:{},attribution:""};
+  function loadExplanations(){
+    return Promise.all([jget("/api/metrics/catalog"),jget("/api/metrics/explanations")])
+      .then(([cat,ex])=>{
+        cat.forEach(c=>{if(c.explanation)EXPLAIN.metrics[c.key]=c.explanation;});
+        EXPLAIN.views=ex.views||{};EXPLAIN.attribution=ex.attribution||"";
+      }).catch(()=>{/* sem explicação o dashboard segue utilizável */});
+  }
+  // O "i" é afordância, não decoração: precisa ser visível sem hover e alcançável por teclado.
+  function infoBtn(kind,key,label){
+    const l=escHtml(label||key);
+    return '<button class="info-btn" data-info="'+kind+':'+key+'" data-info-label="'+l+'"'+
+      ' tabindex="0" aria-label="Como '+l+' é calculado">i</button>';
+  }
+  function explanationOf(kind,key){
+    return kind==="view"?EXPLAIN.views[key]:EXPLAIN.metrics[PROTO2METRIC[key]||key];
+  }
+  function openExplain(kind,key,label){
+    const e=explanationOf(kind,key);
+    const row=(t,v)=>'<div class="xp-row"><div class="xp-k">'+t+'</div><div class="xp-v">'+escHtml(v)+'</div></div>';
+    let body;
+    if(!e){body='<div class="card-note">Explicação ainda não disponível para este item.</div>';}
+    else{
+      body='<div class="xp-rule">'+escHtml(e.rule)+'</div>'+
+        row("Fonte",e.source)+row("Entra na conta",e.included)+row("Fica de fora",e.excluded)+
+        '<div class="xp-ex"><div class="xp-k">Exemplo</div><div class="xp-v">'+escHtml(e.example)+'</div></div>'+
+        (EXPLAIN.attribution?'<div class="xp-attr">'+escHtml(EXPLAIN.attribution)+'</div>':"");
+    }
+    $("modalBody").innerHTML='<div class="modal-title">Como é calculado · '+escHtml(label||key)+'</div>'+
+      body+'<div class="modal-actions"><button class="btn" id="modalClose">Fechar</button></div>';
+    $("modal").classList.add("open");
+    $("modalClose").onclick=closeModal;$("modalClose").focus();
+  }
 
   /* ---------- Deterministic mock ---------- */
   function hash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0)/4294967295;}
@@ -895,12 +919,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const s=snap(id,m,freq);let tier="";
     if(m.dora){const t=doraTier(id,m.key)||tierOf(m.key,s.cur);tier='<span class="tier '+TC[t]+'">'+t+'</span>';}
     return '<div class="card click'+(hero?" hero":"")+'" data-metric="'+m.key+'" role="button" tabindex="0">'+
-      '<div class="card-top"><div class="card-label">'+m.label+'</div>'+tier+'</div>'+
+      '<div class="card-top"><div class="card-label">'+m.label+infoBtn("metric",m.key,m.label)+'</div>'+tier+'</div>'+
       '<div class="card-value"><span class="v num">'+fmt(s.cur,m.unit)+'</span><span class="u">'+m.unit+'</span></div>'+
       sparkline(s.trend)+
       '<div class="card-foot">'+evoChip(s)+'<span class="card-note">vs. período anterior</span></div></div>';
   }
-  function sectionHead(t){return '<div class="section-head"><h2>'+t+'</h2><div class="rule"></div></div>';}
+  function sectionHead(t,viewKey){
+    const i=viewKey?infoBtn("view",viewKey,t):"";
+    return '<div class="section-head"><h2>'+t+i+'</h2><div class="rule"></div></div>';
+  }
 
   // Generic line chart: series=[{name,color,pts:[]}]
   function barChart(seriesArr,labels,unit,height){
@@ -1074,7 +1101,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         tile("Média (12p)",fmt(ser[0].pts.reduce((a,b)=>a+b,0)/12,m.unit)+" "+m.unit,'<span class="card-note">tendência</span>')+
         (m.dora?tile("Benchmark DORA",tierOf(m.key,s.cur),'<span class="card-note">classe da indústria</span>'):"")+
       '</div>';
-    h+='<div class="chart-wrap"><div class="chart-head"><div class="chart-title">'+m.label+' — evolução</div>'+
+    h+='<div class="chart-wrap"><div class="chart-head"><div class="chart-title">'+m.label+' — evolução'+
+       infoBtn("view","trend","o gráfico de tendência")+infoBtn("metric",m.key,m.label)+'</div>'+
        (canAI?'<button class="toggle-chip'+(state.trendAI?" on":"")+'" id="aiToggle">Comparar com/sem IA</button>':'')+'</div>';
     if(ser.length>1)h+='<div class="legend" style="margin-bottom:8px">'+ser.map(x=>'<span><i style="background:'+x.color+'"></i>'+x.name+'</span>').join("")+'</div>';
     h+=barChart(ser,labels,m.unit,250)+'</div>';
@@ -1158,7 +1186,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<div class="card"><div class="card-label">'+label+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div>'+(spark||"")+foot+'</div>';
   }
   function selCard(key,label,value,sub,chip,selected){
-    return '<div class="card click'+(selected?" sel":"")+'" data-im="'+key+'" role="button" tabindex="0" aria-pressed="'+selected+'"><div class="card-label">'+label+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div><div class="card-foot">'+(chip||'')+'<span class="card-note">'+sub+'</span></div></div>';
+    return '<div class="card click'+(selected?" sel":"")+'" data-im="'+key+'" role="button" tabindex="0" aria-pressed="'+selected+'"><div class="card-label">'+label+infoBtn("metric",key,label)+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div><div class="card-foot">'+(chip||'')+'<span class="card-note">'+sub+'</span></div></div>';
   }
   function miniBar(label,val,max,color){
     return '<div style="display:grid;grid-template-columns:160px 1fr auto;gap:12px;align-items:center;padding:6px 0"><span style="font-size:12.5px">'+label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,val/max*100).toFixed(0)+'%;background:'+color+'"></div></div><span class="num" style="font-size:13px;font-weight:600">'+val+'</span></div>';
@@ -1186,7 +1214,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+=sectionHead("Atividade de commits");
     h+='<div class="top-split">'+commitCalendar(id)+gauge(firstPass,"Taxa de assertividade de PRs","PRs aprovados sem pedir ajustes")+'</div>';
 
-    h+=sectionHead("Entrega");
+    h+=sectionHead("Entrega","individual");
     const IM={tp:M("tp"),ct:M("ct"),aic:M("aic"),cmt:M("cmt"),prc:M("prc")};
     const selKey=IM[state.indMetric]?state.indMetric:"tp";
     h+='<div class="grid tiles">'+
@@ -1213,7 +1241,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       miniBar("Reviews que recebeu",reviewsRecv,mx,"var(--cat-4)")+
       '<div class="card-note" style="margin-top:8px">Razão dado/recebido: '+(reviewsDone/(reviewsRecv||1)).toFixed(1)+'×</div></div>';
 
-    h+=sectionHead("Distribuição do trabalho");
+    h+=sectionHead("Distribuição do trabalho","type_distribution");
     h+=(c&&c.workTypes&&c.workTypes.length)?workTypeBlock(c.workTypes):taskEffortBlock(id,freq);
     return h;
   }
@@ -1341,7 +1369,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     if(showToggle)h+='<div class="chiprow"><button class="toggle-chip'+(state.cmpScope==="times"?" on":"")+'" data-scope="times">Todos os times</button><button class="toggle-chip'+(state.cmpScope==="verticais"?" on":"")+'" data-scope="verticais">Todas as verticais</button></div>';
     h+='<div class="panel" style="overflow-x:auto"><table class="heat"><thead>';
     h+='<tr><th class="rowh"></th><th class="grp" colspan="'+DORA.length+'">DORA</th><th class="grp" colspan="'+FLUXO.length+'">Fluxo</th><th class="grp" colspan="'+IA.length+'">IA</th></tr>';
-    h+='<tr><th class="rowh">'+rowType+'</th>'+metrics.map(m=>'<th title="'+m.label+'">'+SHORT[m.key]+'</th>').join("")+'</tr></thead><tbody>';
+    h+='<tr><th class="rowh">'+rowType+infoBtn("view","heatmap","o heatmap comparativo")+'</th>'+
+       metrics.map(m=>'<th title="'+m.label+'">'+SHORT[m.key]+infoBtn("metric",m.key,m.label)+'</th>').join("")+
+       '</tr></thead><tbody>';
     matrix.forEach(row=>{
       h+='<tr><td class="rowh">'+row.label+(row.sub?'<small>'+row.sub+'</small>':'')+'</td>';
       row.vals.forEach((v,ci)=>{const m=metrics[ci];const s=statusRel(ci,v,m);h+='<td><div class="heat-cell '+s.cls+'" title="'+row.label+' · '+m.label+': '+fmt(v,m.unit)+' '+m.unit+' — '+s.label+' do grupo">'+fmt(v,m.unit)+'<small>'+m.unit+'</small></div></td>';});
@@ -1390,7 +1420,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const empty=COMMITTERS.length?'':'<div class="card-note" style="padding:14px 4px">Nenhuma identidade carregada. Clique em <b>Recarregar e associar</b> para descobrir os committers dos eventos já ingeridos e vinculá-los automaticamente pelas contas.</div>';
     return '<div class="callout">Identidades de committer <b>descobertas dos eventos ingeridos</b>. O sistema <b>associa automaticamente</b> a identidade à Pessoa quando o e-mail do commit bate com o e-mail de uma conta de usuário; ajuste manualmente o restante. Bots e e-mails sem conta ficam em <b>"Não atribuído"</b>.</div>'+
       '<div class="admin-bar"><button class="btn" data-aact="reload-identities">Recarregar e associar</button></div>'+
-      '<div class="cov-wrap"><span style="font-size:12px;color:var(--on-surface-var)">Cobertura de atribuição</span><div class="cov-bar"><div class="cov-fill" style="width:'+pct+'%"></div></div><span class="cov-pct">'+pct+'%</span></div>'+
+      '<div class="cov-wrap"><span style="font-size:12px;color:var(--on-surface-var)">Cobertura de atribuição'+infoBtn("view","coverage","cobertura de atribuição")+'</span><div class="cov-bar"><div class="cov-fill" style="width:'+pct+'%"></div></div><span class="cov-pct">'+pct+'%</span></div>'+
       '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Identidade (ADO)</th><th>Nome</th><th>Commits</th><th>Pessoa</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+empty;
   }
   function adminRepos(){
@@ -1425,7 +1455,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div style="margin:6px 0;display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-aact="ado-sync">Sincronizar do Azure DevOps</button><button class="btn ghost" data-aact="ado-backfill" title="Ignora o watermark e reprocessa os últimos 6 meses (aplica os mapeamentos atuais aos dados já carregados)">Reprocessar 6 meses</button></div>'+
       '<div id="ado_sync_box"></div>'+
       '<div class="admin-bar" style="margin-top:26px;justify-content:space-between;align-items:flex-end">'+
-        '<div class="chart-title" style="margin:0">O que está carregado na base</div>'+
+        '<div class="chart-title" style="margin:0">O que está carregado na base'+infoBtn("view","ado_stats","o que está carregado na base")+'</div>'+
         '<label class="mf" style="margin:0;min-width:240px">Filtrar por estrutura<select id="ado_stats_node">'+statsNodeOptions(state.adoStatsNode)+'</select></label>'+
       '</div>'+
       '<div id="ado_stats_box"><div class="card-note">Carregando…</div></div>';
@@ -1587,6 +1617,28 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   let toastTimer;
   function toast(msg){const el=$("toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2200);}
   function closeModal(){$("modal").classList.remove("open");}
+  // Capturing, and stopping propagation: the "i" sits inside a clickable card, and explaining
+  // must not also open the drawer — they answer different questions.
+  document.addEventListener("click",(ev)=>{
+    const btn=ev.target.closest&&ev.target.closest("[data-info]");
+    if(!btn)return;
+    ev.preventDefault();ev.stopPropagation();
+    const [kind,key]=btn.dataset.info.split(":");
+    openExplain(kind,key,btn.dataset.infoLabel||(M0(key)&&M0(key).label)||key);
+  },true);
+  // Enter/Espaço também precisam ser capturados: o card em volta tem o próprio keydown e chama
+  // preventDefault(), o que mata a ativação nativa do botão — sem isto, Enter não fazia nada e
+  // Espaço abria o drawer em vez da explicação.
+  document.addEventListener("keydown",(ev)=>{
+    if(ev.key!=="Enter"&&ev.key!==" ")return;
+    const btn=ev.target.closest&&ev.target.closest("[data-info]");
+    if(!btn)return;
+    ev.preventDefault();ev.stopPropagation();
+    const [kind,key]=btn.dataset.info.split(":");
+    openExplain(kind,key,btn.dataset.infoLabel||(M0(key)&&M0(key).label)||key);
+  },true);
+  // Label lookup that tolerates view keys (which have no metric definition).
+  function M0(key){try{return M(key);}catch(e){return null;}}
   function openModal(title,body,onSave,saveLabel){
     $("modalBody").innerHTML='<div class="modal-title">'+title+'</div>'+body+'<div class="modal-actions"><button class="btn ghost" id="modalCancel">Cancelar</button><button class="btn" id="modalSave">'+(saveLabel||"Salvar")+'</button></div>';
     $("modal").classList.add("open");
@@ -1720,7 +1772,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const ser=[{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}];
     let tier=m.dora?'<span class="tier '+TC[tierOf(m.key,s.cur)]+'">'+tierOf(m.key,s.cur)+'</span>':'';
     let h='<div class="drawer-head"><div><div class="crumb-level">'+NODES[state.node].label+' · '+state.freq+'</div><h2 style="font-size:20px;margin-top:2px">'+m.label+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
-    h+='<div class="drawer-body"><div class="def">'+DEFS[m.key]+'</div>';
+    const xp=explanationOf("metric",m.key);
+    h+='<div class="drawer-body"><div class="def">'+(xp?escHtml(xp.rule)+' '+escHtml(xp.source):"")+
+      ' '+infoBtn("metric",m.key,m.label)+'</div>';
     h+='<div class="kv"><div><span class="k">Atual</span><span class="val num">'+fmt(s.cur,m.unit)+' <span style="font-size:13px;color:var(--on-surface-var)">'+m.unit+'</span></span></div><div><span class="k">Anterior</span><span class="val num">'+fmt(s.prev,m.unit)+'</span></div><div><span class="k">Evolução</span><span style="margin-top:4px;display:inline-block">'+evoChip(s)+'</span></div>'+(tier?'<div><span class="k">Benchmark</span><span style="margin-top:4px;display:inline-block">'+tier+'</span></div>':'')+'</div>';
     h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Evolução (12 '+state.freq.toLowerCase()+'s)</div>'+barChart(ser,labels,m.unit,220)+'</div>';
     if(m.phases)h+=phaseBlock(state.node,m);
@@ -1854,7 +1908,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   ns.addEventListener("click",closeNav);
 
   /* ---------- Login / logout ---------- */
-  const loginHint=document.querySelector(".login-hint");
+  // Por id, não por classe: os outros painéis também usam .login-hint, e um querySelector pegaria
+  // o primeiro do documento — mostrando o erro de login no painel errado.
+  const loginHint=$("loginHint");
   const loginHintText=loginHint?loginHint.textContent:"";
   function loginError(msg){if(loginHint){loginHint.textContent=msg;loginHint.style.color="var(--crit)";}}
   function loginReset(){if(loginHint){loginHint.textContent=loginHintText;loginHint.style.color="";}}

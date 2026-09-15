@@ -45,6 +45,7 @@ class FlowDashboardApiTest {
           "cycle_h",
           "h",
           Direction.LOWER_BETTER,
+          null,
           null);
 
   private MockMvc mvc;

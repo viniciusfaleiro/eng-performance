@@ -64,6 +64,7 @@ class MetricsEngineItemsTest {
         measure,
         "u",
         Direction.HIGHER_BETTER,
+        null,
         null);
   }
 

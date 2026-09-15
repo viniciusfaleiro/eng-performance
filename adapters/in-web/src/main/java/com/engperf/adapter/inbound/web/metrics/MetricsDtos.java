@@ -6,9 +6,12 @@ import com.engperf.application.metrics.MetricSeries;
 import com.engperf.application.metrics.SeriesPoint;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.MetricValue;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** Response payloads for the metrics endpoints. */
 public final class MetricsDtos {
@@ -22,7 +25,8 @@ public final class MetricsDtos {
       String scope,
       String aggregation,
       String unit,
-      String direction) {
+      String direction,
+      ExplanationDto explanation) {
 
     public static CatalogItemDto from(MetricDefinition d) {
       return new CatalogItemDto(
@@ -32,7 +36,27 @@ public final class MetricsDtos {
           d.scope().name().toLowerCase(Locale.ROOT),
           d.aggregation().name().toLowerCase(Locale.ROOT),
           d.unit(),
-          d.direction().name().toLowerCase(Locale.ROOT));
+          d.direction().name().toLowerCase(Locale.ROOT),
+          d.explained().map(ExplanationDto::from).orElse(null));
+    }
+  }
+
+  /** The explanations that do not belong to a single metric, plus the shared attribution note. */
+  public record ExplanationsDto(String attribution, Map<String, ExplanationDto> views) {
+
+    public static ExplanationsDto from(String attribution, Map<String, MetricExplanation> views) {
+      Map<String, ExplanationDto> mapped = new LinkedHashMap<>();
+      views.forEach((key, value) -> mapped.put(key, ExplanationDto.from(value)));
+      return new ExplanationsDto(attribution, mapped);
+    }
+  }
+
+  /** How the metric is calculated, in reader-facing text — what the "i" icon opens. */
+  public record ExplanationDto(
+      String rule, String source, String included, String excluded, String example) {
+
+    public static ExplanationDto from(MetricExplanation e) {
+      return new ExplanationDto(e.rule(), e.source(), e.included(), e.excluded(), e.example());
     }
   }
 

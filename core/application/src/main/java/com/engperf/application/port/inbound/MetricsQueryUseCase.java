@@ -5,7 +5,9 @@ import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.MetricExplanation;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Inbound port for reading metrics. Node-scope enforcement (403 outside scope, coaching-only) lives
@@ -15,6 +17,12 @@ import java.util.List;
 public interface MetricsQueryUseCase {
 
   List<MetricDefinition> catalog();
+
+  /** Explanations for charts and panels that are not a single metric, keyed by view. */
+  Map<String, MetricExplanation> viewExplanations();
+
+  /** How attribution works — the same sentence for every metric, so it is stated once. */
+  String attributionNote();
 
   List<MetricCard> cards(String nodeId, Frequency frequency);
 

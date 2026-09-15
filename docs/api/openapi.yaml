@@ -75,6 +75,27 @@ paths:
                   commit:  { type: string, example: "99f131a" }
                   builtAt: { type: string, format: date-time, nullable: true }
 
+  /metrics/explanations:
+    get:
+      tags: [Catalog]
+      summary: Explicações das visualizações (gráficos, heatmap, painéis) e a nota de atribuição.
+      description: >
+        As explicações das métricas viajam no próprio catálogo (`/metrics/catalog`); este endpoint
+        cobre o que não corresponde a uma métrica única. É o que o ícone "i" abre.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  attribution: { type: string }
+                  views:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/Explanation"
+
   # ---------------------------------------------------------------- Auth
   /auth/login:
     post:
@@ -1030,6 +1051,15 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
 
   schemas:
+    Explanation:
+      type: object
+      description: Como um número é calculado, em texto para quem lê o dashboard.
+      properties:
+        rule:     { type: string, description: A regra, em uma ou duas frases. }
+        source:   { type: string, description: De que evento sai e o que é lido dele. }
+        included: { type: string, description: Quais eventos entram na conta. }
+        excluded: { type: string, description: Quais ficam de fora, e por quê. }
+        example:  { type: string, description: Um cálculo concreto com números ilustrativos. }
     # ---- Enums / primitives ----
     Frequency:
       type: string

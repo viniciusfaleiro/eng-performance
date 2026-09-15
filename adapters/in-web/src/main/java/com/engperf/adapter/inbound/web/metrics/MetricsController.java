@@ -5,6 +5,7 @@ import com.engperf.adapter.inbound.web.auth.ForbiddenException;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CardDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CatalogItemDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.DrilldownItemDto;
+import com.engperf.adapter.inbound.web.metrics.MetricsDtos.ExplanationsDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
@@ -33,6 +34,15 @@ public class MetricsController {
   @GetMapping("/api/metrics/catalog")
   public List<CatalogItemDto> catalog() {
     return metrics.catalog().stream().map(CatalogItemDto::from).toList();
+  }
+
+  /**
+   * What the "i" icon opens for charts and panels, plus the attribution note that applies to every
+   * metric. Metric explanations travel with the catalog; this covers what has no metric of its own.
+   */
+  @GetMapping("/api/metrics/explanations")
+  public ExplanationsDto explanations() {
+    return ExplanationsDto.from(metrics.attributionNote(), metrics.viewExplanations());
   }
 
   @GetMapping("/api/metrics/cards")

@@ -6,6 +6,7 @@ import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Clock;
 import java.time.Instant;
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 
@@ -44,6 +46,16 @@ public final class MetricsService implements MetricsQueryUseCase {
   @Override
   public List<MetricDefinition> catalog() {
     return catalog.all();
+  }
+
+  @Override
+  public Map<String, MetricExplanation> viewExplanations() {
+    return catalog.viewExplanations();
+  }
+
+  @Override
+  public String attributionNote() {
+    return catalog.attributionNote();
   }
 
   @Override

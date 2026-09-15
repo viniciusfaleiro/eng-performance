@@ -46,7 +46,8 @@ class DoraDashboardApiTest {
           MetricDefinition.VALUE,
           "h",
           Direction.LOWER_BETTER,
-          new TierBands(24, 168, 720));
+          new TierBands(24, 168, 720),
+          null);
 
   private MockMvc mvc;
 
