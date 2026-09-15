@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
 /** A truncated commit message hides the AI trailers, so it has to be reloaded in full. */
@@ -15,14 +17,18 @@ class CommitCommentsTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final String BASE = "https://dev.azure.com/org/Proj/_apis/git/repositories/repo";
+  private static final Predicate<String> IS_AI =
+      msg -> msg.toLowerCase(Locale.ROOT).contains("co-authored-by: copilot");
 
   @Test
   void anUntruncatedCommitIsReturnedAsIsWithoutAnExtraCall() {
     RecordingClient client = new RecordingClient("{}");
+    CommitComments comments = new CommitComments(client, IS_AI);
 
-    JsonNode result = CommitComments.full(client, BASE, fixture("commit.json"), "tok");
+    JsonNode result = comments.full(BASE, fixture("commit.json"), "tok");
 
     assertThat(client.urls).isEmpty(); // the common case must stay free
+    assertThat(comments.reloaded()).isZero();
     assertThat(result.path("commitId").asText()).isEqualTo("abc123");
   }
 
@@ -32,10 +38,12 @@ class CommitCommentsTest {
         new RecordingClient(
             "{\"commitId\":\"def456\",\"comment\":\"feat: nova régua de limite\\n\\nCorpo"
                 + " longo\\n\\nCo-authored-by: Copilot <copilot@github.com>\"}");
+    CommitComments comments = new CommitComments(client, IS_AI);
 
-    JsonNode result = CommitComments.full(client, BASE, fixture("commit-truncated.json"), "tok");
+    JsonNode result = comments.full(BASE, fixture("commit-truncated.json"), "tok");
 
     assertThat(client.urls).containsExactly(BASE + "/commits/def456?api-version=7.1");
+    assertThat(comments.reloaded()).isEqualTo(1);
     assertThat(result.path("comment").asText()).contains("Co-authored-by: Copilot");
   }
 
@@ -59,9 +67,32 @@ class CommitCommentsTest {
           }
         };
 
-    JsonNode result = CommitComments.full(failing, BASE, truncated, "tok");
+    CommitComments comments = new CommitComments(failing, IS_AI);
+
+    JsonNode result = comments.full(BASE, truncated, "tok");
 
     assertThat(result).isSameAs(truncated);
+    assertThat(comments.reloaded()).isZero(); // a failed call did not restore anything
+  }
+
+  /**
+   * The marker can sit in the part that survived truncation — a tag in the subject line, say. The
+   * reload could only confirm a flag that is already decided, so it is skipped.
+   */
+  @Test
+  void aTruncatedCommitAlreadyMatchingTheConventionIsNotReloaded() {
+    RecordingClient client = new RecordingClient("{}");
+    CommitComments comments = new CommitComments(client, IS_AI);
+    JsonNode visibleMatch =
+        json(
+            "{\"commitId\":\"ghi789\",\"commentTruncated\":true,"
+                + "\"comment\":\"feat: régua\\n\\nCo-authored-by: Copilot <c@github.com>\\n\\ncorpo\"}");
+
+    JsonNode result = comments.full(BASE, visibleMatch, "tok");
+
+    assertThat(client.urls).isEmpty();
+    assertThat(comments.reloaded()).isZero();
+    assertThat(result).isSameAs(visibleMatch);
   }
 
   private static final class RecordingClient implements AdoRestClient {

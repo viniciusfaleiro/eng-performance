@@ -91,6 +91,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
       ProgressReporter progress,
       List<RawEvent> events) {
     Predicate<String> isAi = aiDetector(config.aiConvention());
+    CommitComments comments = new CommitComments(client, isAi);
     int prs = 0;
     int commits = 0;
     for (Repository repo : repos) {
@@ -130,8 +131,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
                         + "&$top=1000&"
                         + API,
                     token))) {
-          events.add(
-              AdoMapper.commit(CommitComments.full(client, base, c, token), repo.key(), isAi));
+          events.add(AdoMapper.commit(comments.full(base, c, token), repo.key(), isAi));
           commits++;
         }
         progress.update("commits", "commits", commits);
@@ -139,7 +139,11 @@ public final class AdoEventSource implements AdoEventSourcePort {
         throw contextual("repositório " + ctx, e);
       }
     }
-    LOG.info("ADO sync: {} PR(s) e {} commit(s) coletados", prs, commits);
+    LOG.info(
+        "ADO sync: {} PR(s) e {} commit(s) coletados ({} comentário(s) recarregado(s) por truncamento)",
+        prs,
+        commits,
+        comments.reloaded());
   }
 
   /** Per distinct (org, project): pipeline runs (deploys) + work items — project-scoped in ADO. */
