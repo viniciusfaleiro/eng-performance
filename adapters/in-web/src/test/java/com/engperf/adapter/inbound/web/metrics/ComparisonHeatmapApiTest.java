@@ -10,12 +10,17 @@ import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.ComparisonHeatmap;
 import com.engperf.application.metrics.HeatmapMetric;
 import com.engperf.application.metrics.HeatmapRow;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.hamcrest.Matchers;
@@ -27,12 +32,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 /** Heatmap API: in-scope 200 with rows+cols, out-of-scope 403, people rows coaching-only. */
 class ComparisonHeatmapApiTest {
 
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
+
   private MockMvc mvc;
 
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new ComparisonHeatmapController(new FakeComparison()))
+        MockMvcBuilders.standaloneSetup(
+                new ComparisonHeatmapController(new FakeComparison(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -91,7 +100,7 @@ class ComparisonHeatmapApiTest {
 
   private static final class FakeComparison implements ComparisonHeatmapUseCase {
     @Override
-    public ComparisonHeatmap heatmap(String nodeId, Frequency frequency, String scope) {
+    public ComparisonHeatmap heatmap(String nodeId, Period period, String scope) {
       List<HeatmapMetric> metrics =
           List.of(
               new HeatmapMetric("deploy_freq", "Deployment Frequency", "deploys"),

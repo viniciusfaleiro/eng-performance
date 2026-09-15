@@ -58,6 +58,16 @@ h1,h2,h3{margin:0;}
 .brand-sub{font-size:10px;color:var(--on-surface-var);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
 .sidebar-scroll{overflow-y:auto;flex:1;min-height:0;padding:4px 10px 24px;}
 .sidebar-foot{flex:0 0 auto;border-top:1px solid var(--outline-var);padding:10px 18px;font-size:10px;letter-spacing:.6px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.period-ctl{display:flex;align-items:center;gap:4px;}
+.period-label{all:unset;cursor:pointer;font-size:12.5px;font-family:var(--mono);padding:6px 10px;border:1px solid var(--outline-var);border-radius:8px;background:var(--surface-2);min-width:130px;text-align:center;white-space:nowrap;}
+.period-label:hover,.period-label:focus-visible{border-color:var(--primary);}
+#periodField.past .period-label{border-color:var(--warn);color:var(--warn);}
+.icon-btn.sm{width:28px;height:28px;font-size:14px;}
+.icon-btn.sm:disabled{opacity:.35;cursor:default;}
+.period-list{display:grid;gap:4px;max-height:50vh;overflow-y:auto;margin-top:6px;}
+.period-opt{all:unset;cursor:pointer;padding:8px 10px;border-radius:8px;font-size:13px;}
+.period-opt:hover,.period-opt:focus-visible{background:var(--surface-2);}
+.period-opt.on{background:color-mix(in srgb,var(--primary) 16%,transparent);font-weight:600;}
 .info-btn{all:unset;display:inline-grid;place-items:center;width:15px;height:15px;margin-left:6px;border-radius:50%;border:1px solid var(--outline-var);color:var(--muted);font-size:9px;font-weight:700;font-family:var(--mono);cursor:pointer;vertical-align:middle;line-height:1;}
 .info-btn:hover,.info-btn:focus-visible{color:var(--on-surface);border-color:var(--primary);background:color-mix(in srgb,var(--primary) 12%,transparent);}
 .xp-rule{font-size:14px;line-height:1.55;margin-bottom:14px;}
@@ -491,6 +501,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           <button data-freq="Mensal">Mensal</button>
         </div>
       </div>
+      <div class="field" id="periodField">
+        <label>Período</label>
+        <div class="period-ctl">
+          <button class="icon-btn sm" id="periodPrev" aria-label="Período anterior">‹</button>
+          <button class="period-label" id="periodLabel" aria-haspopup="listbox"></button>
+          <button class="icon-btn sm" id="periodNext" aria-label="Próximo período">›</button>
+          <button class="btn ghost sm" id="periodNow" title="Voltar ao período atual">Hoje</button>
+        </div>
+      </div>
       <button class="btn ghost sm" id="exportBtn" title="Exportar a visão atual em PDF" style="align-self:flex-end">⭳ PDF</button>
       <button class="icon-btn" id="themeBtn" aria-label="Alternar tema" style="align-self:flex-end">◐</button>
       <button class="icon-btn" id="logoutBtn" aria-label="Sair" title="Sair" style="align-self:flex-end">⏻</button>
@@ -573,6 +592,46 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const jsend=(m,u,b)=>fetch(u,{method:m,headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(b)}).then(jcheck);
   const jpost=(u,b)=>jsend("POST",u,b),jput=(u,b)=>jsend("PUT",u,b);
   const jdel=(u)=>fetch(u,{method:"DELETE",headers:authHeaders()}).then(jcheck);
+  /* ---------- Período exibido ----------
+     state.period é a data ISO de início do balde, ou null para "o período corrente". Data absoluta,
+     não deslocamento: um link para julho precisa continuar apontando para julho amanhã. */
+  const periodQ=()=>state.period?("&period="+encodeURIComponent(state.period)):"";
+  const D=(iso)=>{const [y,m,d]=iso.split("-").map(Number);return new Date(Date.UTC(y,m-1,d));};
+  const iso=(dt)=>dt.toISOString().slice(0,10);
+  const MONTHS=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  function bucketStart(isoDate,freq){
+    const dt=D(isoDate);
+    if(freq==="Mensal")return iso(new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth(),1)));
+    if(freq==="Semanal"){const dow=(dt.getUTCDay()+6)%7;dt.setUTCDate(dt.getUTCDate()-dow);return iso(dt);}
+    return isoDate;
+  }
+  function shiftPeriod(isoDate,freq,by){
+    const dt=D(isoDate);
+    if(freq==="Mensal")dt.setUTCMonth(dt.getUTCMonth()+by);
+    else if(freq==="Semanal")dt.setUTCDate(dt.getUTCDate()+7*by);
+    else dt.setUTCDate(dt.getUTCDate()+by);
+    return bucketStart(iso(dt),freq);
+  }
+  // O rótulo acompanha a frequência: o mesmo gesto serve para dia, semana e mês.
+  function periodLabel(isoDate,freq){
+    const dt=D(isoDate);
+    const dd=String(dt.getUTCDate()).padStart(2,"0"),mm=String(dt.getUTCMonth()+1).padStart(2,"0");
+    if(freq==="Mensal")return MONTHS[dt.getUTCMonth()]+" / "+dt.getUTCFullYear();
+    if(freq==="Semanal")return "semana de "+dd+"/"+mm;
+    return dd+"/"+mm+"/"+dt.getUTCFullYear();
+  }
+  // O período corrente vem do servidor, por frequência: o relógio dele pode estar fixado, e um
+  // rótulo calculado no browser diria um mês que o motor nunca usou.
+  const CURRENT={};
+  const currentPeriod=()=>CURRENT[state.freq]||null;
+  const shownPeriod=()=>state.period||currentPeriod();
+  const isCurrentPeriod=()=>!state.period||state.period===currentPeriod();
+  function loadCurrentPeriods(){
+    return Promise.all(["Diário","Semanal","Mensal"].map(f=>
+      jget("/api/metrics/period?freq="+encodeURIComponent(f))
+        .then(p=>{CURRENT[f]=p.currentStart;}).catch(()=>{})));
+  }
+
   const escHtml=(s)=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
   const apiErr=(e)=>{const m=(e&&e.message)||String(e);
     const pt=/email already registered/i.test(m)?"Email já cadastrado":/valid email required|email must contain/i.test(m)?"Email inválido":/password must not be blank/i.test(m)?"Senha obrigatória":/not found/i.test(m)?"Registro não encontrado":/manager is not a registered person/i.test(m)?"Gestor precisa ser uma pessoa cadastrada":/CONFIG_ENCRYPTION_KEY/i.test(m)?"Defina a variável de ambiente CONFIG_ENCRYPTION_KEY antes de salvar a senha do SMTP":/port must be between/i.test(m)?"Porta inválida (1–65535)":/fromAddress must contain/i.test(m)?"Remetente inválido":/failed to send email via SMTP/i.test(m)?"Falha ao enviar pelo SMTP configurado: "+m.replace(/^failed to send email via SMTP:\s*/i,""):m;
@@ -580,6 +639,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const today=()=>new Date().toISOString().slice(0,10);
   async function loadFromApi(){
     loadExplanations().then(render); // não bloqueia a carga principal; o ícone aparece quando chega
+    // O período corrente precisa chegar antes do primeiro render do controle.
+    await loadCurrentPeriods();
+    readUrl();
     try{
       CURRENT_USER=await jget("/api/auth/me");
       // The org tree the backend returns is ALREADY pruned to this user's scope — it is the single
@@ -710,19 +772,19 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const IA_KEYS=new Set(["aic","aad","aim"]);
   function snap(id,m,freq){
     if(m.dora){
-      const c=DORA_CACHE[state.node+"|"+state.freq];
+      const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:e.pct,dir:e.dir,trend:snapSyn(id,m,freq).trend};
       }
     }else if(FLOW_KEYS.has(m.key)){
-      const c=FLOW_CACHE[state.node+"|"+state.freq];
+      const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
       }
     }else if(IA_KEYS.has(m.key)){
-      const c=IA_CACHE[state.node+"|"+state.freq];
+      const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
@@ -736,12 +798,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      + its tiles read real data; the dashboard card grids remain the mock until then. */
   const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",mttr:"mttr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",aad:"ai_adoption",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency",cmt:"commit_count",prc:"pr_count"};
   const TREND={},TREND_LOADING=new Set();
-  const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq;
+  const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq+"|"+(state.period||"");
   function ensureTrend(mk){
     const k=trendKey(mk);
     if(TREND[k]||TREND_LOADING.has(k))return;
     TREND_LOADING.add(k);
-    jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+    jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{const pts=d.points.map(p=>p.value);const lp=d.points[d.points.length-1]||{};
         TREND[k]={pts,cur:pts[pts.length-1],prev:pts[pts.length-2],
           pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
@@ -764,11 +826,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const TIER_PT={elite:"Elite",alto:"Alto",medio:"Médio",baixo:"Baixo"};
   const freqDays=()=>({"Diário":1,"Diario":1,"Semanal":7,"Mensal":30}[state.freq]||7);
   function ensureDora(){
-    const k=state.node+"|"+state.freq;
+    const k=state.node+"|"+state.freq+"|"+(state.period||"");
     if(DORA_CACHE[k]||DORA_LOADING.has(k))return;
     DORA_LOADING.add(k);
     const days=freqDays();
-    jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+    jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{DORA_CACHE[k]=indexDora(d,days);})
       .catch(()=>{DORA_CACHE[k]={error:true,byNode:{},ranking:[]};})
       .finally(()=>{DORA_LOADING.delete(k);render();});
@@ -784,7 +846,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.ranking||[]).forEach(r=>put(r.nodeId,r.cards));
     return {byNode,childType:d.childType,ranking:(d.ranking||[]).map(r=>r.nodeId)};
   }
-  function doraTier(id,key){const c=DORA_CACHE[state.node+"|"+state.freq];
+  function doraTier(id,key){const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][key]&&c.byNode[id][key].tier)return TIER_PT[c.byNode[id][key].tier];
     return null;}
   /* Fluxo dashboard wired to the real engine: /api/dashboards/flow gives the node's six cards, the
@@ -793,10 +855,10 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const FLOW_CACHE={},FLOW_LOADING=new Set();
   const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",commit_count:"cmt",pr_count:"prc"};
   function ensureFlow(){
-    const k=state.node+"|"+state.freq;
+    const k=state.node+"|"+state.freq+"|"+(state.period||"");
     if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
     FLOW_LOADING.add(k);
-    jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+    jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{FLOW_CACHE[k]=indexFlow(d);})
       .catch(()=>{FLOW_CACHE[k]={error:true,byNode:{},phases:[],children:[]};})
       .finally(()=>{FLOW_LOADING.delete(k);render();});
@@ -812,17 +874,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
     return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
   }
-  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
+  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
   /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
      (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
      with/without-AI cycle-time series. ai_share/ai_adoption arrive as 0..1 ratios, shown as %. */
   const IA_CACHE={},IA_LOADING=new Set();
   const IA_API2PROTO={ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
   function ensureIA(){
-    const k=state.node+"|"+state.freq;
+    const k=state.node+"|"+state.freq+"|"+(state.period||"");
     if(IA_CACHE[k]||IA_LOADING.has(k))return;
     IA_LOADING.add(k);
-    jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+    jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{IA_CACHE[k]=indexIA(d);})
       .catch(()=>{IA_CACHE[k]={error:true,byNode:{},adoption:[],withAi:[],withoutAi:[]};})
       .finally(()=>{IA_LOADING.delete(k);render();});
@@ -844,13 +906,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      carry the server label; values are normalised to the same display units as the dashboards. */
   const CMP_CACHE={},CMP_LOADING=new Set();
   const CMP_API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr",cycle_time:"ct",throughput:"tp",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
-  const cmpKey=()=>state.node+"|"+state.freq+"|"+(state.node==="all"?state.cmpScope:"-");
+  const cmpKey=()=>state.node+"|"+state.freq+"|"+(state.period||"")+"|"+(state.node==="all"?state.cmpScope:"-");
   function ensureCmp(){
     const k=cmpKey();
     if(CMP_CACHE[k]||CMP_LOADING.has(k))return;
     CMP_LOADING.add(k);
     const scope=state.cmpScope==="verticais"?"verticais":"times";
-    jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+"&scope="+scope)
+    jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+"&scope="+scope)
       .then(d=>{CMP_CACHE[k]=indexCmp(d);})
       .catch(()=>{CMP_CACHE[k]={error:true,byNode:{},rows:[]};})
       .finally(()=>{CMP_LOADING.delete(k);render();});
@@ -870,13 +932,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      work-type distribution and recent activity (with ADO deep-links). Coaching-only on the
      backend (403 otherwise). */
   const IND_CACHE={},IND_LOADING=new Set();
-  const indKey=()=>state.node+"|"+state.freq;
+  const indKey=()=>state.node+"|"+state.freq+"|"+(state.period||"");
   function ensureInd(){
     if(!state.node.startsWith("p:"))return;
     const k=indKey();
     if(IND_CACHE[k]||IND_LOADING.has(k))return;
     IND_LOADING.add(k);
-    jget("/api/individuals/"+state.node+"?freq="+encodeURIComponent(state.freq))
+    jget("/api/individuals/"+state.node+"?freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{IND_CACHE[k]=d;})
       .catch(()=>{IND_CACHE[k]={error:true};})
       .finally(()=>{IND_LOADING.delete(k);render();});
@@ -903,7 +965,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,period:null};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -952,7 +1014,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   // their adoption, so the ranking shows real values instead of the team-average fallback.
   function cachedVal(id,m){
     if(!IA_KEYS.has(m.key))return null;
-    const c=IA_CACHE[state.node+"|"+state.freq];
+    const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null)return c.byNode[id][m.key].cur;
     return null;}
   function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd&&nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
@@ -998,7 +1060,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   function dashboardDORA(){
     ensureDora();
-    const c=DORA_CACHE[state.node+"|"+state.freq];
+    const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     let ids,et;
     if(c&&!c.error&&c.childType&&c.ranking.length){ids=c.ranking;et=(c.childType==="vertical")?"vertical":"time";}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
@@ -1017,7 +1079,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function dashboardFluxo(){
     ensureFlow();
-    const c=FLOW_CACHE[state.node+"|"+state.freq];
+    const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     let ids,et;
     if(c&&!c.error&&c.childType&&c.children.length){ids=c.children;et=(c.childType==="vertical")?"vertical":"time";}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
@@ -1037,7 +1099,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function dashboardIA(){
     ensureIA();
-    const c=IA_CACHE[state.node+"|"+state.freq];
+    const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     let ids,et;
     if(c&&!c.error&&c.childType&&c.adoption.length){ids=c.adoption;et=(c.childType==="vertical")?"vertical":"time";}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
@@ -1787,7 +1849,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function loadDrawerItems(mk,unit){
     const box=$("drawerItems");if(!box)return;
-    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq))
+    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(items=>{
         const box2=$("drawerItems");if(!box2)return; // drawer may have been closed/reopened meanwhile
         if(!items.length){box2.innerHTML='<div class="card-note">Nenhum item no período atual.</div>';return;}
@@ -1873,7 +1935,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function render(){
     if(state.node.startsWith("p:")&&state.mode==="structure")state.view="dashboard";
-    renderRail();renderNav();updateTopbar();
+    renderRail();renderNav();updateTopbar();renderPeriod();
     let body="";
     if(state.mode==="admin")body=viewAdmin();
     else if(state.view==="tendencias")body=viewTendencias();
@@ -1900,12 +1962,86 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   /* ---------- Global controls ---------- */
   $("viewSwitch").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.view=b.dataset.view;state.mode="structure";render();});
-  $("freq").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;state.freq=b.dataset.freq;document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x===b));render();});
+  $("freq").addEventListener("click",e=>{
+    const b=e.target.closest("button");if(!b)return;
+    // Reancora o período no balde equivalente da nova frequência, em vez de voltar para hoje:
+    // quem estava olhando julho e troca para semanal quer uma semana de julho.
+    const anchor=state.period;
+    state.freq=b.dataset.freq;
+    if(anchor)state.period=bucketStart(anchor,state.freq);
+    if(state.period===currentPeriod())state.period=null;
+    document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x===b));
+    syncUrl();render();
+  });
+  $("periodPrev").addEventListener("click",()=>stepPeriod(-1));
+  $("periodNext").addEventListener("click",()=>stepPeriod(1));
+  $("periodNow").addEventListener("click",()=>setPeriod(null));
+  $("periodLabel").addEventListener("click",openPeriodList);
   $("themeBtn").addEventListener("click",()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;const next=dark?"light":"dark";document.documentElement.setAttribute("data-theme",next);try{localStorage.setItem("ep_theme",next);}catch(e){}});
   $("exportBtn").addEventListener("click",()=>window.print());
   const sb=$("sidebar"),ns=$("navscrim");function closeNav(){sb.classList.remove("open");ns.classList.remove("open");}
   $("menuBtn").addEventListener("click",()=>{sb.classList.add("open");ns.classList.add("open");});
   ns.addEventListener("click",closeNav);
+
+  /* ---------- Estado na URL ----------
+     Nó, frequência e período viajam no endereço: "olha o que aconteceu em julho" precisa ser um
+     link, não um roteiro de cliques. */
+  function syncUrl(){
+    const u=new URL(location.href);
+    u.searchParams.set("node",state.node);
+    u.searchParams.set("freq",state.freq);
+    if(state.period)u.searchParams.set("period",state.period);else u.searchParams.delete("period");
+    history.replaceState(null,"",u.pathname+u.search+u.hash);
+  }
+  function readUrl(){
+    const q=new URL(location.href).searchParams;
+    const f=q.get("freq");if(f&&["Diário","Semanal","Mensal"].includes(f))state.freq=f;
+    const n=q.get("node");if(n)state.node=n;
+    const p=q.get("period");if(p&&/^\d{4}-\d{2}-\d{2}$/.test(p))state.period=bucketStart(p,state.freq);
+    document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x.dataset.freq===state.freq));
+  }
+
+  /* ---------- Controle de período ---------- */
+  function renderPeriod(){
+    const lbl=$("periodLabel");if(!lbl)return;
+    const p=shownPeriod();
+    if(!p){lbl.textContent="…";return;}
+    lbl.textContent=periodLabel(p,state.freq);
+    // Destaque quando não é o corrente: o risco real é ler número antigo como atual.
+    $("periodField").classList.toggle("past",!isCurrentPeriod());
+    $("periodNow").classList.toggle("lv-hidden",isCurrentPeriod());
+    // Não há período futuro para navegar.
+    $("periodNext").disabled=isCurrentPeriod();
+  }
+  function setPeriod(p){
+    state.period=(p&&p!==currentPeriod())?p:null;
+    syncUrl();render();
+  }
+  function stepPeriod(by){
+    const p=shownPeriod();if(!p)return;
+    const next=shiftPeriod(p,state.freq,by);
+    const cur=currentPeriod();
+    if(cur&&next>cur)return; // o futuro não tem resposta correta
+    setPeriod(next);
+  }
+  function openPeriodList(){
+    const cur=currentPeriod();if(!cur)return;
+    // Mais opções na diária: 12 meses são um ano, 12 dias são pouco mais de uma semana.
+    const n=state.freq==="Diário"?30:12;
+    let items="";
+    for(let i=0;i<n;i++){
+      const p=shiftPeriod(cur,state.freq,-i);
+      items+='<button class="period-opt'+(p===shownPeriod()?" on":"")+'" data-period="'+p+'">'+
+        periodLabel(p,state.freq)+(i===0?' <span class="card-note">atual</span>':'')+'</button>';
+    }
+    $("modalBody").innerHTML='<div class="modal-title">Escolher período</div>'+
+      '<div class="period-list" role="listbox">'+items+'</div>'+
+      '<div class="modal-actions"><button class="btn ghost" id="modalCancel">Cancelar</button></div>';
+    $("modal").classList.add("open");
+    $("modalCancel").onclick=closeModal;
+    document.querySelectorAll("[data-period]").forEach(b=>b.addEventListener("click",()=>{
+      closeModal();setPeriod(b.dataset.period);}));
+  }
 
   /* ---------- Login / logout ---------- */
   // Por id, não por classe: os outros painéis também usam .login-hint, e um querySelector pegaria

@@ -10,8 +10,10 @@ import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.metrics.SeriesPoint;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
@@ -24,7 +26,10 @@ import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +41,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
  * Node-scoped metrics API: in-scope 200, out-of-scope 403, coaching-only, frequency passthrough.
  */
 class MetricsApiTest {
+
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
 
   private static final MetricDefinition DEF =
       new MetricDefinition(
@@ -53,7 +61,7 @@ class MetricsApiTest {
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new MetricsController(new FakeMetrics()))
+        MockMvcBuilders.standaloneSetup(new MetricsController(new FakeMetrics(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -139,15 +147,33 @@ class MetricsApiTest {
   }
 
   @Test
-  void itemsWithoutBucketDefaultsToTheCurrentPeriod() throws Exception {
+  void itemsDefaultToTheCurrentPeriodAndFollowTheChosenOne() throws Exception {
+    // Sem parâmetro: a semana que contém o "hoje" do relógio fixo (2026-06-30, uma terça).
     mvc.perform(
             get("/api/metrics/throughput/items?node=all").requestAttr(AuthWeb.USER, user(admin())))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].label").value("bucketStart=null"));
+        .andExpect(jsonPath("$[0].label").value("period=2026-06-29"));
+    // Qualquer data dentro do período resolve para o período — o cliente não precisa arredondar.
     mvc.perform(
-            get("/api/metrics/throughput/items?node=all&bucket=2026-05-01")
+            get("/api/metrics/throughput/items?node=all&freq=Mensal&period=2026-05-17")
                 .requestAttr(AuthWeb.USER, user(admin())))
-        .andExpect(jsonPath("$[0].label").value("bucketStart=2026-05-01"));
+        .andExpect(jsonPath("$[0].label").value("period=2026-05-01"));
+  }
+
+  /**
+   * Um período futuro não tem resposta correta; um período passado vazio tem, e é zero. Responder
+   * zeros para o futuro esconderia a diferença.
+   */
+  @Test
+  void aFuturePeriodIsRefusedAndAnEmptyPastPeriodIsNot() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&freq=Mensal&period=2026-12-01")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest());
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&freq=Mensal&period=2019-03-01")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk());
   }
 
   @Test
@@ -175,33 +201,32 @@ class MetricsApiTest {
     }
 
     @Override
-    public List<MetricCard> cards(String nodeId, Frequency frequency) {
-      MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
+    public List<MetricCard> cards(String nodeId, Period period) {
+      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return List.of(new MetricCard(DEF, v, new Coverage(9, 10)));
     }
 
     @Override
-    public MetricSeries series(String metricKey, String nodeId, Frequency frequency) {
-      MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
+    public MetricSeries series(String metricKey, String nodeId, Period period) {
+      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
     }
 
     @Override
     public MetricSeries cohortSeries(
-        String metricKey, String nodeId, Frequency frequency, boolean aiAssisted) {
-      MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
+        String metricKey, String nodeId, Period period, boolean aiAssisted) {
+      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
     }
 
     @Override
-    public List<MetricDrilldownItem> items(
-        String metricKey, String nodeId, Frequency frequency, String bucketStart) {
+    public List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period) {
       return List.of(
           new MetricDrilldownItem(
               "pr:1",
               EventType.PR,
               "https://ado/pr/1",
-              "bucketStart=" + bucketStart, // echoes the param so the test can assert it
+              "period=" + period.start(), // echoes the param so the test can assert it
               nodeId,
               Instant.parse("2026-06-10T10:00:00Z"),
               1.0,

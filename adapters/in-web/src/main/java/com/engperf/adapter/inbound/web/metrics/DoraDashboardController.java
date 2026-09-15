@@ -6,6 +6,7 @@ import com.engperf.adapter.inbound.web.metrics.DoraDtos.DoraDashboardDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.DoraDashboard;
 import com.engperf.application.port.inbound.DoraDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,20 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class DoraDashboardController {
 
   private final DoraDashboardUseCase dora;
+  private final PeriodResolverUseCase periods;
 
-  public DoraDashboardController(DoraDashboardUseCase dora) {
+  public DoraDashboardController(DoraDashboardUseCase dora, PeriodResolverUseCase periods) {
     this.dora = dora;
+    this.periods = periods;
   }
 
   @GetMapping("/api/dashboards/dora")
   public DoraDashboardDto dashboard(
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
-    DoraDashboard dash = dora.dashboard(node, frequency(freq));
+    DoraDashboard dash = dora.dashboard(node, periods.resolve(frequency(freq), period));
     return DoraDashboardDto.from(dash, user.scope()::canView);
   }
 

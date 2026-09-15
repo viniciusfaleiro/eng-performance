@@ -3,10 +3,9 @@ package com.engperf.application.metrics;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-import com.engperf.application.port.outbound.EventStorePort;
-import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.CommitterIdentity;
 import com.engperf.domain.structure.Person;
@@ -17,10 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class MetricsServiceTest {
@@ -35,7 +31,7 @@ class MetricsServiceTest {
       new MetricsService(structure, events, new MetricCatalog(), CLOCK);
 
   private double card(String node, String key) {
-    return service.cards(node, Frequency.MONTHLY).stream()
+    return service.cards(node, period(Frequency.MONTHLY)).stream()
         .filter(c -> c.definition().key().equals(key))
         .map(c -> c.current().value())
         .findFirst()
@@ -57,6 +53,12 @@ class MetricsServiceTest {
     structure.identities.add(new CommitterIdentity("id-ghost", "Ghost", null, 0)); // unlinked
     structure.repositories.add(new Repository("r:web", "org", "Proj", "t:checkout", null));
     structure.repositories.add(new Repository("r:orphan", "org", "Proj", null, null)); // unmapped
+  }
+
+  /** O período corrente do relógio fixo do teste. */
+  private static Period period(Frequency f) {
+
+    return Period.of(f, LocalDate.now(CLOCK));
   }
 
   @Test
@@ -107,7 +109,7 @@ class MetricsServiceTest {
         .isCloseTo(1.0 / 3.0, org.assertj.core.data.Offset.offset(1e-9));
     assertThat(card("t:checkout", "deploy_freq")).isEqualTo(3); // orphan excluded
 
-    var series = service.series("deploy_freq", "all", Frequency.MONTHLY);
+    var series = service.series("deploy_freq", "all", period(Frequency.MONTHLY));
     assertThat(series.coverage().total()).isEqualTo(4);
     assertThat(series.coverage().attributed()).isEqualTo(3);
     assertThat(series.coverage().percent()).isLessThan(100.0);
@@ -139,8 +141,8 @@ class MetricsServiceTest {
     events.add(doneItemOn("id-bruno", "2026-06-10")); // after moving to Pay
 
     // Monthly series: March item counts for Checkout, not Pay; June item counts for Pay.
-    var checkout = service.series("throughput", "t:checkout", Frequency.MONTHLY);
-    var pay = service.series("throughput", "t:pay", Frequency.MONTHLY);
+    var checkout = service.series("throughput", "t:checkout", period(Frequency.MONTHLY));
+    var pay = service.series("throughput", "t:pay", period(Frequency.MONTHLY));
     assertThat(pointValue(checkout, "2026-03-01")).isEqualTo(1);
     assertThat(pointValue(checkout, "2026-06-01")).isEqualTo(0);
     assertThat(pointValue(pay, "2026-06-01")).isEqualTo(1);
@@ -151,7 +153,7 @@ class MetricsServiceTest {
   void unknownMetricIsRejected() {
     baseStructure();
     assertThatExceptionOfType(NoSuchElementException.class)
-        .isThrownBy(() -> service.series("nope", "all", Frequency.MONTHLY));
+        .isThrownBy(() -> service.series("nope", "all", period(Frequency.MONTHLY)));
   }
 
   @Test
@@ -160,18 +162,20 @@ class MetricsServiceTest {
     events.add(doneItem("id-ana")); // 2026-06-15 — the fixed clock's current month
     events.add(doneItemOn("id-ana", "2026-05-15")); // previous month — must not appear by default
 
-    var items = service.items("throughput", "p:ana", Frequency.MONTHLY, null);
+    var items = service.items("throughput", "p:ana", period(Frequency.MONTHLY));
     assertThat(items).hasSize(1);
     assertThat(items.get(0).occurredAt()).isEqualTo(Instant.parse("2026-06-15T10:00:00Z"));
   }
 
   @Test
-  void itemsWithExplicitBucketMatchesThatPeriod() {
+  void itemsFromAChosenPeriodMatchThatPeriod() {
     baseStructure();
     events.add(doneItem("id-ana")); // 2026-06-15
     events.add(doneItemOn("id-ana", "2026-05-15"));
 
-    var items = service.items("throughput", "p:ana", Frequency.MONTHLY, "2026-05-01");
+    var items =
+        service.items(
+            "throughput", "p:ana", Period.of(Frequency.MONTHLY, LocalDate.parse("2026-05-01")));
     assertThat(items).hasSize(1);
     assertThat(items.get(0).occurredAt()).isEqualTo(Instant.parse("2026-05-15T10:00:00Z"));
   }
@@ -180,7 +184,7 @@ class MetricsServiceTest {
   void itemsRejectsUnknownMetric() {
     baseStructure();
     assertThatExceptionOfType(NoSuchElementException.class)
-        .isThrownBy(() -> service.items("nope", "all", Frequency.MONTHLY, null));
+        .isThrownBy(() -> service.items("nope", "all", period(Frequency.MONTHLY)));
   }
 
   private static double pointValue(MetricSeries s, String bucketStart) {
@@ -240,6 +244,84 @@ class MetricsServiceTest {
     return doneItemOn(identity, "2026-06-15");
   }
 
+  /**
+   * A fatia decorrida existe para não comparar 10 dias contra um mês inteiro. Ela vale para o
+   * período em curso e só para ele: um mês encerrado não tem recorte a fazer.
+   */
+  @Test
+  void onlyTheRunningPeriodComparesAnElapsedSlice() {
+    baseStructure();
+    // Relógio no dia 10 → junho está em curso, com 10 dias decorridos.
+    MetricsService midMonth =
+        new MetricsService(
+            structure,
+            events,
+            new MetricCatalog(),
+            Clock.fixed(Instant.parse("2026-06-10T12:00:00Z"), ZoneOffset.UTC));
+    events.add(doneItemOn("id-ana", "2026-06-05")); // junho, dentro dos 10 dias
+    events.add(doneItemOn("id-ana", "2026-05-03")); // maio, dentro dos 10 primeiros dias
+    events.add(doneItemOn("id-ana", "2026-05-20")); // maio, fora dos 10 primeiros
+    events.add(doneItemOn("id-ana", "2026-05-25"));
+    events.add(doneItemOn("id-ana", "2026-04-02")); // abril: 2 itens, um deles nos 10 primeiros
+    events.add(doneItemOn("id-ana", "2026-04-22"));
+
+    var june = throughputOf(midMonth, Period.of(Frequency.MONTHLY, LocalDate.parse("2026-06-01")));
+    var may = throughputOf(midMonth, Period.of(Frequency.MONTHLY, LocalDate.parse("2026-05-01")));
+
+    // Junho em curso: 1 item contra o 1 item dos 10 primeiros dias de maio — não contra os 3.
+    assertThat(june.current().value()).isEqualTo(1);
+    assertThat(june.current().changePct()).isZero();
+    // Maio encerrado: 3 itens contra os 2 de abril **inteiro**. Com a fatia decorrida aplicada por
+    // engano, a comparação seria 1 dia de maio contra 1 dia de abril e a evolução sumiria.
+    assertThat(may.current().value()).isEqualTo(3);
+    assertThat(may.current().changePct()).isEqualTo(50.0);
+  }
+
+  private static MetricCard throughputOf(MetricsService svc, Period period) {
+    return svc.cards("p:ana", period).stream()
+        .filter(c -> c.definition().key().equals("throughput"))
+        .findFirst()
+        .orElseThrow();
+  }
+
+  @Test
+  void aPeriodBeforeAnyIngestionAnswersZeroInsteadOfFailing() {
+    baseStructure();
+    events.add(doneItem("id-ana"));
+
+    Period longPast = Period.of(Frequency.MONTHLY, LocalDate.parse("2019-03-01"));
+
+    assertThat(service.cards("p:ana", longPast))
+        .as("um mês sem eventos é uma resposta legítima: zero")
+        .isNotEmpty()
+        .allSatisfy(c -> assertThat(c.current().value()).isZero());
+  }
+
+  /** Card, série e drilldown do mesmo período têm de descrever o mesmo intervalo. */
+  @Test
+  void cardSeriesAndDrilldownAgreeOnTheChosenPeriod() {
+    baseStructure();
+    events.add(doneItemOn("id-ana", "2026-05-20"));
+    events.add(doneItemOn("id-ana", "2026-06-15"));
+    Period may = Period.of(Frequency.MONTHLY, LocalDate.parse("2026-05-01"));
+
+    double cardValue =
+        service.cards("p:ana", may).stream()
+            .filter(c -> c.definition().key().equals("throughput"))
+            .findFirst()
+            .orElseThrow()
+            .current()
+            .value();
+    var points = service.series("throughput", "p:ana", may).points();
+    double lastPoint = points.get(points.size() - 1).value().value();
+    var items = service.items("throughput", "p:ana", may);
+
+    assertThat(cardValue).isEqualTo(1);
+    assertThat(lastPoint).as("a série termina no período escolhido").isEqualTo(cardValue);
+    assertThat(items).hasSize(1);
+    assertThat(items.get(0).occurredAt()).isEqualTo(Instant.parse("2026-05-20T10:00:00Z"));
+  }
+
   private RawEvent deploy(String repo, double failed, double leadHours) {
     // One deploy feeds three metrics: deploy_freq (count), lead_time (median of
     // numericValue=hours),
@@ -254,126 +336,5 @@ class MetricsServiceTest {
         null,
         false,
         java.util.Map.of("num", Double.toString(failed), "den", "1"));
-  }
-
-  private static final class FakeEvents implements EventStorePort {
-    private final List<RawEvent> all = new ArrayList<>();
-
-    void add(RawEvent e) {
-      all.add(e);
-    }
-
-    @Override
-    public void saveAll(java.util.Collection<RawEvent> events) {
-      all.addAll(events);
-    }
-
-    @Override
-    public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
-      return all.stream()
-          .filter(e -> e.type() == type)
-          .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
-          .toList();
-    }
-
-    @Override
-    public long count() {
-      return all.size();
-    }
-  }
-
-  private static final class FakeStructure implements StructureRepositoryPort {
-    final List<Vertical> verticals = new ArrayList<>();
-    final List<Team> teams = new ArrayList<>();
-    final List<Person> people = new ArrayList<>();
-    final List<Repository> repositories = new ArrayList<>();
-    final List<CommitterIdentity> identities = new ArrayList<>();
-
-    @Override
-    public Vertical saveVertical(Vertical v) {
-      return v;
-    }
-
-    @Override
-    public List<Vertical> findVerticals() {
-      return verticals;
-    }
-
-    @Override
-    public Optional<Vertical> findVertical(String id) {
-      return verticals.stream().filter(v -> v.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteVertical(String id) {}
-
-    @Override
-    public Team saveTeam(Team t) {
-      return t;
-    }
-
-    @Override
-    public List<Team> findTeams() {
-      return teams;
-    }
-
-    @Override
-    public Optional<Team> findTeam(String id) {
-      return teams.stream().filter(t -> t.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deleteTeam(String id) {}
-
-    @Override
-    public Person savePerson(Person p) {
-      return p;
-    }
-
-    @Override
-    public List<Person> findPeople() {
-      return people;
-    }
-
-    @Override
-    public Optional<Person> findPerson(String id) {
-      return people.stream().filter(p -> p.id().equals(id)).findFirst();
-    }
-
-    @Override
-    public void deletePerson(String id) {}
-
-    @Override
-    public Repository saveRepository(Repository r) {
-      return r;
-    }
-
-    @Override
-    public List<Repository> findRepositories() {
-      return repositories;
-    }
-
-    @Override
-    public Optional<Repository> findRepository(String key) {
-      return repositories.stream().filter(r -> r.key().equals(key)).findFirst();
-    }
-
-    @Override
-    public void deleteRepository(String key) {}
-
-    @Override
-    public CommitterIdentity saveIdentity(CommitterIdentity c) {
-      return c;
-    }
-
-    @Override
-    public List<CommitterIdentity> findIdentities() {
-      return identities;
-    }
-
-    @Override
-    public Optional<CommitterIdentity> findIdentity(String identity) {
-      return identities.stream().filter(c -> c.identity().equals(identity)).findFirst();
-    }
   }
 }

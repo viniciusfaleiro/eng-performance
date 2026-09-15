@@ -1,7 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.ComparisonHeatmap;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 
 /**
  * Inbound port for the composed Comparativo heatmap. Node-scope and coaching enforcement (403
@@ -14,5 +14,5 @@ public interface ComparisonHeatmapUseCase {
    * @param scope at the overview node, {@code "verticais"} compares verticals, otherwise teams; it
    *     is ignored at every other node, whose child type is structurally determined.
    */
-  ComparisonHeatmap heatmap(String nodeId, Frequency frequency, String scope);
+  ComparisonHeatmap heatmap(String nodeId, Period period, String scope);
 }

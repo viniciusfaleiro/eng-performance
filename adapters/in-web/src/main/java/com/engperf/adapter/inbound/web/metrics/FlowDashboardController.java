@@ -6,6 +6,7 @@ import com.engperf.adapter.inbound.web.metrics.FlowDtos.FlowDashboardDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.FlowDashboard;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,20 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class FlowDashboardController {
 
   private final FlowDashboardUseCase flow;
+  private final PeriodResolverUseCase periods;
 
-  public FlowDashboardController(FlowDashboardUseCase flow) {
+  public FlowDashboardController(FlowDashboardUseCase flow, PeriodResolverUseCase periods) {
     this.flow = flow;
+    this.periods = periods;
   }
 
   @GetMapping("/api/dashboards/flow")
   public FlowDashboardDto dashboard(
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
-    FlowDashboard dash = flow.dashboard(node, frequency(freq));
+    FlowDashboard dash = flow.dashboard(node, periods.resolve(frequency(freq), period));
     return FlowDashboardDto.from(dash, user.scope()::canView);
   }
 

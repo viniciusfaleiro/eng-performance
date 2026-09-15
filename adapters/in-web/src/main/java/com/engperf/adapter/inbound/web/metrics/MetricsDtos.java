@@ -8,6 +8,7 @@ import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +39,21 @@ public final class MetricsDtos {
           d.unit(),
           d.direction().name().toLowerCase(Locale.ROOT),
           d.explained().map(ExplanationDto::from).orElse(null));
+    }
+  }
+
+  /**
+   * The resolved period and the one the system considers current — {@code start} is the first day
+   * of the bucket, which is also what the API accepts back.
+   */
+  public record PeriodDto(String start, String end, String currentStart, boolean current) {
+
+    public static PeriodDto from(Period resolved, Period current) {
+      return new PeriodDto(
+          resolved.start().toString(),
+          resolved.end().toString(),
+          current.start().toString(),
+          resolved.equals(current));
     }
   }
 

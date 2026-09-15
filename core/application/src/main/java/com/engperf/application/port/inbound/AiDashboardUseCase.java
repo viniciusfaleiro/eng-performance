@@ -2,7 +2,7 @@ package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.AiCard;
 import com.engperf.application.metrics.AiDashboard;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 
 /**
  * Inbound port for the composed IA dashboard. Node-scope enforcement (403 outside scope,
@@ -11,11 +11,11 @@ import com.engperf.domain.metrics.Frequency;
  */
 public interface AiDashboardUseCase {
 
-  AiDashboard dashboard(String nodeId, Frequency frequency);
+  AiDashboard dashboard(String nodeId, Period period);
 
   /**
    * The composed AI-impact card for a node (cycle time of AI vs non-AI PRs), reused by the
    * comparison heatmap so the value matches the IA dashboard's {@code ai_impact} card.
    */
-  AiCard impact(String nodeId, Frequency frequency);
+  AiCard impact(String nodeId, Period period);
 }

@@ -5,10 +5,9 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.Benchmark;
 import com.engperf.domain.metrics.Direction;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.Period;
 import java.time.Clock;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -43,15 +42,15 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
   }
 
   @Override
-  public DoraDashboard dashboard(String nodeId, Frequency frequency) {
-    int bucketDays = bucketDays(frequency);
-    List<DoraCard> cards = cardsFor(nodeId, frequency, bucketDays);
+  public DoraDashboard dashboard(String nodeId, Period period) {
+    int bucketDays = bucketDays(period);
+    List<DoraCard> cards = cardsFor(nodeId, period, bucketDays);
 
     List<Child> children = children(nodeId);
     String childType = childType(nodeId);
     List<RankingRow> ranking = new ArrayList<>();
     for (Child c : children) {
-      ranking.add(new RankingRow(c.id(), c.label(), cardsFor(c.id(), frequency, bucketDays)));
+      ranking.add(new RankingRow(c.id(), c.label(), cardsFor(c.id(), period, bucketDays)));
     }
     ranking.sort(rankingOrder());
     if (ranking.size() > TOP_N) {
@@ -60,9 +59,9 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
     return new DoraDashboard(nodeId, childType, cards, ranking);
   }
 
-  private List<DoraCard> cardsFor(String nodeId, Frequency frequency, int bucketDays) {
+  private List<DoraCard> cardsFor(String nodeId, Period period, int bucketDays) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, frequency)) {
+    for (MetricCard card : metrics.cards(nodeId, period)) {
       byKey.put(card.definition().key(), card);
     }
     List<DoraCard> cards = new ArrayList<>();
@@ -117,9 +116,8 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
     return null;
   }
 
-  private int bucketDays(Frequency frequency) {
-    LocalDate start = frequency.bucketStart(LocalDate.now(clock));
-    return (int) (frequency.nextBucketStart(start).toEpochDay() - start.toEpochDay());
+  private int bucketDays(Period period) {
+    return (int) (period.end().toEpochDay() - period.start().toEpochDay());
   }
 
   private record Child(String id, String label) {}

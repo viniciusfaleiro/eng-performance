@@ -9,9 +9,11 @@ import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.FlowCard;
 import com.engperf.application.metrics.FlowDashboard;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.metrics.PhaseSlice;
 import com.engperf.application.metrics.ScatterPoint;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
@@ -21,9 +23,12 @@ import com.engperf.domain.metrics.AttributionScope;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,6 +38,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /** Fluxo dashboard API: in-scope 200 with cards+phases+scatter, out-of-scope 403, no people. */
 class FlowDashboardApiTest {
+
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
 
   private static final MetricDefinition CYCLE =
       new MetricDefinition(
@@ -53,7 +61,7 @@ class FlowDashboardApiTest {
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new FlowDashboardController(new FakeFlow()))
+        MockMvcBuilders.standaloneSetup(new FlowDashboardController(new FakeFlow(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -105,7 +113,7 @@ class FlowDashboardApiTest {
 
   private static final class FakeFlow implements FlowDashboardUseCase {
     @Override
-    public FlowDashboard dashboard(String nodeId, Frequency frequency) {
+    public FlowDashboard dashboard(String nodeId, Period period) {
       MetricValue v = MetricValue.of(9, 10.0, Direction.LOWER_BETTER);
       FlowCard card = new FlowCard(CYCLE, v, new Coverage(9, 10));
       List<PhaseSlice> phases =

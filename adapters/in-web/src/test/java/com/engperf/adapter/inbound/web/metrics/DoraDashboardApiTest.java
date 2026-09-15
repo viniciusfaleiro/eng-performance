@@ -9,8 +9,10 @@ import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.DoraCard;
 import com.engperf.application.metrics.DoraDashboard;
+import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.metrics.RankingRow;
 import com.engperf.application.port.inbound.DoraDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
@@ -20,11 +22,14 @@ import com.engperf.domain.metrics.AttributionScope;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.Tier;
 import com.engperf.domain.metrics.TierBands;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +39,9 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /** DORA dashboard API: in-scope 200 with tiers+ranking, out-of-scope 403, ranking has no people. */
 class DoraDashboardApiTest {
+
+  private static final PeriodResolverUseCase PERIODS =
+      new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
 
   private static final MetricDefinition LEAD_TIME =
       new MetricDefinition(
@@ -54,7 +62,7 @@ class DoraDashboardApiTest {
   @BeforeEach
   void setUp() {
     mvc =
-        MockMvcBuilders.standaloneSetup(new DoraDashboardController(new FakeDora()))
+        MockMvcBuilders.standaloneSetup(new DoraDashboardController(new FakeDora(), PERIODS))
             .setControllerAdvice(new AuthWebExceptionHandler())
             .build();
   }
@@ -107,7 +115,7 @@ class DoraDashboardApiTest {
 
   private static final class FakeDora implements DoraDashboardUseCase {
     @Override
-    public DoraDashboard dashboard(String nodeId, Frequency frequency) {
+    public DoraDashboard dashboard(String nodeId, Period period) {
       MetricValue v = MetricValue.of(10, 12.0, Direction.LOWER_BETTER); // 10h → Elite
       DoraCard card = new DoraCard(LEAD_TIME, v, Tier.ELITE, new Coverage(9, 10));
       RankingRow pag = new RankingRow("v:pag", "Pagamentos", List.of(card));

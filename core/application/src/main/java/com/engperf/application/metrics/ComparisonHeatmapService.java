@@ -4,8 +4,8 @@ import com.engperf.application.port.inbound.AiDashboardUseCase;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
-import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.structure.Person;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -39,18 +39,18 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
   }
 
   @Override
-  public ComparisonHeatmap heatmap(String nodeId, Frequency frequency, String scope) {
+  public ComparisonHeatmap heatmap(String nodeId, Period period, String scope) {
     List<MetricDefinition> columns = columns();
     List<HeatmapMetric> metricColumns =
         columns.stream().map(d -> new HeatmapMetric(d.key(), d.label(), d.unit())).toList();
 
     List<HeatmapRow> rows = new ArrayList<>();
     for (Row child : childRows(nodeId, scope)) {
-      Map<String, MetricCard> cards = cardsByKey(child.id(), frequency);
+      Map<String, MetricCard> cards = cardsByKey(child.id(), period);
       List<Double> values = new ArrayList<>();
       for (MetricDefinition def : columns) {
         if (def.key().equals(MetricCatalog.AI_IMPACT.key())) {
-          values.add(ai.impact(child.id(), frequency).value().value());
+          values.add(ai.impact(child.id(), period).value().value());
         } else {
           MetricCard card = cards.get(def.key());
           values.add(card == null ? 0.0 : card.current().value());
@@ -71,9 +71,9 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
     return cols;
   }
 
-  private Map<String, MetricCard> cardsByKey(String nodeId, Frequency frequency) {
+  private Map<String, MetricCard> cardsByKey(String nodeId, Period period) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, frequency)) {
+    for (MetricCard card : metrics.cards(nodeId, period)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

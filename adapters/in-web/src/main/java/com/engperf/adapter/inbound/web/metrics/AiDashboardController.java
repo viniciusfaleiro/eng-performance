@@ -6,6 +6,7 @@ import com.engperf.adapter.inbound.web.metrics.AiDtos.AiDashboardDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.AiDashboard;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
+import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.metrics.Frequency;
 import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,20 +23,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiDashboardController {
 
   private final AiDashboardUseCase ai;
+  private final PeriodResolverUseCase periods;
 
-  public AiDashboardController(AiDashboardUseCase ai) {
+  public AiDashboardController(AiDashboardUseCase ai, PeriodResolverUseCase periods) {
     this.ai = ai;
+    this.periods = periods;
   }
 
   @GetMapping("/api/dashboards/ai")
   public AiDashboardDto dashboard(
       @RequestParam(defaultValue = "all") String node,
       @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
-    AiDashboard dash = ai.dashboard(node, frequency(freq));
+    AiDashboard dash = ai.dashboard(node, periods.resolve(frequency(freq), period));
     return AiDashboardDto.from(dash, user.scope()::canView);
   }
 

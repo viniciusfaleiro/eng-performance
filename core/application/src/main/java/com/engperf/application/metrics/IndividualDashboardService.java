@@ -5,7 +5,7 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.EventType;
-import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Clock;
 import java.time.Instant;
@@ -28,8 +28,9 @@ import java.util.stream.Collectors;
  */
 public final class IndividualDashboardService implements IndividualDashboardUseCase {
 
-  private static final int CALENDAR_DAYS = 371; // 53 weeks × 7, aligned to the reference date
   private static final int ACTIVITY_LIMIT = 10;
+  private static final List<String> DELIVERY_KEYS =
+      List.of("throughput", "cycle_time", "ai_share", "commit_count", "pr_count");
 
   /** Work-item types in the prototype's legend order, with their display labels. */
   static final List<Map.Entry<String, String>> WORK_TYPES =
@@ -57,19 +58,21 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   }
 
   @Override
-  public IndividualDashboard dashboard(String personNodeId, Frequency frequency) {
+  public IndividualDashboard dashboard(String personNodeId, Period period) {
     String label = structure.findPerson(personNodeId).map(p -> p.name()).orElse(personNodeId);
     Set<String> identities = identitiesOf(personNodeId);
 
-    LocalDate reference = LocalDate.now(clock);
-    // Calendar = fixed rolling 12-month map (GitHub-style), independent of the selected frequency.
-    Instant calFrom = startOf(reference.minusDays(CALENDAR_DAYS - 1L));
+    LocalDate today = LocalDate.now(clock);
+    // As janelas longas terminam no período exibido, não em hoje: encolher o calendário para o mês
+    // escolhido destruiria o que ele mostra (regularidade ao longo do tempo), mas deixá-lo
+    // terminando
+    // hoje enquanto o resto da tela mostra julho seria dizer duas coisas ao mesmo tempo.
+    LocalDate reference = period.inProgress(today) ? today : period.end().minusDays(1);
+    Instant calFrom = startOf(reference.minusDays(ContributionCalendar.DAYS - 1L));
     Instant calTo = startOf(reference.plusDays(1));
-    // Everything else tracks the SELECTED period = the current bucket of `frequency` (like the
-    // delivery tiles' current value / the panel's "vs. período anterior" framing).
-    LocalDate periodStart = frequency.bucketStart(reference);
+    LocalDate periodStart = period.start();
     Instant periodFrom = startOf(periodStart);
-    Instant periodTo = startOf(frequency.nextBucketStart(periodStart));
+    Instant periodTo = startOf(period.end());
     Instant fetchTo = periodTo.isAfter(calTo) ? periodTo : calTo;
 
     // One query per type over the widest window (calendar), then slice in memory.
@@ -86,8 +89,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
         personNodeId,
         label,
         assertiveness(prsP),
-        calendar(commits, reference),
-        delivery(personNodeId, frequency),
+        ContributionCalendar.of(commits, reference),
+        delivery(personNodeId, period),
         reviewStats(
             within(reviewsGiven, periodFrom, periodTo),
             within(reviewsReceived, periodFrom, periodTo)),
@@ -253,24 +256,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return (double) firstPass / prs.size() * 100.0;
   }
 
-  private static List<CalendarDay> calendar(List<RawEvent> commits, LocalDate reference) {
-    Map<LocalDate, Integer> byDay = new LinkedHashMap<>();
-    LocalDate start = reference.minusDays(CALENDAR_DAYS - 1L);
-    for (LocalDate d = start; !d.isAfter(reference); d = d.plusDays(1)) {
-      byDay.put(d, 0);
-    }
-    for (RawEvent c : commits) {
-      byDay.computeIfPresent(c.occurredOn(), (d, n) -> n + 1);
-    }
-    return byDay.entrySet().stream()
-        .map(e -> new CalendarDay(e.getKey().toString(), e.getValue()))
-        .toList();
-  }
-
-  private List<MetricSeries> delivery(String personNodeId, Frequency frequency) {
-    return List.of("throughput", "cycle_time", "ai_share", "commit_count", "pr_count").stream()
-        .map(key -> metrics.series(key, personNodeId, frequency))
-        .toList();
+  private List<MetricSeries> delivery(String personNodeId, Period period) {
+    return DELIVERY_KEYS.stream().map(k -> metrics.series(k, personNodeId, period)).toList();
   }
 
   private static ReviewStats reviewStats(List<RawEvent> given, List<RawEvent> received) {
