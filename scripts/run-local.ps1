@@ -23,8 +23,10 @@ Write-Host '==> [1/4] Building the boot jar (.\gradlew.bat :bootstrap:bootJar)..
 .\gradlew.bat :bootstrap:bootJar -q
 if ($LASTEXITCODE -ne 0) { throw 'gradle build failed' }
 
-$jar = Get-ChildItem app/bootstrap/build/libs/bootstrap-*-SNAPSHOT.jar |
-  Where-Object { $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+# Sem "-SNAPSHOT" no glob: ver o comentário equivalente em run-local.sh.
+$jar = Get-ChildItem app/bootstrap/build/libs/bootstrap-*.jar |
+  Where-Object { $_.Name -notlike '*-plain.jar' } |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $jar) { throw 'boot jar not found under app/bootstrap/build/libs' }
 
 Write-Host "==> [2/4] Building the Docker image $Image (from $($jar.Name))..." -ForegroundColor Cyan
