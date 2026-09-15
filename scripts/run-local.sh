@@ -25,7 +25,9 @@ esac
 echo "==> [1/4] Building the boot jar (./gradlew :bootstrap:bootJar)…"
 ./gradlew :bootstrap:bootJar -q
 
-JAR="$(ls app/bootstrap/build/libs/bootstrap-*-SNAPSHOT.jar | grep -v -- '-plain' | head -1)"
+# Sem "-SNAPSHOT" no glob: a versão do projeto não é mais de snapshot, e um glob preso ao sufixo
+# antigo falha silenciosamente a cada mudança de versão.
+JAR="$(ls -t app/bootstrap/build/libs/bootstrap-*.jar 2>/dev/null | grep -v -- '-plain' | head -1)"
 if [[ -z "${JAR}" ]]; then
   echo "!! boot jar not found under app/bootstrap/build/libs" >&2
   exit 1
