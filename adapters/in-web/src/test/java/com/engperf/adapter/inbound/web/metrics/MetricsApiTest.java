@@ -164,6 +164,17 @@ class MetricsApiTest {
     }
 
     @Override
+    public java.util.Map<String, com.engperf.domain.metrics.MetricExplanation> viewExplanations() {
+      return java.util.Map.of(
+          "trend", new com.engperf.domain.metrics.MetricExplanation("r", "s", "i", "e", "x"));
+    }
+
+    @Override
+    public String attributionNote() {
+      return "as-of-event";
+    }
+
+    @Override
     public List<MetricCard> cards(String nodeId, Frequency frequency) {
       MetricValue v = MetricValue.of(frequency.ordinal(), null, DEF.direction());
       return List.of(new MetricCard(DEF, v, new Coverage(9, 10)));
