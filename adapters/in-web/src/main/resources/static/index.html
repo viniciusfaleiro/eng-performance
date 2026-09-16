@@ -905,7 +905,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      children (rows, already scope/coaching-filtered by the backend) × every catalog metric. Rows
      carry the server label; values are normalised to the same display units as the dashboards. */
   const CMP_CACHE={},CMP_LOADING=new Set();
-  const CMP_API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr",cycle_time:"ct",throughput:"tp",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
+  const CMP_API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr",cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
   const cmpKey=()=>state.node+"|"+state.freq+"|"+(state.period||"")+"|"+(state.node==="all"?state.cmpScope:"-");
   function ensureCmp(){
     const k=cmpKey();
@@ -919,13 +919,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function indexCmp(d){
     const byNode={},rows=[];
+    // As colunas são as que o servidor mandou, não uma lista paralela no frontend: o heatmap não
+    // publica métricas de volume (ranquear time por commit é proxy manipulável), e uma lista local
+    // acabava desenhando colunas que a resposta nunca preenche.
+    const cols=(d.metrics||[]).map(mc=>CMP_API2PROTO[mc.key]||mc.key);
     (d.rows||[]).forEach(r=>{
       const m={};
       (d.metrics||[]).forEach((mc,ci)=>{const pk=CMP_API2PROTO[mc.key]||mc.key;let v=r.values[ci];
         if(pk==="df")v=v/freqDays();else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
       byNode[r.nodeId]=m;rows.push({id:r.nodeId,label:r.label,rowType:r.rowType});
     });
-    return {byNode,rows};
+    return {byNode,rows,cols};
   }
   /* Individual panel wired to the real engine: /api/individuals/{p:…} gives the person's commit
      calendar, PR assertiveness, delivery series (throughput/cycle/%IA), code-review stats,
@@ -1399,8 +1403,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function viewComparativo(){
     ensureCmp();
     const node=NODES[state.node];
-    const metrics=[...DORA,...FLUXO,...IA];
-    const SHORT={df:"Deploy",lt:"Lead",cfr:"CFR",mttr:"MTTR",ct:"Cycle",tp:"Thru",wip:"WIP",rt:"Review",ps:"PR Size",fe:"Flow",aic:"% IA",aad:"Adoção",aim:"Impacto"};
+    // Volume (Commits/PRs) não é coluna de heatmap por decisão de produto — ver a explicação da
+    // visualização. Enquanto a resposta não chega, a lista local já reflete isso, para a tabela não
+    // mudar de forma quando os dados aparecem.
+    const HEAT_OUT=new Set(["cmt","prc"]);
+    const localCols=[...DORA,...FLUXO.filter(m=>!HEAT_OUT.has(m.key)),...IA];
+    const SHORT={df:"Deploy",lt:"Lead",cfr:"CFR",mttr:"MTTR",ct:"Cycle",tp:"Thru",flt:"Lead (fluxo)",wip:"WIP",rt:"Review",ps:"PR Size",fe:"Flow",aic:"% IA",aad:"Adoção",aim:"Impacto"};
     // scope: compare the CHILDREN of the selected node (chrome: row type + toggle + caption)
     let rowType,showToggle=state.node==="all",scopeLabel;
     if(state.node==="all"){
@@ -1412,6 +1420,10 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const subOf=(id)=>{const nd=NODES[id];return nd?(nd.level==="Time"?nd.vertical:nd.level==="Pessoa"?nd.team:""):"";};
     // Real rows come scope/coaching-filtered from the backend; fall back to synthetic while loading.
     const c=CMP_CACHE[cmpKey()];const real=c&&!c.error&&c.rows&&c.rows.length;
+    const metrics=
+        (real&&c.cols&&c.cols.length)
+          ? c.cols.map(k=>ALL.find(m=>m.key===k)).filter(Boolean)
+          : localCols;
     let rowDefs;
     if(real){rowDefs=c.rows.map(r=>({id:r.id,label:r.label,sub:subOf(r.id)}));}
     else{
@@ -1430,7 +1442,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     let h='<p class="baseline-note"><span class="pill">'+state.freq+'</span><span class="pill">'+scopeLabel+' × todas as métricas</span><span class="pill">cor = desempenho relativo aos pares</span></p>';
     if(showToggle)h+='<div class="chiprow"><button class="toggle-chip'+(state.cmpScope==="times"?" on":"")+'" data-scope="times">Todos os times</button><button class="toggle-chip'+(state.cmpScope==="verticais"?" on":"")+'" data-scope="verticais">Todas as verticais</button></div>';
     h+='<div class="panel" style="overflow-x:auto"><table class="heat"><thead>';
-    h+='<tr><th class="rowh"></th><th class="grp" colspan="'+DORA.length+'">DORA</th><th class="grp" colspan="'+FLUXO.length+'">Fluxo</th><th class="grp" colspan="'+IA.length+'">IA</th></tr>';
+    const span=(list)=>metrics.filter(m=>list.some(x=>x.key===m.key)).length;
+    h+='<tr><th class="rowh"></th><th class="grp" colspan="'+span(DORA)+'">DORA</th><th class="grp" colspan="'+
+       span(FLUXO)+'">Fluxo</th><th class="grp" colspan="'+span(IA)+'">IA</th></tr>';
     h+='<tr><th class="rowh">'+rowType+infoBtn("view","heatmap","o heatmap comparativo")+'</th>'+
        metrics.map(m=>'<th title="'+m.label+'">'+SHORT[m.key]+infoBtn("metric",m.key,m.label)+'</th>').join("")+
        '</tr></thead><tbody>';
