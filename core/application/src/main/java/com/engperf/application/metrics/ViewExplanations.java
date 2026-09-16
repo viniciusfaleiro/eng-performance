@@ -37,6 +37,29 @@ final class ViewExplanations {
                   + " volume de código é um proxy fácil de manipular e não diz nada sobre entrega.",
               "Se três times têm cycle time de 20h, 40h e 90h, o verde vai para 20h e o vermelho"
                   + " para 90h. A cor é relativa ao grupo, não a um alvo absoluto."),
+          "cycle_time_phases",
+          new MetricExplanation(
+              "O tempo de cada item é fatiado entre Espera, Ativo e Review conforme o estado em que"
+                  + " ele esteve no board, momento a momento. As três fases somam o cycle time.",
+              "O histórico de mudanças de estado do work item no Azure Boards — cada transição abre"
+                  + " uma fatia e fecha a anterior.",
+              "O sistema classifica cada estado pela categoria que o Azure Boards já atribui a ele:"
+                  + " Proposed conta como Espera; InProgress conta como Review quando o nome do"
+                  + " estado contém review, testing, qa ou verify, e como Ativo caso contrário;"
+                  + " Completed, Resolved e Removed encerram a contagem. Quando a categoria não"
+                  + " está disponível, a classificação cai para o nome do estado, com as mesmas"
+                  + " palavras-chave (além de blocked, hold, waiting, ready, backlog, to do e new"
+                  + " para Espera).",
+              "O tempo no backlog antes do primeiro estado de trabalho é ignorado — ele entra no"
+                  + " Lead Time (fluxo), não aqui. A Espera conta apenas a ociosidade entre o"
+                  + " início do trabalho e a conclusão.",
+              "Um item criado dia 1º, iniciado dia 5, parado em 'Blocked' dos dias 7 a 9, em 'Code"
+                  + " Review' dos dias 9 a 10 e concluído dia 10: Ativo 48h, Espera 48h, Review"
+                  + " 24h — cycle time de 120h. Os 4 dias entre criação e início não aparecem em"
+                  + " nenhuma fase.\n\nPara o time usar bem: se o board tem um estado chamado"
+                  + " 'Homologação', ele cai em Ativo, não em Review, porque nenhuma das"
+                  + " palavras-chave aparece no nome. Renomear para 'Em homologação (QA)' passa a"
+                  + " classificá-lo como Review."),
           "type_distribution",
           new MetricExplanation(
               "Como o tempo do período se dividiu entre tipos de trabalho — feature, bug, dívida"

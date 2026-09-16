@@ -743,7 +743,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else{
       body='<div class="xp-rule">'+escHtml(e.rule)+'</div>'+
         row("Fonte",e.source)+row("Entra na conta",e.included)+row("Fica de fora",e.excluded)+
-        '<div class="xp-ex"><div class="xp-k">Exemplo</div><div class="xp-v">'+escHtml(e.example)+'</div></div>'+
+        '<div class="xp-ex"><div class="xp-k">Exemplo</div><div class="xp-v">'+
+          escHtml(e.example).replace(/\n/g,"<br>")+'</div></div>'+
         (EXPLAIN.attribution?'<div class="xp-attr">'+escHtml(EXPLAIN.attribution)+'</div>':"");
     }
     $("modalBody").innerHTML='<div class="modal-title">Como é calculado · '+escHtml(label||key)+'</div>'+
@@ -1181,7 +1182,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const total=snap(id,m,state.freq).cur;const parts=flowPhases()||phaseSplit(id,state.freq,total);const sum=parts.reduce((a,b)=>a+b,0)||1;
     let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div class="phaseseg" style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h"></div>';});bar+='</div>';
     let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div class="phase-item"><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b></div>';});leg+='</div>';
-    return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Cycle Time — fases (board)</div>'+bar+leg+'</div>';
+    // A leitura das fases depende de saber como o board é interpretado — sem isso o time não sabe
+    // por que um estado caiu em Ativo e não em Review.
+    return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">'+
+      'Cycle Time — fases (board)'+infoBtn("view","cycle_time_phases","as fases do cycle time")+'</div>'+
+      bar+leg+'</div>';
   }
 
   function gauge(pct,label,sub){

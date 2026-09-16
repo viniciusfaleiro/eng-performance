@@ -193,7 +193,7 @@ final class MetricExplanations {
                       + " com e sem IA no dashboard de IA.",
                   "Pull requests do Azure Repos, da abertura à conclusão.",
                   "PRs concluídos com tempo de ciclo medido.",
-                  "PRs em aberto. E atenção: isto é o ciclo do **PR**, não do work item — o Cycle"
+                  "PRs em aberto. E atenção: isto é o ciclo do PR, não do work item — o Cycle"
                       + " Time do dashboard de Fluxo mede outra coisa e costuma ser maior.",
                   "PRs de 4h, 9h e 30h → mediana de 9h.")),
           Map.entry(
