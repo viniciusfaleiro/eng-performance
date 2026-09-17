@@ -28,7 +28,7 @@ class AdoMapperTest {
                 + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
                 + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
                 + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
-    RawEvent e = AdoMapper.pullRequest(pr, commits);
+    RawEvent e = AdoMapper.pullRequest(pr, commits, false);
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -44,9 +44,21 @@ class AdoMapperTest {
     assertThat(e.detail().get("den")).isEqualTo("6.0");
   }
 
+  /**
+   * O card "com IA vs. sem IA" parte da coorte de PRs. Um PR não tem marcação própria: ele herda a
+   * dos commits, e sem isso a coorte com IA fica sempre vazia e o gráfico só mostra um lado.
+   */
+  @Test
+  void aPullRequestCarriesTheAiFlagItWasGiven() {
+    JsonNode commits = json("{\"value\":[]}");
+
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true).ai()).isTrue();
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false).ai()).isFalse();
+  }
+
   @Test
   void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
-    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"));
+    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"), false);
     assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
     assertThat(e.detail().get("den")).isEqualTo("0");
     assertThat(e.detail()).doesNotContainKey("lines"); // size is "no data", not a fake zero

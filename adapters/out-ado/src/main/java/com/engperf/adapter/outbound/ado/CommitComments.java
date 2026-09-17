@@ -59,6 +59,23 @@ final class CommitComments {
     }
   }
 
+  /**
+   * Whether any of these commits was written with AI — the PR inherits the flag from its commits,
+   * since a pull request has no marking of its own.
+   *
+   * <p>Goes through {@link #full} on purpose: the trailers that mark AI live at the end of the
+   * message, which is exactly what Azure DevOps truncates. Testing the listed text directly would
+   * reproduce, on pull requests, the bug already fixed for commits.
+   */
+  boolean anyAi(String base, JsonNode commits, String token) {
+    for (JsonNode c : commits.path("value")) {
+      if (isAi.test(full(base, c, token).path("comment").asText(""))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** How many commits had to be fetched again because the list gave only part of the message. */
   int reloaded() {
     return reloaded;
