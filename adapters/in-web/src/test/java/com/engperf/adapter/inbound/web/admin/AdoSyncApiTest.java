@@ -103,7 +103,8 @@ class AdoSyncApiTest {
         return Optional.empty();
       }
       return Optional.of(
-          new SyncStatus("s1", "syncing", Map.of("commits", 12), false, false, "", Instant.now()));
+          new SyncStatus(
+              "s1", "syncing", Map.of("commits", 12), false, false, "", Instant.now(), List.of()));
     }
   }
 }

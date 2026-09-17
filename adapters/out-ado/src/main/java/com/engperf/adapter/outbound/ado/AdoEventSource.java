@@ -1,5 +1,6 @@
 package com.engperf.adapter.outbound.ado;
 
+import com.engperf.application.ado.IngestionResult;
 import com.engperf.application.ado.ProgressReporter;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
@@ -61,7 +62,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   @Override
-  public List<RawEvent> fetchSince(String token, Instant since, ProgressReporter progress) {
+  public IngestionResult fetchSince(String token, Instant since, ProgressReporter progress) {
     List<Repository> repos = structure.findRepositories();
     if (repos.isEmpty()) {
       throw new IllegalStateException(
@@ -69,17 +70,21 @@ public final class AdoEventSource implements AdoEventSourcePort {
     }
     String sinceIso = since.toString();
     List<RawEvent> events = new ArrayList<>();
+    FailureLog failures = new FailureLog();
     LOG.info(
         "ADO sync: {} repositório(s) desde {} — {}",
         repos.size(),
         sinceIso,
         repos.stream().map(r -> r.organization() + "/" + r.project() + "/" + r.key()).toList());
 
-    fetchRepoActivity(repos, token, since, sinceIso, progress, events);
-    fetchProjectActivity(repos, token, sinceIso, progress, events);
+    fetchRepoActivity(repos, token, since, sinceIso, progress, events, failures);
+    fetchProjectActivity(repos, token, sinceIso, progress, events, failures);
 
-    LOG.info("ADO sync: coleta concluída — {} eventos no total", events.size());
-    return events;
+    LOG.info(
+        "ADO sync: coleta concluída — {} eventos no total, {} fonte(s) com falha",
+        events.size(),
+        failures.all().size());
+    return new IngestionResult(events, failures.all());
   }
 
   /** Per repository (own org/project/key): completed PRs (+ reviews) and commits since the mark. */
@@ -89,7 +94,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
       Instant since,
       String sinceIso,
       ProgressReporter progress,
-      List<RawEvent> events) {
+      List<RawEvent> events,
+      FailureLog failures) {
     Predicate<String> isAi = aiDetector(config.aiConvention());
     CommitComments comments = new CommitComments(client, isAi);
     int prs = 0;
@@ -136,7 +142,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
         }
         progress.update("commits", "commits", commits);
       } catch (RuntimeException e) {
-        throw contextual("repositório " + ctx, e);
+        failures.record("repositório " + ctx, e);
       }
     }
     LOG.info(
@@ -152,7 +158,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
       String token,
       String sinceIso,
       ProgressReporter progress,
-      List<RawEvent> events) {
+      List<RawEvent> events,
+      FailureLog failures) {
     int deploys = 0;
     int workItems = 0;
     Set<String> seenProjects = new HashSet<>();
@@ -171,7 +178,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
         workItems += fetchWorkItems(org, proj, sinceIso, token, events);
         progress.update("workitems", "workitems", workItems);
       } catch (RuntimeException e) {
-        throw contextual("projeto " + projCtx, e);
+        failures.record("projeto " + projCtx, e);
       }
     }
     LOG.info("ADO sync: {} deploy(s) e {} work item(s) coletados", deploys, workItems);
@@ -226,11 +233,6 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   /** Prefix an error with the repo/project being processed so the failure is self-locating. */
-  private static IllegalStateException contextual(String where, RuntimeException cause) {
-    LOG.warn("ADO sync: falha no {} — {}", where, cause.getMessage());
-    return new IllegalStateException("falha no " + where + ": " + cause.getMessage(), cause);
-  }
-
   /**
    * The production-stage rule for each registered repo in the same (org, project) as {@code any}.
    */
