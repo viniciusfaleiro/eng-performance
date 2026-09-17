@@ -95,6 +95,50 @@ class CommitCommentsTest {
     assertThat(result).isSameAs(visibleMatch);
   }
 
+  @Test
+  void aPullRequestIsAiWhenAnyOfItsCommitsIs() {
+    RecordingClient client = new RecordingClient("{}");
+    CommitComments comments = new CommitComments(client, IS_AI);
+    JsonNode prCommits =
+        json(
+            "{\"value\":["
+                + "{\"commitId\":\"a\",\"comment\":\"fix: ajuste\"},"
+                + "{\"commitId\":\"b\",\"comment\":\"feat: x\\n\\nCo-authored-by: Copilot <c@gh>\"}]}");
+
+    assertThat(comments.anyAi(BASE, prCommits, "tok")).isTrue();
+  }
+
+  @Test
+  void aPullRequestWithNoAiCommitIsNotAi() {
+    RecordingClient client = new RecordingClient("{}");
+    CommitComments comments = new CommitComments(client, IS_AI);
+    JsonNode prCommits =
+        json("{\"value\":[{\"commitId\":\"a\",\"comment\":\"fix: ajuste manual\"}]}");
+
+    assertThat(comments.anyAi(BASE, prCommits, "tok")).isFalse();
+    assertThat(client.urls).as("nada truncado, nenhuma chamada extra").isEmpty();
+  }
+
+  /**
+   * O trailer fica no fim da mensagem, que é justamente o que o Azure DevOps corta. Sem recarregar,
+   * o PR seria classificado como sem IA — o mesmo bug já corrigido para commits avulsos.
+   */
+  @Test
+  void aPullRequestIsAiEvenWhenTheTrailerWasTruncatedAway() {
+    RecordingClient client =
+        new RecordingClient(
+            "{\"commitId\":\"t\",\"comment\":\"feat: régua\\n\\ncorpo longo"
+                + "\\n\\nCo-authored-by: Copilot <c@gh>\"}");
+    CommitComments comments = new CommitComments(client, IS_AI);
+    JsonNode prCommits =
+        json(
+            "{\"value\":[{\"commitId\":\"t\",\"commentTruncated\":true,"
+                + "\"comment\":\"feat: régua\"}]}");
+
+    assertThat(comments.anyAi(BASE, prCommits, "tok")).isTrue();
+    assertThat(client.urls).containsExactly(BASE + "/commits/t?api-version=7.1");
+  }
+
   private static final class RecordingClient implements AdoRestClient {
     private final String body;
     final List<String> urls = new ArrayList<>();

@@ -25,8 +25,10 @@ final class AdoMapper {
 
   /**
    * A pull request → one PR event; {@code commits} feed the coding time, flow ratio and PR size.
+   * {@code aiAssisted} is decided by the caller from those commits — a PR carries no marking of its
+   * own, and deciding it here would need an HTTP client this mapper deliberately does not have.
    */
-  static RawEvent pullRequest(JsonNode pr, JsonNode commits) {
+  static RawEvent pullRequest(JsonNode pr, JsonNode commits, boolean aiAssisted) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -48,7 +50,7 @@ final class AdoMapper {
         author,
         cycleH, // numericValue → pr_review_time reads it
         "review",
-        false,
+        aiAssisted,
         detail);
   }
 

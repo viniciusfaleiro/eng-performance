@@ -117,7 +117,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
               client.get(
                   base + "/pullrequests/" + pr.path("pullRequestId").asLong() + "/commits?" + API,
                   token);
-          events.add(AdoMapper.pullRequest(pr, prCommits));
+          events.add(AdoMapper.pullRequest(pr, prCommits, comments.anyAi(base, prCommits, token)));
           events.addAll(AdoMapper.reviews(pr));
           prs++;
         }
