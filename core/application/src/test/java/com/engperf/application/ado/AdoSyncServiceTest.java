@@ -108,15 +108,60 @@ class AdoSyncServiceTest {
     }
   }
 
+  /**
+   * Avançar a marca depois de uma coleta parcial deixaria o repositório que falhou com um buraco
+   * permanente e silencioso. Reingerir é idempotente, então recoletar a janela é o preço barato.
+   */
+  @Test
+  void aPartialSyncKeepsTheWatermarkSoTheWindowIsRetried() {
+    source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
+    service.start(false); // execução limpa: grava a marca
+    Instant afterClean = syncState.state.watermark();
+
+    source.events = List.of(commit("c2", "2026-06-24T10:00:00Z"));
+    source.failures = List.of(new SourceFailure("repositório orgX/ProjP/quebrado", "HTTP 404"));
+    Session partial = service.start(false);
+    var status = service.status(partial.sessionId()).orElseThrow();
+
+    // Concluiu, não falhou — mas diz que houve falha e o que foi coletado entrou.
+    assertThat(status.done()).isTrue();
+    assertThat(status.failed()).isFalse();
+    assertThat(status.message()).contains("1 fonte(s) com falha");
+    assertThat(status.failures())
+        .extracting(SourceFailure::source)
+        .containsExactly("repositório orgX/ProjP/quebrado");
+    assertThat(store.byId).containsKeys("c1", "c2");
+    assertThat(syncState.state.watermark())
+        .as("a marca não andou: a janela será recoletada")
+        .isEqualTo(afterClean);
+
+    // E a próxima execução realmente pede a mesma janela de novo.
+    source.failures = List.of();
+    service.start(false);
+    assertThat(source.lastSince).isEqualTo(afterClean);
+  }
+
+  @Test
+  void aCleanSyncReportsNoFailures() {
+    source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
+
+    Session s = service.start(false);
+    var status = service.status(s.sessionId()).orElseThrow();
+
+    assertThat(status.failures()).isEmpty();
+    assertThat(status.message()).isEqualTo("1 eventos sincronizados");
+  }
+
   private static final class FakeSource implements AdoEventSourcePort {
     List<RawEvent> events = List.of();
+    List<SourceFailure> failures = List.of();
     Instant lastSince;
 
     @Override
-    public List<RawEvent> fetchSince(String token, Instant since, ProgressReporter progress) {
+    public IngestionResult fetchSince(String token, Instant since, ProgressReporter progress) {
       lastSince = since;
       progress.update("syncing", "commits", events.size());
-      return events;
+      return new IngestionResult(events, failures);
     }
   }
 

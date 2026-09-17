@@ -3,18 +3,9 @@ package com.engperf.adapter.outbound.ado;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-import com.engperf.application.port.inbound.PlatformConfigUseCase;
-import com.engperf.application.port.outbound.StructureRepositoryPort;
-import com.engperf.domain.config.AdoIntegration;
-import com.engperf.domain.config.AiConvention;
-import com.engperf.domain.config.AiStrategy;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
-import com.engperf.domain.structure.CommitterIdentity;
-import com.engperf.domain.structure.Person;
 import com.engperf.domain.structure.Repository;
-import com.engperf.domain.structure.Team;
-import com.engperf.domain.structure.Vertical;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -23,7 +14,6 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.StringJoiner;
 import org.junit.jupiter.api.Test;
 
@@ -45,7 +35,9 @@ class AdoEventSourceTest {
     AdoEventSource source = new AdoEventSource(client, new FakeConfig(), structure);
 
     List<RawEvent> events =
-        source.fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {});
+        source
+            .fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {})
+            .events();
 
     // Multi-org: each repo is fetched from its own organization/project.
     assertThat(client.urls)
@@ -70,7 +62,9 @@ class AdoEventSourceTest {
         ChronoUnit.DAYS.between(start, LocalDate.now(ZoneOffset.UTC).plusDays(1)); // one id/day
 
     List<RawEvent> events =
-        source.fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {});
+        source
+            .fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {})
+            .events();
 
     // The over-limit windows were split until each accepted window fit under the cap (no VS402337
     // propagated — the sync completed).
@@ -95,6 +89,7 @@ class AdoEventSourceTest {
     List<RawEvent> commits =
         source
             .fetchSince("tok", Instant.parse("2026-01-01T00:00:00Z"), (phase, s, c) -> {})
+            .events()
             .stream()
             .filter(e -> e.type() == EventType.COMMIT)
             .toList();
@@ -228,147 +223,6 @@ class AdoEventSourceTest {
     private static String between(String s, String open, String close) {
       int a = s.indexOf(open) + open.length();
       return s.substring(a, s.indexOf(close, a));
-    }
-  }
-
-  private static final class FakeConfig implements PlatformConfigUseCase {
-    @Override
-    public AdoIntegration adoIntegration() {
-      return new AdoIntegration(true, null);
-    }
-
-    @Override
-    public AdoIntegration markAdoConnected() {
-      return adoIntegration();
-    }
-
-    @Override
-    public AiConvention aiConvention() {
-      return new AiConvention(AiStrategy.TRAILER, "Co-authored-by: Copilot", null, null, false);
-    }
-
-    @Override
-    public AiConvention saveAiConvention(
-        AiStrategy strategy, String trailer, String tag, String regex, boolean caseSensitive) {
-      return aiConvention();
-    }
-
-    @Override
-    public com.engperf.domain.config.SmtpSettings smtpSettings() {
-      return new com.engperf.domain.config.SmtpSettings(
-          false,
-          null,
-          null,
-          com.engperf.domain.config.MailTransport.NONE,
-          null,
-          null,
-          null,
-          null,
-          null);
-    }
-
-    @Override
-    public com.engperf.domain.config.SmtpSettings saveSmtpSettings(
-        com.engperf.domain.config.SmtpSettings settings) {
-      return smtpSettings();
-    }
-
-    @Override
-    public void sendTestEmail(String to) {}
-  }
-
-  private static final class FakeStructure implements StructureRepositoryPort {
-    private final List<Repository> repos;
-
-    FakeStructure(List<Repository> repos) {
-      this.repos = repos;
-    }
-
-    @Override
-    public List<Repository> findRepositories() {
-      return repos;
-    }
-
-    @Override
-    public Vertical saveVertical(Vertical v) {
-      return v;
-    }
-
-    @Override
-    public List<Vertical> findVerticals() {
-      return List.of();
-    }
-
-    @Override
-    public Optional<Vertical> findVertical(String id) {
-      return Optional.empty();
-    }
-
-    @Override
-    public void deleteVertical(String id) {}
-
-    @Override
-    public Team saveTeam(Team t) {
-      return t;
-    }
-
-    @Override
-    public List<Team> findTeams() {
-      return List.of();
-    }
-
-    @Override
-    public Optional<Team> findTeam(String id) {
-      return Optional.empty();
-    }
-
-    @Override
-    public void deleteTeam(String id) {}
-
-    @Override
-    public Person savePerson(Person p) {
-      return p;
-    }
-
-    @Override
-    public List<Person> findPeople() {
-      return List.of();
-    }
-
-    @Override
-    public Optional<Person> findPerson(String id) {
-      return Optional.empty();
-    }
-
-    @Override
-    public void deletePerson(String id) {}
-
-    @Override
-    public Repository saveRepository(Repository r) {
-      return r;
-    }
-
-    @Override
-    public Optional<Repository> findRepository(String key) {
-      return repos.stream().filter(r -> r.key().equals(key)).findFirst();
-    }
-
-    @Override
-    public void deleteRepository(String key) {}
-
-    @Override
-    public CommitterIdentity saveIdentity(CommitterIdentity c) {
-      return c;
-    }
-
-    @Override
-    public List<CommitterIdentity> findIdentities() {
-      return List.of();
-    }
-
-    @Override
-    public Optional<CommitterIdentity> findIdentity(String identity) {
-      return Optional.empty();
     }
   }
 }

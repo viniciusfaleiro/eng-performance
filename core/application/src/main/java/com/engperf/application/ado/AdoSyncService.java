@@ -86,22 +86,32 @@ public final class AdoSyncService implements AdoSyncUseCase {
       Instant since = incremental ? watermarkOrBackfill() : backfillWindow();
       LOG.info(
           "ADO sync iniciando: modo={}, desde={}", incremental ? "incremental" : "backfill", since);
-      List<RawEvent> events = source.fetchSince(token, since, job::report);
+      IngestionResult result = source.fetchSince(token, since, job::report);
+      List<RawEvent> events = result.events();
       store.saveAll(events);
       // Discover committer identities from the ingested events and auto-link them to people.
       IdentityUseCase.Reload reload = identities.reload();
       Instant now = clock.instant();
+      // Falha parcial não avança a marca: a próxima execução recoleta a mesma janela, para que a
+      // lacuna do repo que falhou não fique permanente. Reingerir é idempotente (upsert por id).
       Instant watermark =
-          events.stream().map(RawEvent::occurredAt).max(Comparator.naturalOrder()).orElse(since);
+          result.isPartial()
+              ? watermarkOrBackfill()
+              : events.stream()
+                  .map(RawEvent::occurredAt)
+                  .max(Comparator.naturalOrder())
+                  .orElse(since);
       syncState.save(new SyncState(watermark, now, events.size()));
       config.markAdoConnected(); // real ingestion is live → the dev seeder stands down
       LOG.info(
-          "ADO sync concluída: {} eventos, {} identidade(s) descoberta(s), {} auto-vinculada(s), watermark={}",
+          "ADO sync concluída: {} eventos, {} identidade(s) descoberta(s), {} auto-vinculada(s),"
+              + " watermark={}, {} fonte(s) com falha",
           events.size(),
           reload.discovered(),
           reload.linked(),
-          watermark);
-      job.finish(now, events.size());
+          watermark,
+          result.failures().size());
+      job.finish(now, events.size(), result.failures());
     } catch (AdoAuthException e) {
       // Login problems are expected/user-driven — the message is enough, no stack trace.
       LOG.warn("ADO sync abortada no login: {}", e.getMessage());
@@ -128,6 +138,7 @@ public final class AdoSyncService implements AdoSyncUseCase {
     private volatile boolean failed;
     private volatile String message = "";
     private volatile Instant lastSyncedAt;
+    private volatile List<SourceFailure> failures = List.of();
     private final Map<String, Integer> counts = new ConcurrentHashMap<>();
 
     void report(String phase, String source, int count) {
@@ -135,11 +146,20 @@ public final class AdoSyncService implements AdoSyncUseCase {
       counts.put(source, count);
     }
 
-    void finish(Instant at, int total) {
+    void finish(Instant at, int total, List<SourceFailure> failed) {
       phase = "done";
       done = true;
       lastSyncedAt = at;
-      message = total + " eventos sincronizados";
+      failures = List.copyOf(failed);
+      // A mensagem não pode dizer só "concluída": uma conclusão silenciosa com metade dos dados
+      // seria pior que o erro que esta mudança remove.
+      message =
+          failed.isEmpty()
+              ? total + " eventos sincronizados"
+              : total
+                  + " eventos sincronizados — "
+                  + failed.size()
+                  + " fonte(s) com falha, a janela será recoletada na próxima sincronização";
     }
 
     void fail(String why) {
@@ -150,7 +170,8 @@ public final class AdoSyncService implements AdoSyncUseCase {
     }
 
     SyncStatus snapshot(String sessionId) {
-      return new SyncStatus(sessionId, phase, counts, done, failed, message, lastSyncedAt);
+      return new SyncStatus(
+          sessionId, phase, counts, done, failed, message, lastSyncedAt, failures);
     }
   }
 }

@@ -2,6 +2,7 @@ package com.engperf.adapter.inbound.web.admin;
 
 import com.engperf.application.ado.SyncStatus;
 import com.engperf.application.port.inbound.AdoSyncUseCase.Session;
+import java.util.List;
 import java.util.Map;
 
 /** Response payloads for the admin-triggered Azure DevOps sync. */
@@ -22,6 +23,9 @@ public final class AdoSyncDtos {
     }
   }
 
+  /** Uma fonte que não pôde ser lida — o que quem opera precisa corrigir. */
+  public record FailureDto(String source, String reason) {}
+
   public record SyncStatusDto(
       String sessionId,
       String phase,
@@ -29,7 +33,8 @@ public final class AdoSyncDtos {
       boolean done,
       boolean failed,
       String message,
-      String lastSyncedAt) {
+      String lastSyncedAt,
+      List<FailureDto> failures) {
 
     public static SyncStatusDto from(SyncStatus s) {
       return new SyncStatusDto(
@@ -39,7 +44,8 @@ public final class AdoSyncDtos {
           s.done(),
           s.failed(),
           s.message(),
-          s.lastSyncedAt() == null ? null : s.lastSyncedAt().toString());
+          s.lastSyncedAt() == null ? null : s.lastSyncedAt().toString(),
+          s.failures().stream().map(f -> new FailureDto(f.source(), f.reason())).toList());
     }
   }
 }

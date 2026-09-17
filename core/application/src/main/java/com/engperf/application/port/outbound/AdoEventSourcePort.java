@@ -1,9 +1,9 @@
 package com.engperf.application.port.outbound;
 
+import com.engperf.application.ado.IngestionResult;
 import com.engperf.application.ado.ProgressReporter;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Instant;
-import java.util.List;
 
 /**
  * Fetches Azure DevOps activity (Repos/PRs/commits, Pipelines, Boards) and maps it to the
@@ -12,5 +12,9 @@ import java.util.List;
  */
 public interface AdoEventSourcePort {
 
-  List<RawEvent> fetchSince(String accessToken, Instant since, ProgressReporter progress);
+  /**
+   * Collects everything reachable since {@code since}. A source that cannot be read is reported in
+   * the result instead of aborting the run — see {@link IngestionResult}.
+   */
+  IngestionResult fetchSince(String accessToken, Instant since, ProgressReporter progress);
 }
