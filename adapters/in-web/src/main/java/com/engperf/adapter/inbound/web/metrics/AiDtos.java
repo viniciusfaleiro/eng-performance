@@ -54,7 +54,11 @@ public final class AiDtos {
       List<Double> cycleWithAi,
       List<Double> cycleWithoutAi) {
 
-    /** Builds the payload, dropping any ranked child the caller may not view. */
+    /**
+     * Builds the payload, dropping any ranked child the caller may not view. People are safe to
+     * rank here because {@code AccessScope.canView} already routes a person id through the
+     * coaching-only rule — the guarantee lives in one place, not in each caller.
+     */
     public static AiDashboardDto from(AiDashboard dash, Predicate<String> canView) {
       return new AiDashboardDto(
           dash.nodeId(),
