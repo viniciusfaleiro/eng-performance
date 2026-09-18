@@ -18,8 +18,10 @@ import java.util.Objects;
 /**
  * Composes the IA dashboard: the node's IA cards (AI share and adoption from the engine, AI impact
  * composed from the two cohort cycle-time series), the AI-adoption ranking of the node's children —
- * verticals at the overview, teams within a vertical, nothing for a team or person (coaching-only:
- * people are never compared publicly) — and the AI-vs-non-AI cycle-time series.
+ * verticals at the overview, teams within a vertical, the team's own people within a team, and
+ * nothing for a person — and the AI-vs-non-AI cycle-time series. Ranking people is scoped, not
+ * public: only a caller allowed to view a person individually receives them, which keeps this the
+ * manager's coaching over their own team.
  */
 public final class AiDashboardService implements AiDashboardUseCase {
 
@@ -135,7 +137,15 @@ public final class AiDashboardService implements AiDashboardUseCase {
           .map(t -> new Child(t.id(), t.name()))
           .toList();
     }
-    return List.of(); // team or person → no public ranking
+    if (nodeId.startsWith("t:")) {
+      // As pessoas do próprio time. Não é ranking público: quem não pode ver a pessoa
+      // individualmente não a recebe (o filtro fica na borda web, como no heatmap).
+      return structure.findPeople().stream()
+          .filter(p -> p.currentTeamId().filter(nodeId::equals).isPresent())
+          .map(p -> new Child(p.id(), p.name()))
+          .toList();
+    }
+    return List.of(); // pessoa → nenhum ranking: seria compará-la com os colegas
   }
 
   private static String childType(String nodeId) {
@@ -144,6 +154,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
     }
     if (nodeId.startsWith("v:")) {
       return "team";
+    }
+    if (nodeId.startsWith("t:")) {
+      return "person";
     }
     return null;
   }

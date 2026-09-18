@@ -26,6 +26,36 @@ import org.junit.jupiter.api.Test;
 
 class AiDashboardServiceTest {
 
+  /**
+   * O painel mostrava todo mundo com 0% porque a API não devolvia nada neste nível e a tela caía no
+   * gerador. Comparar pessoas do próprio time é o recorte que o produto autoriza — o heatmap já
+   * fazia isso; o ranking de IA não.
+   */
+  @Test
+  void aTeamRanksItsOwnPeople() {
+    baseStructure();
+    events.add(commit("id-ana", true));
+    events.add(commit("id-bruno", false));
+
+    var dash = ai.dashboard("t:checkout", period(Frequency.MONTHLY));
+
+    assertThat(dash.childType()).isEqualTo("person");
+    assertThat(dash.adoption())
+        .extracting(AdoptionRank::nodeId)
+        .containsExactlyInAnyOrder("p:ana", "p:bruno");
+  }
+
+  /** Na tela de uma pessoa, um ranking seria compará-la com os colegas. */
+  @Test
+  void aPersonProducesNoRanking() {
+    baseStructure();
+    events.add(commit("id-ana", true));
+
+    var dash = ai.dashboard("p:ana", period(Frequency.MONTHLY));
+
+    assertThat(dash.adoption()).isEmpty();
+  }
+
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC);
   private static final LocalDate JAN1 = LocalDate.of(2026, 1, 1);

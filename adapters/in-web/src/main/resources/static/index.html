@@ -58,6 +58,7 @@ h1,h2,h3{margin:0;}
 .brand-sub{font-size:10px;color:var(--on-surface-var);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
 .sidebar-scroll{overflow-y:auto;flex:1;min-height:0;padding:4px 10px 24px;}
 .sidebar-foot{flex:0 0 auto;border-top:1px solid var(--outline-var);padding:10px 18px;font-size:10px;letter-spacing:.6px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.nodata{font-size:13px;color:var(--muted);font-family:var(--mono);letter-spacing:.3px;}
 .sync-fails{display:grid;gap:8px;margin:10px 0;}
 .sync-fail{border-left:2px solid var(--crit);padding:4px 0 4px 10px;}
 .sync-fail-src{font-size:12.5px;font-family:var(--mono);}
@@ -795,7 +796,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
       }
     }
-    return snapSyn(id,m,freq);
+    // Nada real para esta métrica/nó. "Carregando" e "não existe" são coisas diferentes: anunciar
+    // ausência enquanto a resposta está a caminho faria o card piscar uma informação falsa.
+    const k=state.node+"|"+state.freq+"|"+(state.period||"");
+    const loading=(m.dora&&DORA_LOADING.has(k))||(FLOW_KEYS.has(m.key)&&FLOW_LOADING.has(k))
+      ||(IA_KEYS.has(m.key)&&IA_LOADING.has(k));
+    return Object.assign(snapSyn(id,m,freq),loading?{loading:true}:{noData:true});
   }
   function series(id,m,freq,n,salt){const a=[];for(let i=0;i<n;i++)a.push(raw(id,freq,m.key,m.base,m.count,(salt||"")+"s"+i));a[n-1]=snapSyn(id,m,freq).cur;return a;}
   /* Tendências wired to the real metrics engine (S3). Prototype metric key → S3 catalog key; the
@@ -986,8 +992,21 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'+bars+'</svg>';
   }
 
+  const NO_DATA='<span class="nodata" title="A API não publicou valor para este item">sem dados</span>';
   function metricCard(id,m,freq,hero){
     const s=snap(id,m,freq);let tier="";
+    if(s.loading){
+      return '<div class="card'+(hero?" hero":"")+'">'+
+        '<div class="card-top"><div class="card-label">'+m.label+'</div></div>'+
+        '<div class="card-value"><span class="nodata">carregando…</span></div>'+
+        '<div class="card-foot"></div></div>';
+    }
+    if(s.noData){
+      return '<div class="card'+(hero?" hero":"")+'">'+
+        '<div class="card-top"><div class="card-label">'+m.label+infoBtn("metric",m.key,m.label)+'</div></div>'+
+        '<div class="card-value">'+NO_DATA+'</div>'+
+        '<div class="card-foot"><span class="card-note">nada publicado para este nó</span></div></div>';
+    }
     if(m.dora){const t=doraTier(id,m.key)||tierOf(m.key,s.cur);tier='<span class="tier '+TC[t]+'">'+t+'</span>';}
     return '<div class="card click'+(hero?" hero":"")+'" data-metric="'+m.key+'" role="button" tabindex="0">'+
       '<div class="card-top"><div class="card-label">'+m.label+infoBtn("metric",m.key,m.label)+'</div>'+tier+'</div>'+
@@ -1030,7 +1049,16 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
   function areaTrend(title,m){const labels=periodLabels(state.freq,12);const s=trendSnap(m);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-head" style="margin-bottom:8px"><div class="chart-title">'+title+'</div>'+evoChip(s)+'</div>'+barChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
-    const rows=ids.map(id=>({n:NODES[id],val:nodeVal(id,m)})).sort((a,b)=>m.higher?b.val-a.val:a.val-b.val);
+    const all=ids.map(id=>({n:NODES[id],s:snap(id,m,state.freq)})).filter(r=>r.n);
+    if(all.length&&all.every(r=>r.s.loading)){
+      return '<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+
+        '<div class="card-note">Carregando…</div></div>';
+    }
+    if(!all.length||all.every(r=>r.s.noData||r.s.loading)){
+      return '<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>'+
+        '<div class="card-note">Sem dados para este nível.</div></div>';
+    }
+    const rows=all.filter(r=>!r.s.noData).map(r=>({n:r.n,val:r.s.cur})).sort((a,b)=>m.higher?b.val-a.val:a.val-b.val);
     const max=Math.max(...rows.map(r=>r.val))||1;
     let h='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">'+title+'</div>';
     rows.forEach((r,i)=>{const sub=r.n.level==="Time"?r.n.vertical:r.n.team;const pct=Math.max(4,r.val/max*100);
@@ -1110,7 +1138,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     ensureIA();
     const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
     let ids,et;
-    if(c&&!c.error&&c.childType&&c.adoption.length){ids=c.adoption;et=(c.childType==="vertical")?"vertical":"time";}
+    const CHILD_PT={vertical:"vertical",team:"time",person:"pessoa"};
+    if(c&&!c.error&&c.childType&&c.adoption.length){ids=c.adoption;et=CHILD_PT[c.childType]||c.childType;}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
     let h='<div class="grid metrics">'+IA.map(m=>metricCard(state.node,m,state.freq)).join("")+'</div>';
     h+=areaTrend("% de commits com IA — evolução",M("aic"));

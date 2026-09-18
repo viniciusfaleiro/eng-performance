@@ -94,6 +94,32 @@ class AiDashboardApiTest {
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.startsWith("p:")))));
   }
 
+  /**
+   * Pessoa usa a regra individual, não a de estrutura: incluir pessoas no ranking não pode afrouxar
+   * silenciosamente quem enxerga dado individual.
+   */
+  @Test
+  void aTeamRankingIncludesOnlyPeopleTheCallerMayCoach() throws Exception {
+    AccessScope manager =
+        new AccessScope(false, false, Set.of(), Set.of("t:checkout"), Set.of("p:ana"));
+
+    mvc.perform(
+            get("/api/dashboards/ai?node=t:checkout&freq=Mensal")
+                .requestAttr(AuthWeb.USER, user(manager)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.childType").value("person"))
+        .andExpect(jsonPath("$.adoption.length()").value(1))
+        .andExpect(jsonPath("$.adoption[0].nodeId").value("p:ana"));
+  }
+
+  @Test
+  void anAdminSeesEveryPersonOfTheTeam() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/ai?node=t:checkout&freq=Mensal")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(jsonPath("$.adoption.length()").value(2));
+  }
+
   private static final class FakeAi implements AiDashboardUseCase {
     @Override
     public AiDashboard dashboard(String nodeId, Period period) {
@@ -111,6 +137,16 @@ class AiDashboardApiTest {
                   MetricCatalog.AI_IMPACT,
                   MetricValue.of(40.0, null, Direction.HIGHER_BETTER),
                   new com.engperf.domain.metrics.Coverage(2, 4)));
+      if (nodeId.startsWith("t:")) {
+        return new AiDashboard(
+            nodeId,
+            "person",
+            cards,
+            List.of(
+                new AdoptionRank("p:ana", "Ana", 0.8), new AdoptionRank("p:bruno", "Bruno", 0.2)),
+            List.of(6.0, 6.5),
+            List.of(10.0, 9.5));
+      }
       List<AdoptionRank> adoption =
           List.of(
               new AdoptionRank("v:pag", "Pagamentos", 0.6),
