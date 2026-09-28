@@ -3,11 +3,13 @@ package com.engperf.application.metrics;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.domain.metrics.Aggregation;
 import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.structure.Person;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -109,6 +111,23 @@ public final class MetricsService implements MetricsQueryUseCase {
     List<RawEvent> window = fetch(def, period);
     return MetricsEngine.items(
         buildIndex(), window, def, nodeId, period, catalog.population(metricKey));
+  }
+
+  @Override
+  public List<EntityShare> entityShares(String metricKey, String nodeId, Period period) {
+    MetricDefinition def = definition(metricKey);
+    if (def.aggregation() != Aggregation.DISTINCT_RATIO) {
+      throw new IllegalArgumentException(
+          "métrica " + metricKey + " não é contada por pessoa — use o detalhamento de itens");
+    }
+    return EntityBreakdown.of(
+            buildIndex(), fetch(def, period), def, nodeId, period, catalog.population(metricKey))
+        .stream()
+        .map(
+            s ->
+                s.withLabel(
+                    structure.findPerson(s.entityId()).map(Person::name).orElse(s.entityId())))
+        .toList();
   }
 
   private MetricDefinition definition(String metricKey) {

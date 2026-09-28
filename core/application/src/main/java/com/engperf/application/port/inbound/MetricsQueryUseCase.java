@@ -1,5 +1,6 @@
 package com.engperf.application.port.inbound;
 
+import com.engperf.application.metrics.EntityShare;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
@@ -40,4 +41,12 @@ public interface MetricsQueryUseCase {
    * interval the card for that period shows.
    */
   List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period);
+
+  /**
+   * Per-person breakdown of a metric that counts distinct people, ordered from the lowest share to
+   * the highest. Listing the events would explain the wrong thing: the metric's unit is the person.
+   *
+   * @throws IllegalArgumentException if the metric does not count distinct entities
+   */
+  List<EntityShare> entityShares(String metricKey, String nodeId, Period period);
 }

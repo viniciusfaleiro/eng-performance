@@ -5,6 +5,7 @@ import com.engperf.adapter.inbound.web.auth.ForbiddenException;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CardDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.CatalogItemDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.DrilldownItemDto;
+import com.engperf.adapter.inbound.web.metrics.MetricsDtos.EntityShareDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.ExplanationsDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.PeriodDto;
 import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
@@ -95,6 +96,25 @@ public class MetricsController {
     requireView(user, node);
     return metrics.items(key, node, periods.resolve(frequency(freq), period)).stream()
         .map(DrilldownItemDto::from)
+        .toList();
+  }
+
+  /**
+   * Who is behind a metric counted in people. Each person is checked individually — the aggregate
+   * card stays as it is, so the number and this list may cover different populations, which is
+   * correct: the number is org-wide, the list is nominal and coaching-scoped.
+   */
+  @GetMapping("/api/metrics/{key}/people")
+  public List<EntityShareDto> people(
+      @PathVariable String key,
+      @RequestParam(defaultValue = "all") String node,
+      @RequestParam(defaultValue = "Semanal") String freq,
+      @RequestParam(required = false) String period,
+      @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
+    requireView(user, node);
+    return metrics.entityShares(key, node, periods.resolve(frequency(freq), period)).stream()
+        .filter(s -> user.scope().canView(s.entityId()))
+        .map(EntityShareDto::from)
         .toList();
   }
 

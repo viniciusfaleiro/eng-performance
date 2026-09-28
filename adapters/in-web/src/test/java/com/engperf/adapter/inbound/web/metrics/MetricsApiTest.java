@@ -176,6 +176,33 @@ class MetricsApiTest {
         .andExpect(status().isOk());
   }
 
+  /**
+   * O card continua agregando a organização inteira; a lista nominal é recortada pelo escopo
+   * individual. Os dois cobrirem populações diferentes é correto, não um bug.
+   */
+  @Test
+  void thePersonBreakdownIsFilteredByIndividualScope() throws Exception {
+    AccessScope manager =
+        new AccessScope(false, false, Set.of(), Set.of("t:checkout"), Set.of("p:ana"));
+
+    mvc.perform(
+            get("/api/metrics/ai_adoption/people?node=t:checkout")
+                .requestAttr(AuthWeb.USER, user(manager)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].personId").value("p:ana"))
+        .andExpect(jsonPath("$[0].matching").value(0))
+        .andExpect(jsonPath("$[0].total").value(3));
+  }
+
+  @Test
+  void anAdminSeesEveryPersonInTheBreakdown() throws Exception {
+    mvc.perform(
+            get("/api/metrics/ai_adoption/people?node=all")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(jsonPath("$.length()").value(2));
+  }
+
   @Test
   void catalogNeedsNoScope() throws Exception {
     mvc.perform(get("/api/metrics/catalog").requestAttr(AuthWeb.USER, user(member())))
@@ -217,6 +244,14 @@ class MetricsApiTest {
         String metricKey, String nodeId, Period period, boolean aiAssisted) {
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
+    }
+
+    @Override
+    public List<com.engperf.application.metrics.EntityShare> entityShares(
+        String metricKey, String nodeId, Period period) {
+      return List.of(
+          new com.engperf.application.metrics.EntityShare("p:ana", "Ana", 0, 3),
+          new com.engperf.application.metrics.EntityShare("p:bruno", "Bruno", 2, 2));
     }
 
     @Override
