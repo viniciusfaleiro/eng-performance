@@ -40,8 +40,9 @@ record WorkItemFlow(
       JsonNode updates,
       Function<String, Segment> classify,
       Instant created,
+      Instant changed,
       Instant now) {
-    List<StateAt> states = collectStates(wiId, updates, classify, now);
+    List<StateAt> states = collectStates(wiId, updates, classify, changed, now);
     if (states.size() < 2) {
       LOG.debug(
           "WI {}: {} transição(ões) utilizável(is) — sem flow (mínimo 2)", wiId, states.size());
@@ -129,8 +130,26 @@ record WorkItemFlow(
     return (from != null && to != null) ? AdoMapper.hoursBetween(from, to) : null;
   }
 
+  /**
+   * The state transitions, with the current revision's timestamp recovered.
+   *
+   * <p>Azure DevOps stamps the revision that has not been superseded yet with {@code revisedDate =
+   * 9999-01-01} — an "open end date", not a missing one. Dropping it used to discard the most
+   * important transition of all: for an item closed and then left alone, the move to the terminal
+   * state <em>is</em> the current revision, so every cleanly-finished item lost its completion and
+   * never counted as delivered.
+   *
+   * <p>{@code changed} ({@code System.ChangedDate}) stands in for it. It is an approximation — it
+   * marks the item's last change of any field, not specifically the state change — but when the
+   * last thing that happened was the closing transition, which is the case this repairs, the two
+   * are the same instant.
+   */
   private static List<StateAt> collectStates(
-      String wiId, JsonNode updates, Function<String, Segment> classify, Instant now) {
+      String wiId,
+      JsonNode updates,
+      Function<String, Segment> classify,
+      Instant changed,
+      Instant now) {
     List<StateAt> states = new ArrayList<>();
     for (JsonNode u : updates.path("value")) {
       JsonNode sv = u.path("fields").path("System.State");
@@ -139,15 +158,20 @@ record WorkItemFlow(
       }
       String raw = u.path("revisedDate").asText();
       Instant at = AdoMapper.parseInstant(raw);
-      if (at == null || at.isAfter(now)) {
-        // Descartes são a causa mais provável de um item com flow vazio: o ADO usa "9999-…" como
-        // sentinela da revisão aberta, e datas ilegíveis aparecem de vez em quando.
-        LOG.debug(
-            "WI {}: revisedDate descartada ({}) — {}",
-            wiId,
-            raw,
-            at == null ? "ilegível" : "futura");
-        continue;
+      if (at == null) {
+        LOG.debug("WI {}: revisedDate ilegível ({}) — transição descartada", wiId, raw);
+        continue; // sem data e sem substituto: não dá para situar a transição no tempo
+      }
+      if (at.isAfter(now)) {
+        if (changed == null || changed.isAfter(now)) {
+          LOG.debug(
+              "WI {}: revisão vigente ({}) sem ChangedDate utilizável — transição descartada",
+              wiId,
+              raw);
+          continue;
+        }
+        LOG.debug("WI {}: revisão vigente ({}) datada pelo ChangedDate {}", wiId, raw, changed);
+        at = changed;
       }
       String state = sv.path("newValue").asText("");
       Segment seg = classify.apply(state);
