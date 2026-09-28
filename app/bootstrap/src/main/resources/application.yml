@@ -25,7 +25,11 @@ management:
 
 logging:
   level:
-    # Azure DevOps sync diagnostics. Raise to DEBUG (env LOGGING_LEVEL_COM_ENGPERF_ADAPTER_OUTBOUND_ADO=DEBUG
-    # or edit here) to log every ADO request URL and response status while troubleshooting a load.
+    # Diagnóstico da sincronização com o Azure DevOps. Suba para DEBUG (env
+    # LOGGING_LEVEL_COM_ENGPERF_ADAPTER_OUTBOUND_ADO=DEBUG, ou edite aqui) para registrar cada
+    # requisição ao ADO, os ids que a consulta WIQL devolveu por projeto e, para cada work item,
+    # a reconstrução completa do flow — transição a transição, com as revisões descartadas.
+    # Investigar um item "sumido" é subir o nível e grepar o id; nenhum id fica fixo no código.
+    # Fica em INFO por padrão: em DEBUG o volume é alto o bastante para atrapalhar em produção.
     com.engperf.adapter.outbound.ado: INFO
     com.engperf.application.ado: INFO

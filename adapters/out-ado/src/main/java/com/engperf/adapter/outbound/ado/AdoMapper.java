@@ -220,7 +220,7 @@ final class AdoMapper {
     detail.put("type", workType(f.path("System.WorkItemType").asText("")));
     detail.put("summary", f.path("System.Title").asText(""));
     detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
-    WorkItemFlow flow = WorkItemFlow.of(updates, classify, created, now);
+    WorkItemFlow flow = WorkItemFlow.of(id, updates, classify, created, now);
     Instant occurred =
         flow.completion() != null ? flow.completion() : instant(f, "System.ChangedDate");
     flow.fill(detail);

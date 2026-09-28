@@ -249,6 +249,15 @@ public final class AdoEventSource implements AdoEventSourcePort {
   private int fetchWorkItems(
       String org, String proj, String sinceIso, String token, List<RawEvent> events) {
     List<String> ids = collectChangedWorkItemIds(org, proj, sinceIso.substring(0, 10), token);
+    // Toda a lista, sem filtro: quando um work item "some" do dashboard, a primeira pergunta é se a
+    // WIQL chegou a devolvê-lo. Com DEBUG ligado dá para grepar qualquer id sem recompilar nada.
+    LOG.debug(
+        "ADO sync: WIQL {}/{} desde {} devolveu {} work item(s): {}",
+        org,
+        proj,
+        sinceIso,
+        ids.size(),
+        ids);
     if (ids.isEmpty()) {
       return 0;
     }

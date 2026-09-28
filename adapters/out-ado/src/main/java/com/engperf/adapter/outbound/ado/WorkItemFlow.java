@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Flow measures reconstructed from a work item's state-transition history: active/review/wait
@@ -15,6 +17,11 @@ import java.util.function.Function;
  * instant, and the ACTIVE+REVIEW {@code spans} the individual distribution prorates. Backlog time
  * before the first working state is ignored; wait counts only idle time between the first working
  * and terminal.
+ *
+ * <p>Every step is traced at DEBUG, keyed by the work item id: the reconstruction depends on the
+ * item's own state names and on revision dates the API sometimes reports oddly, so when a number
+ * looks wrong the only useful answer is the sequence that produced it. Raising the level for this
+ * package and grepping the id gives the whole history — no ids compiled in, no rebuild.
  */
 record WorkItemFlow(
     double activeH,
@@ -26,10 +33,18 @@ record WorkItemFlow(
     boolean started,
     String spans) {
 
+  private static final Logger LOG = LoggerFactory.getLogger(WorkItemFlow.class);
+
   static WorkItemFlow of(
-      JsonNode updates, Function<String, Segment> classify, Instant created, Instant now) {
-    List<StateAt> states = collectStates(updates, classify, now);
+      String wiId,
+      JsonNode updates,
+      Function<String, Segment> classify,
+      Instant created,
+      Instant now) {
+    List<StateAt> states = collectStates(wiId, updates, classify, now);
     if (states.size() < 2) {
+      LOG.debug(
+          "WI {}: {} transição(ões) utilizável(is) — sem flow (mínimo 2)", wiId, states.size());
       return new WorkItemFlow(0, 0, 0, null, null, null, false, "");
     }
     states.sort(Comparator.comparing(StateAt::at));
@@ -44,6 +59,7 @@ record WorkItemFlow(
       Instant from = states.get(i).at();
       if (seg == Segment.DONE) {
         completion = from;
+        LOG.debug("WI {}: DONE em {} — encerra a contagem", wiId, from);
         break;
       }
       Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
@@ -62,6 +78,13 @@ record WorkItemFlow(
         waitMs += ms; // idle during the flow; backlog before the first work is ignored
       }
     }
+    LOG.debug(
+        "WI {}: flow ativo={}h review={}h espera={}h conclusão={}",
+        wiId,
+        activeMs / 3_600_000.0,
+        reviewMs / 3_600_000.0,
+        waitMs / 3_600_000.0,
+        completion);
     return new WorkItemFlow(
         activeMs / 3_600_000.0,
         reviewMs / 3_600_000.0,
@@ -107,18 +130,29 @@ record WorkItemFlow(
   }
 
   private static List<StateAt> collectStates(
-      JsonNode updates, Function<String, Segment> classify, Instant now) {
+      String wiId, JsonNode updates, Function<String, Segment> classify, Instant now) {
     List<StateAt> states = new ArrayList<>();
     for (JsonNode u : updates.path("value")) {
       JsonNode sv = u.path("fields").path("System.State");
       if (!sv.hasNonNull("newValue") || !u.hasNonNull("revisedDate")) {
         continue;
       }
-      Instant at = AdoMapper.parseInstant(u.path("revisedDate").asText());
+      String raw = u.path("revisedDate").asText();
+      Instant at = AdoMapper.parseInstant(raw);
       if (at == null || at.isAfter(now)) {
-        continue; // unparseable or the "9999" open-revision sentinel
+        // Descartes são a causa mais provável de um item com flow vazio: o ADO usa "9999-…" como
+        // sentinela da revisão aberta, e datas ilegíveis aparecem de vez em quando.
+        LOG.debug(
+            "WI {}: revisedDate descartada ({}) — {}",
+            wiId,
+            raw,
+            at == null ? "ilegível" : "futura");
+        continue;
       }
-      states.add(new StateAt(at, classify.apply(sv.path("newValue").asText(""))));
+      String state = sv.path("newValue").asText("");
+      Segment seg = classify.apply(state);
+      LOG.debug("WI {}: transição {} → {} em {}", wiId, state, seg, at);
+      states.add(new StateAt(at, seg));
     }
     return states;
   }

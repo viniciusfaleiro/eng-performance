@@ -29,8 +29,16 @@ import org.junit.jupiter.api.Test;
 
 class AdoSyncServiceTest {
 
-  private static final Clock CLOCK =
-      Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC);
+  private static final Instant NOW = Instant.parse("2026-06-30T12:00:00Z");
+  private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+
+  /**
+   * A marca de um sync bem-sucedido é sempre o início dele menos a margem — nunca a data do evento
+   * mais recente coletado. Referencia a constante de produção de propósito: duplicar o número aqui
+   * deixaria o teste passar mesmo se a margem mudasse por engano.
+   */
+  private static final Instant EXPECTED_WATERMARK =
+      NOW.minusSeconds(AdoSyncService.WATERMARK_SAFETY_MARGIN_SECONDS);
 
   private final FakeAuth auth = new FakeAuth();
   private final FakeSource source = new FakeSource();
@@ -53,11 +61,12 @@ class AdoSyncServiceTest {
     // First run: since = ~6 months before the fixed clock (a backfill window in the past).
     assertThat(source.lastSince).isBefore(Instant.parse("2026-02-01T00:00:00Z"));
     assertThat(store.byId).containsKeys("c1", "c2");
-    assertThat(syncState.state.watermark()).isEqualTo(Instant.parse("2026-06-25T10:00:00Z"));
+    // Não é 2026-06-25 (o evento mais recente): é o início do sync menos a margem de segurança.
+    assertThat(syncState.state.watermark()).isEqualTo(EXPECTED_WATERMARK);
 
     // Second run: since = the recorded watermark (only the diff).
     service.start(false);
-    assertThat(source.lastSince).isEqualTo(Instant.parse("2026-06-25T10:00:00Z"));
+    assertThat(source.lastSince).isEqualTo(EXPECTED_WATERMARK);
   }
 
   @Test
@@ -72,7 +81,7 @@ class AdoSyncServiceTest {
   void backfillIgnoresTheWatermarkAndReprocessesTheWholeWindow() {
     source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
     service.start(false); // records a recent watermark
-    assertThat(syncState.state.watermark()).isEqualTo(Instant.parse("2026-06-20T10:00:00Z"));
+    assertThat(syncState.state.watermark()).isEqualTo(EXPECTED_WATERMARK);
 
     service.start(true); // backfill → ignores the watermark, re-ingests the whole window
     assertThat(source.lastSince).isBefore(Instant.parse("2026-02-01T00:00:00Z"));
@@ -117,6 +126,7 @@ class AdoSyncServiceTest {
     source.events = List.of(commit("c1", "2026-06-20T10:00:00Z"));
     service.start(false); // execução limpa: grava a marca
     Instant afterClean = syncState.state.watermark();
+    assertThat(afterClean).isEqualTo(EXPECTED_WATERMARK);
 
     source.events = List.of(commit("c2", "2026-06-24T10:00:00Z"));
     source.failures = List.of(new SourceFailure("repositório orgX/ProjP/quebrado", "HTTP 404"));
