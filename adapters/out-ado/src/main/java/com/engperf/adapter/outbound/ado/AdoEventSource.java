@@ -12,13 +12,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -118,13 +114,15 @@ public final class AdoEventSource implements AdoEventSourcePort {
           if (before(pr.path("closedDate").asText(""), since)) {
             continue;
           }
-          // One extra call per PR (no batch endpoint) for commit timing + size.
+          // Duas chamadas por PR (não há endpoint em lote): commits, para tempo e tamanho, e o
+          // histórico de votos, porque o objeto do PR guarda só o voto atual de cada revisor.
+          long prId = pr.path("pullRequestId").asLong();
           JsonNode prCommits =
-              client.get(
-                  base + "/pullrequests/" + pr.path("pullRequestId").asLong() + "/commits?" + API,
-                  token);
-          events.add(AdoMapper.pullRequest(pr, prCommits, comments.anyAi(base, prCommits, token)));
-          events.addAll(AdoMapper.reviews(pr));
+              client.get(base + "/pullrequests/" + prId + "/commits?" + API, token);
+          VoteHistory votes = VoteHistory.fetch(client, base, prId, token);
+          events.add(
+              AdoMapper.pullRequest(pr, prCommits, comments.anyAi(base, prCommits, token), votes));
+          events.addAll(AdoMapper.reviews(pr, votes));
           prs++;
         }
         progress.update("prs", "prs", prs);
@@ -248,7 +246,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
 
   private int fetchWorkItems(
       String org, String proj, String sinceIso, String token, List<RawEvent> events) {
-    List<String> ids = collectChangedWorkItemIds(org, proj, sinceIso.substring(0, 10), token);
+    List<String> ids =
+        ChangedWorkItemIds.collect(client, org, proj, sinceIso.substring(0, 10), token);
     // Toda a lista, sem filtro: quando um work item "some" do dashboard, a primeira pergunta é se a
     // WIQL chegou a devolvê-lo. Com DEBUG ligado dá para grepar qualquer id sem recompilar nada.
     LOG.debug(
@@ -313,57 +312,6 @@ public final class AdoEventSource implements AdoEventSourcePort {
           e.getMessage());
     }
     return state -> byName.getOrDefault(state, StateClassifier.byName(state));
-  }
-
-  /**
-   * WIQL caps a result at 20000 rows and cannot be paged; collect the ids over {@code [sinceDate,
-   * today]} by adaptive bisection — a window over the cap is split in half until each fits.
-   */
-  private List<String> collectChangedWorkItemIds(
-      String org, String proj, String sinceDate, String token) {
-    LinkedHashSet<String> ids = new LinkedHashSet<>();
-    LocalDate start = LocalDate.parse(sinceDate);
-    LocalDate end = LocalDate.now(ZoneOffset.UTC).plusDays(1); // exclusive → includes today
-    collectRange(org, proj, start, end, token, ids);
-    return new ArrayList<>(ids);
-  }
-
-  /**
-   * Query {@code [from, to)}; if ADO refuses the window for exceeding its cap, bisect and retry.
-   */
-  private void collectRange(
-      String org, String proj, LocalDate from, LocalDate to, String token, Set<String> ids) {
-    if (!from.isBefore(to)) {
-      return;
-    }
-    try {
-      String wiql =
-          "{\"query\":\"SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '"
-              + from
-              + "' AND [System.ChangedDate] < '"
-              + to
-              + "' ORDER BY [System.ChangedDate] ASC\"}";
-      JsonNode res = client.post(org + "/" + proj + "/_apis/wit/wiql?" + API, token, wiql);
-      for (JsonNode wi : res.path("workItems")) {
-        ids.add(wi.path("id").asText());
-      }
-    } catch (RuntimeException e) {
-      long days = ChronoUnit.DAYS.between(from, to);
-      if (!exceedsWiqlLimit(e) || days <= 1) {
-        throw e; // a different failure, or a single day we can no longer subdivide
-      }
-      LocalDate mid = from.plusDays(days / 2);
-      LOG.info(
-          "ADO sync: janela {}..{} excede o limite do WIQL; bisseccionando em {}", from, to, mid);
-      collectRange(org, proj, from, mid, token, ids);
-      collectRange(org, proj, mid, to, token, ids);
-    }
-  }
-
-  /** The VS402337 "result exceeds 20000 items" refusal — the signal to narrow the window. */
-  private static boolean exceedsWiqlLimit(RuntimeException e) {
-    String m = e.getMessage();
-    return m != null && (m.contains("VS402337") || m.contains("exceeds the size limit"));
   }
 
   private static Predicate<String> aiDetector(AiConvention c) {
