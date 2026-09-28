@@ -19,6 +19,9 @@ class AdoMapperTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
+  /** Histórico lido, sem nenhum voto negativo. */
+  private static final VoteHistory APPROVED = new VoteHistory(true, false);
+
   @Test
   void pullRequestMapsCycleFirstPassAndLink() {
     JsonNode pr = fixture("pr.json");
@@ -28,7 +31,7 @@ class AdoMapperTest {
                 + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
                 + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
                 + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
-    RawEvent e = AdoMapper.pullRequest(pr, commits, false);
+    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED);
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -52,13 +55,47 @@ class AdoMapperTest {
   void aPullRequestCarriesTheAiFlagItWasGiven() {
     JsonNode commits = json("{\"value\":[]}");
 
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true).ai()).isTrue();
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false).ai()).isFalse();
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED).ai()).isTrue();
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED).ai()).isFalse();
+  }
+
+  /**
+   * O caso relatado em produção: o revisor rejeitou, o autor corrigiu, o revisor aprovou — e o
+   * autor aparecia com 100% de assertividade, porque o PR só carrega o voto final.
+   */
+  @Test
+  void aPullRequestRejectedBeforeApprovalIsNotFirstPass() {
+    VoteHistory rejectedThenApproved = new VoteHistory(true, true);
+
+    RawEvent e =
+        AdoMapper.pullRequest(
+            fixture("pr.json"), json("{\"value\":[]}"), false, rejectedThenApproved);
+
+    assertThat(e.detail().get("first_pass")).isEqualTo("0");
+  }
+
+  @Test
+  void anUnreadableHistoryIsNotCountedAsFirstPass() {
+    RawEvent e =
+        AdoMapper.pullRequest(
+            fixture("pr.json"), json("{\"value\":[]}"), false, VoteHistory.UNKNOWN);
+
+    assertThat(e.detail().get("first_pass")).isEqualTo("0");
+  }
+
+  /** Quem rejeitou e depois aprovou fez trabalho de review; emitir só a aprovação o apagaria. */
+  @Test
+  void aChangeRequestIsNotErasedByALaterApproval() {
+    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), new VoteHistory(true, true));
+
+    assertThat(reviews)
+        .singleElement()
+        .satisfies(r -> assertThat(r.detail().get("decision")).isEqualTo("changes_requested"));
   }
 
   @Test
   void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
-    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"), false);
+    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED);
     assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
     assertThat(e.detail().get("den")).isEqualTo("0");
     assertThat(e.detail()).doesNotContainKey("lines"); // size is "no data", not a fake zero
@@ -66,7 +103,7 @@ class AdoMapperTest {
 
   @Test
   void reviewsMapReviewerVotesAndSkipNoVote() {
-    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"));
+    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), APPROVED);
 
     assertThat(reviews).hasSize(1); // carla (vote 0) is skipped
     RawEvent r = reviews.get(0);

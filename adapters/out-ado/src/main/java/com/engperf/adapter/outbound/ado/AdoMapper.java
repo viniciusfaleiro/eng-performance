@@ -26,9 +26,11 @@ final class AdoMapper {
   /**
    * A pull request → one PR event; {@code commits} feed the coding time, flow ratio and PR size.
    * {@code aiAssisted} is decided by the caller from those commits — a PR carries no marking of its
-   * own, and deciding it here would need an HTTP client this mapper deliberately does not have.
+   * own, and deciding it here would need an HTTP client this mapper deliberately does not have. The
+   * same goes for {@code votes}: the vote history lives in a separate endpoint.
    */
-  static RawEvent pullRequest(JsonNode pr, JsonNode commits, boolean aiAssisted) {
+  static RawEvent pullRequest(
+      JsonNode pr, JsonNode commits, boolean aiAssisted, VoteHistory votes) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -36,7 +38,7 @@ final class AdoMapper {
 
     Map<String, String> detail = new HashMap<>();
     detail.put("cycle_h", num(cycleH));
-    detail.put("first_pass", firstPass(pr) ? "1" : "0");
+    detail.put("first_pass", votes.firstPass() ? "1" : "0");
     detail.put("repo", pr.path("repository").path("name").asText(""));
     detail.put("summary", pr.path("title").asText(""));
     detail.put("url", webLink(pr));
@@ -102,8 +104,13 @@ final class AdoMapper {
     return committer.hasNonNull("date") ? parseInstant(committer.path("date").asText()) : null;
   }
 
-  /** A pull request's reviewer votes → one REVIEW event each (given by the reviewer). */
-  static List<RawEvent> reviews(JsonNode pr) {
+  /**
+   * A pull request's reviewer votes → one REVIEW event each (given by the reviewer). {@code votes}
+   * carries whether anyone asked for changes at any point: a reviewer who rejected and then
+   * approved shows only the approval on the PR object, and reporting just that would erase the
+   * review work that actually happened.
+   */
+  static List<RawEvent> reviews(JsonNode pr, VoteHistory votes) {
     List<RawEvent> out = new ArrayList<>();
     String author = identity(pr.path("createdBy"));
     Instant when =
@@ -115,7 +122,8 @@ final class AdoMapper {
         continue; // no explicit vote → not a review action
       }
       Map<String, String> detail = new HashMap<>();
-      detail.put("decision", vote >= 5 ? "approved" : "changes_requested");
+      boolean askedForChanges = vote < 5 || votes.changesRequested();
+      detail.put("decision", askedForChanges ? "changes_requested" : "approved");
       detail.put("comments", Integer.toString(r.path("commentCount").asInt(0)));
       detail.put("author", author);
       // A review has no standalone record in Azure DevOps — its link is the pull request's.
@@ -237,20 +245,6 @@ final class AdoMapper {
   }
 
   // ---- helpers ----
-
-  private static boolean firstPass(JsonNode pr) {
-    boolean approved = false;
-    for (JsonNode r : pr.path("reviewers")) {
-      int vote = r.path("vote").asInt(0);
-      if (vote < 0) {
-        return false; // someone asked for changes → not first pass
-      }
-      if (vote >= 10) {
-        approved = true;
-      }
-    }
-    return approved;
-  }
 
   static boolean matchesProduction(String stage, String rule) {
     if (rule == null || rule.isBlank()) {
