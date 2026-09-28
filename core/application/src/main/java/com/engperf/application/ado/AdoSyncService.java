@@ -10,7 +10,6 @@ import com.engperf.application.port.outbound.SyncStatePort;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -31,6 +30,19 @@ public final class AdoSyncService implements AdoSyncUseCase {
 
   private static final Logger LOG = LoggerFactory.getLogger(AdoSyncService.class);
   private static final int BACKFILL_MONTHS = 6;
+
+  /**
+   * How far behind the sync's start the watermark is left — 30 minutes.
+   *
+   * <p>The Azure DevOps API indexes changes with a lag, so an item changed shortly before the fetch
+   * can be invisible to the query that was supposed to pick it up. Anchoring the watermark on the
+   * newest event we happened to *see* then skips it forever: the next run asks for changes after an
+   * instant that already passed. That is how a work item changed on the 25th never showed up again.
+   *
+   * <p>Backing off re-reads a window on every run. Ingestion upserts by event id, so the cost is
+   * requests, not duplicates — and the alternative is silent, permanent data loss.
+   */
+  public static final long WATERMARK_SAFETY_MARGIN_SECONDS = 30 * 60L;
 
   private final AdoAuthPort auth;
   private final AdoEventSourcePort source;
@@ -83,6 +95,9 @@ public final class AdoSyncService implements AdoSyncUseCase {
     try {
       String token = DeviceCodeAwaiter.await(auth, clock, prompt);
       job.phase = "syncing";
+      // Tomado ANTES do fetch: a coleta demora, e uma marca ancorada no fim da coleta perderia o
+      // que mudou enquanto ela rodava — a mesma falha, só que menor.
+      Instant startedAt = clock.instant();
       Instant since = incremental ? watermarkOrBackfill() : backfillWindow();
       LOG.info(
           "ADO sync iniciando: modo={}, desde={}", incremental ? "incremental" : "backfill", since);
@@ -92,15 +107,15 @@ public final class AdoSyncService implements AdoSyncUseCase {
       // Discover committer identities from the ingested events and auto-link them to people.
       IdentityUseCase.Reload reload = identities.reload();
       Instant now = clock.instant();
+      // A marca é o início do sync menos a margem — não o evento mais recente que veio. O evento
+      // mais recente só prova o que o ADO já tinha indexado; o que ainda não apareceu ficaria para
+      // trás da marca e nunca mais seria pedido. Ver WATERMARK_SAFETY_MARGIN_SECONDS.
       // Falha parcial não avança a marca: a próxima execução recoleta a mesma janela, para que a
       // lacuna do repo que falhou não fique permanente. Reingerir é idempotente (upsert por id).
       Instant watermark =
           result.isPartial()
               ? watermarkOrBackfill()
-              : events.stream()
-                  .map(RawEvent::occurredAt)
-                  .max(Comparator.naturalOrder())
-                  .orElse(since);
+              : startedAt.minusSeconds(WATERMARK_SAFETY_MARGIN_SECONDS);
       syncState.save(new SyncState(watermark, now, events.size()));
       config.markAdoConnected(); // real ingestion is live → the dev seeder stands down
       LOG.info(
