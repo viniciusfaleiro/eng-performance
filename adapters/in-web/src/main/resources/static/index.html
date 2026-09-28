@@ -58,6 +58,9 @@ h1,h2,h3{margin:0;}
 .brand-sub{font-size:10px;color:var(--on-surface-var);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
 .sidebar-scroll{overflow-y:auto;flex:1;min-height:0;padding:4px 10px 24px;}
 .sidebar-foot{flex:0 0 auto;border-top:1px solid var(--outline-var);padding:10px 18px;font-size:10px;letter-spacing:.6px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ppl-block{margin-bottom:14px;}
+.ppl-head{display:flex;align-items:baseline;gap:10px;font-size:12px;font-weight:600;margin-bottom:6px;}
+.ppl-pct{font-size:13px;font-weight:600;align-self:center;}
 .nodata{font-size:13px;color:var(--muted);font-family:var(--mono);letter-spacing:.3px;}
 .sync-fails{display:grid;gap:8px;margin:10px 0;}
 .sync-fail{border-left:2px solid var(--crit);padding:4px 0 4px 10px;}
@@ -723,11 +726,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const M=(k)=>ALL.find(m=>m.key===k);
   /* Explicações: como cada número é calculado. Vêm do catálogo (fonte única com o motor), não
      de um mapa local — um texto no frontend inevitavelmente diverge do cálculo no backend. */
-  const EXPLAIN={metrics:{},views:{},attribution:""};
+  const EXPLAIN={metrics:{},views:{},catalog:{},attribution:""};
   function loadExplanations(){
     return Promise.all([jget("/api/metrics/catalog"),jget("/api/metrics/explanations")])
       .then(([cat,ex])=>{
-        cat.forEach(c=>{if(c.explanation)EXPLAIN.metrics[c.key]=c.explanation;});
+        cat.forEach(c=>{EXPLAIN.catalog[c.key]=c;if(c.explanation)EXPLAIN.metrics[c.key]=c.explanation;});
         EXPLAIN.views=ex.views||{};EXPLAIN.attribution=ex.attribution||"";
       }).catch(()=>{/* sem explicação o dashboard segue utilizável */});
   }
@@ -737,6 +740,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<button class="info-btn" data-info="'+kind+':'+key+'" data-info-label="'+l+'"'+
       ' tabindex="0" aria-label="Como '+l+' é calculado">i</button>';
   }
+  // Uma métrica que conta pessoas distintas detalha pessoas; as demais detalham eventos. Ler a
+  // agregação do catálogo evita mais uma lista paralela de chaves para manter em sincronia.
+  const countsPeople=(protoKey)=>{
+    const c=EXPLAIN.catalog[PROTO2METRIC[protoKey]||protoKey];
+    return !!c&&c.aggregation==="distinct_ratio";
+  };
   function explanationOf(kind,key){
     return kind==="view"?EXPLAIN.views[key]:EXPLAIN.metrics[PROTO2METRIC[key]||key];
   }
@@ -1909,11 +1918,41 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Evolução (12 '+state.freq.toLowerCase()+'s)</div>'+barChart(ser,labels,m.unit,220)+'</div>';
     if(m.phases)h+=phaseBlock(state.node,m);
     const mk=PROTO2METRIC[m.key];
-    if(mk)h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Itens considerados no cálculo</div><div id="drawerItems"><div class="card-note">Carregando…</div></div></div>';
+    if(mk){
+      const t=countsPeople(m.key)?"Quem usa e quem não usa":"Itens considerados no cálculo";
+      h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">'+t+'</div>'+
+        '<div id="drawerItems"><div class="card-note">Carregando…</div></div></div>';
+    }
     h+='</div>';
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
-    if(mk)loadDrawerItems(mk,m.unit);
+    if(mk){
+      if(countsPeople(m.key))loadDrawerPeople(mk);
+      else loadDrawerItems(mk,m.unit);
+    }
+  }
+  function loadDrawerPeople(mk){
+    const box=$("drawerItems");if(!box)return;
+    jget("/api/metrics/"+mk+"/people?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+      .then(rows=>{
+        const box2=$("drawerItems");if(!box2)return;
+        if(!rows.length){
+          box2.innerHTML='<div class="card-note">Ninguém com commit no período — sem base para comparar uso de IA.</div>';
+          return;
+        }
+        // A lista vem crescente; as duas pontas saem dela, então elas somam à população do card.
+        const n=Math.min(5,Math.floor(rows.length/2))||1;
+        const low=rows.slice(0,n),high=rows.slice(-n).reverse();
+        const block=(title,note,list)=>'<div class="ppl-block"><div class="ppl-head">'+title+
+          '<span class="card-note">'+note+'</span></div>'+
+          list.map(r=>'<div class="act-item"><div class="act-main"><div class="act-title">'+escHtml(r.label)+'</div>'+
+            '<div class="act-meta"><span>'+r.matching+' de '+r.total+' commits com IA</span></div></div>'+
+            '<span class="ppl-pct num">'+Math.round(r.share*100)+'%</span></div>').join("")+'</div>';
+        box2.innerHTML=
+          block("Maior uso de IA","proporção dos próprios commits",high)+
+          block("Menor uso de IA","oportunidade de conversa, não de cobrança",low);
+      })
+      .catch(()=>{const b=$("drawerItems");if(b)b.innerHTML='<div class="card-note">Não foi possível carregar.</div>';});
   }
   function loadDrawerItems(mk,unit){
     const box=$("drawerItems");if(!box)return;

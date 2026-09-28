@@ -32,7 +32,7 @@ public final class MetricsEngine {
 
   private MetricsEngine() {}
 
-  private record Matched(
+  record Matched(
       LocalDate date,
       Instant at,
       double measure,
@@ -246,7 +246,7 @@ public final class MetricsEngine {
     return new Coverage(attributed, total);
   }
 
-  private static List<Matched> match(
+  static List<Matched> match(
       StructureIndex index,
       List<RawEvent> events,
       MetricDefinition def,
@@ -309,7 +309,7 @@ public final class MetricsEngine {
     }
   }
 
-  private static List<Matched> inBucket(List<Matched> matched, Bucket bucket) {
+  static List<Matched> inBucket(List<Matched> matched, Bucket bucket) {
     List<Matched> out = new ArrayList<>();
     for (Matched m : matched) {
       if (bucket.contains(m.date())) {

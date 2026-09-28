@@ -1,5 +1,6 @@
 package com.engperf.adapter.inbound.web.metrics;
 
+import com.engperf.application.metrics.EntityShare;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
@@ -54,6 +55,18 @@ public final class MetricsDtos {
           resolved.end().toString(),
           current.start().toString(),
           resolved.equals(current));
+    }
+  }
+
+  /**
+   * One person's contribution to a metric counted in people. Carries both counts, not only the
+   * share: 1-of-2 and 40-of-80 are the same percentage and very different situations.
+   */
+  public record EntityShareDto(
+      String personId, String label, long matching, long total, double share) {
+
+    public static EntityShareDto from(EntityShare s) {
+      return new EntityShareDto(s.entityId(), s.label(), s.matching(), s.total(), s.share());
     }
   }
 
