@@ -185,6 +185,60 @@ class AdoMapperTest {
     assertThat(e.detail().get("type")).isEqualTo("tech_debt");
   }
 
+  /**
+   * O tipo cru vai junto da categoria: sem ele, revisar o mapeamento depende de adivinhar quais
+   * tipos o time usa, porque os nossos dados só guardavam o resultado.
+   */
+  @Test
+  void theEventKeepsTheRawAdoTypeAlongsideTheMappedCategory() {
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem-task.json"),
+            json("{\"value\":[]}"),
+            state -> Segment.ACTIVE,
+            Instant.parse("2026-06-30T12:00:00Z"),
+            "org",
+            "Proj",
+            "Tech Debt");
+
+    assertThat(e.detail())
+        .containsEntry("type", "tech_debt")
+        .containsEntry("ado_type", "Task")
+        .containsEntry("ado_parent_type", "Tech Debt");
+  }
+
+  @Test
+  void aWorkItemWithoutAParentCarriesNoParentType() {
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem.json"),
+            json("{\"value\":[]}"),
+            state -> Segment.ACTIVE,
+            Instant.parse("2026-06-30T12:00:00Z"),
+            "org",
+            "Proj",
+            null);
+
+    assertThat(e.detail()).containsEntry("ado_type", "Bug").doesNotContainKey("ado_parent_type");
+  }
+
+  /** O contador de não-mapeados deriva da própria tabela, para não virar uma segunda lista. */
+  @ParameterizedTest(name = "{0} reconhecido: {1}")
+  @CsvSource({
+    "Bug,true",
+    "User Story,true",
+    "Epic,true",
+    "Tech Debt,true",
+    "Documentation or Other,true",
+    "Task,true",
+    "Impediment,false",
+    "Test Case,false",
+    "'',false",
+  })
+  void isMappedTypeFollowsTheTable(String adoType, boolean mapped) {
+    assertThat(AdoMapper.isMappedType(adoType)).isEqualTo(mapped);
+  }
+
   @Test
   void buildStageMapsToDeployOnlyForTheProductionStage() {
     JsonNode build = fixture("build.json");

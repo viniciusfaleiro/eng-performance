@@ -226,7 +226,15 @@ final class AdoMapper {
     Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
     String id = wi.path("id").asText();
     Map<String, String> detail = new HashMap<>();
-    detail.put("type", workType(f.path("System.WorkItemType").asText(""), parentAdoType));
+    String adoType = f.path("System.WorkItemType").asText("");
+    detail.put("type", workType(adoType, parentAdoType));
+    // O tipo cru, além da categoria mapeada: sem ele ninguém consegue responder "quais tipos este
+    // time usa?" a partir dos nossos dados, e toda revisão do mapeamento vira palpite. Também é o
+    // que torna visível um tipo customizado novo, que hoje cairia calado no default.
+    detail.put("ado_type", adoType);
+    if (parentAdoType != null && !parentAdoType.isBlank()) {
+      detail.put("ado_parent_type", parentAdoType);
+    }
     detail.put("summary", f.path("System.Title").asText(""));
     detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
     Instant changed = f.hasNonNull("System.ChangedDate") ? instant(f, "System.ChangedDate") : null;
@@ -277,6 +285,21 @@ final class AdoMapper {
       return "docs";
     }
     return baseWorkType(parentAdoType);
+  }
+
+  /**
+   * Whether the mapping recognises this type at all — {@code false} means it landed on the default.
+   * Derivado da própria tabela, para o contador não virar uma segunda lista para manter em
+   * sincronia.
+   */
+  static boolean isMappedType(String adoType) {
+    if (adoType == null || adoType.isBlank()) {
+      return false;
+    }
+    String t = adoType.toLowerCase(Locale.ROOT);
+    return "task".equals(t)
+        || !"docs".equals(baseWorkType(t))
+        || "documentation or other".equals(t);
   }
 
   /** The mapping for a type that stands on its own — everything but a task. */
