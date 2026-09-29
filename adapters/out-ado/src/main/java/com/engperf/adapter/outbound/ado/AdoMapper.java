@@ -220,12 +220,13 @@ final class AdoMapper {
       Function<String, Segment> classify,
       Instant now,
       String org,
-      String project) {
+      String project,
+      String parentAdoType) {
     JsonNode f = wi.path("fields");
     Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
     String id = wi.path("id").asText();
     Map<String, String> detail = new HashMap<>();
-    detail.put("type", workType(f.path("System.WorkItemType").asText("")));
+    detail.put("type", workType(f.path("System.WorkItemType").asText(""), parentAdoType));
     detail.put("summary", f.path("System.Title").asText(""));
     detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
     Instant changed = f.hasNonNull("System.ChangedDate") ? instant(f, "System.ChangedDate") : null;
@@ -258,12 +259,34 @@ final class AdoMapper {
         || stage.toLowerCase(Locale.ROOT).contains(rule.toLowerCase(Locale.ROOT));
   }
 
-  private static String workType(String adoType) {
+  /**
+   * The work type of an item, given its own Azure DevOps type and that of its parent.
+   *
+   * <p>A task carries no nature of its own — "write the test" is feature work under a user story
+   * and technical debt under a debt item — so it takes the parent's. Only one level is climbed: a
+   * task whose parent is also a task falls back, because following the chain would make the number
+   * of requests a function of how deep each team nests its board.
+   */
+  static String workType(String adoType, String parentAdoType) {
+    if (!"task".equals(adoType.toLowerCase(Locale.ROOT))) {
+      return baseWorkType(adoType);
+    }
+    if (parentAdoType == null
+        || parentAdoType.isBlank()
+        || "task".equals(parentAdoType.toLowerCase(Locale.ROOT))) {
+      return "docs";
+    }
+    return baseWorkType(parentAdoType);
+  }
+
+  /** The mapping for a type that stands on its own — everything but a task. */
+  private static String baseWorkType(String adoType) {
     return switch (adoType.toLowerCase(Locale.ROOT)) {
       case "bug" -> "bug";
-      case "user story", "feature", "product backlog item" -> "feature";
-      case "task" -> "maintenance";
-      case "epic" -> "tech_debt";
+      case "user story", "feature", "product backlog item", "epic" -> "feature";
+      case "tech debt" -> "tech_debt";
+      // Redundante com o default, mas explícito: é um tipo que o time criou, não um desconhecido.
+      case "documentation or other" -> "docs";
       default -> "docs";
     };
   }

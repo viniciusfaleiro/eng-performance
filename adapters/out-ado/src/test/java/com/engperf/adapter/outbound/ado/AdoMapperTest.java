@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /** Maps recorded Azure DevOps JSON to the RawEvent contract the metric groups consume. */
 class AdoMapperTest {
@@ -130,6 +132,59 @@ class AdoMapperTest {
     assertThat(e.detail().get("url")).contains("commit/abc123");
   }
 
+  /**
+   * O mapeamento era um placeholder não documentado: Task caía sempre em "manutenção" (e Task é o
+   * tipo mais numeroso da maioria dos boards, então o gráfico dizia que o time só fazia manutenção)
+   * e Epic caía em dívida técnica.
+   */
+  @ParameterizedTest(name = "{0} (pai {1}) → {2}")
+  @CsvSource({
+    "Bug,,bug",
+    "User Story,,feature",
+    "Feature,,feature",
+    "Product Backlog Item,,feature",
+    "Epic,,feature",
+    "Tech Debt,,tech_debt",
+    "tech debt,,tech_debt",
+    "TECH DEBT,,tech_debt",
+    "Documentation or Other,,docs",
+    "Impediment,,docs",
+    "Task,User Story,feature",
+    "Task,Epic,feature",
+    "Task,Bug,bug",
+    "Task,Tech Debt,tech_debt",
+    "Task,Documentation or Other,docs",
+    "task,user story,feature",
+    "Task,,docs",
+    "Task,Task,docs",
+    "Task,Coisa Estranha,docs",
+  })
+  void workTypeMapping(String adoType, String parentType, String expected) {
+    assertThat(AdoMapper.workType(adoType, parentType)).isEqualTo(expected);
+  }
+
+  @Test
+  void aTaskWithABlankParentTypeFallsBack() {
+    assertThat(AdoMapper.workType("Task", null)).isEqualTo("docs");
+    assertThat(AdoMapper.workType("Task", "  ")).isEqualTo("docs");
+  }
+
+  /** Fiação: o tipo do pai chega ao detalhe do evento, que é o que o painel consome. */
+  @Test
+  void aTaskEventCarriesTheParentsWorkType() {
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem-task.json"),
+            json("{\"value\":[]}"),
+            state -> Segment.ACTIVE,
+            Instant.parse("2026-06-30T12:00:00Z"),
+            "org",
+            "Proj",
+            "Tech Debt");
+
+    assertThat(e.detail().get("type")).isEqualTo("tech_debt");
+  }
+
   @Test
   void buildStageMapsToDeployOnlyForTheProductionStage() {
     JsonNode build = fixture("build.json");
@@ -194,7 +249,7 @@ class AdoMapperTest {
     Instant now = Instant.parse("2026-06-11T00:00:00Z");
 
     RawEvent e =
-        AdoMapper.workItem(fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj");
+        AdoMapper.workItem(fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj", null);
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
@@ -221,7 +276,8 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-11T00:00:00Z"),
             "org",
-            "Proj");
+            "Proj",
+            null);
     assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
     assertThat(e.detail()).doesNotContainKey("active_h").doesNotContainKey("completed");
   }
@@ -239,7 +295,8 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-10T13:00:00Z"),
             "org",
-            "Proj");
+            "Proj",
+            null);
     assertThat(e.detail().get("in_progress")).isEqualTo("1");
     assertThat(e.detail()).doesNotContainKey("completed").doesNotContainKey("cycle_h");
     assertThat(e.detail().get("active_h")).isEqualTo("2.0"); // 11:00 → now 13:00
