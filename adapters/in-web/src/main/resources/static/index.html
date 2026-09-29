@@ -58,6 +58,7 @@ h1,h2,h3{margin:0;}
 .brand-sub{font-size:10px;color:var(--on-surface-var);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);}
 .sidebar-scroll{overflow-y:auto;flex:1;min-height:0;padding:4px 10px 24px;}
 .sidebar-foot{flex:0 0 auto;border-top:1px solid var(--outline-var);padding:10px 18px;font-size:10px;letter-spacing:.6px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.items-btn{font-size:8px;}
 .ppl-block{margin-bottom:14px;}
 .ppl-head{display:flex;align-items:baseline;gap:10px;font-size:12px;font-weight:600;margin-bottom:6px;}
 .ppl-pct{font-size:13px;font-weight:600;align-self:center;}
@@ -746,6 +747,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const c=EXPLAIN.catalog[PROTO2METRIC[protoKey]||protoKey];
     return !!c&&c.aggregation==="distinct_ratio";
   };
+  // Abrir os itens é um gesto próprio: o clique no card seleciona a métrica do gráfico, e sobrepor
+  // os dois no mesmo clique tornaria o comportamento imprevisível.
+  function itemsBtn(key,label){
+    const l=escHtml(label||key);
+    return '<button class="info-btn items-btn" data-items="'+key+'" data-items-label="'+l+'"'+
+      ' tabindex="0" aria-label="Ver os itens considerados em '+l+'">☰</button>';
+  }
   function explanationOf(kind,key){
     return kind==="view"?EXPLAIN.views[key]:EXPLAIN.metrics[PROTO2METRIC[key]||key];
   }
@@ -989,7 +997,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,period:null};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,drawerNode:null,period:null};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -1299,7 +1307,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<div class="card"><div class="card-label">'+label+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div>'+(spark||"")+foot+'</div>';
   }
   function selCard(key,label,value,sub,chip,selected){
-    return '<div class="card click'+(selected?" sel":"")+'" data-im="'+key+'" role="button" tabindex="0" aria-pressed="'+selected+'"><div class="card-label">'+label+infoBtn("metric",key,label)+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div><div class="card-foot">'+(chip||'')+'<span class="card-note">'+sub+'</span></div></div>';
+    return '<div class="card click'+(selected?" sel":"")+'" data-im="'+key+'" role="button" tabindex="0" aria-pressed="'+selected+'"><div class="card-label">'+label+infoBtn("metric",key,label)+itemsBtn(key,label)+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div><div class="card-foot">'+(chip||'')+'<span class="card-note">'+sub+'</span></div></div>';
   }
   function miniBar(label,val,max,color){
     return '<div style="display:grid;grid-template-columns:160px 1fr auto;gap:12px;align-items:center;padding:6px 0"><span style="font-size:12.5px">'+label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,val/max*100).toFixed(0)+'%;background:'+color+'"></div></div><span class="num" style="font-size:13px;font-weight:600">'+val+'</span></div>';
@@ -1776,6 +1784,21 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const [kind,key]=btn.dataset.info.split(":");
     openExplain(kind,key,btn.dataset.infoLabel||(M0(key)&&M0(key).label)||key);
   },true);
+  // Captura + stopPropagation pelo mesmo motivo do ícone de explicação: o card em volta tem o
+  // próprio keydown com preventDefault(), que mataria a ativação nativa do botão.
+  function bindItemsAffordance(type){
+    document.addEventListener(type,(ev)=>{
+      if(type==="keydown"&&ev.key!=="Enter"&&ev.key!==" ")return;
+      const btn=ev.target.closest&&ev.target.closest("[data-items]");
+      if(!btn)return;
+      ev.preventDefault();ev.stopPropagation();
+      // O painel individual só é renderizado com a pessoa como nó atual (ver viewIndividual),
+      // então state.node já é ela; nos demais painéis o padrão do openDrawer vale.
+      openDrawer(btn.dataset.items);
+    },true);
+  }
+  bindItemsAffordance("click");
+  bindItemsAffordance("keydown");
   // Label lookup that tolerates view keys (which have no metric definition).
   function M0(key){try{return M(key);}catch(e){return null;}}
   function openModal(title,body,onSave,saveLabel){
@@ -1905,8 +1928,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   /* ---------- Drawer (metric detail) ---------- */
-  function openDrawer(key){
+  // `node` é o nó a consultar; o padrão é o da navegação. O painel individual passa a pessoa
+  // exibida — sem isso, o drawer listaria itens do time inteiro sob o título de uma pessoa.
+  const drawerNode=()=>state.drawerNode||state.node;
+  function openDrawer(key,node){
     state.openDrawerKey=key;
+    state.drawerNode=node||state.node;
     const m=M(key);const s=trendSnap(m);const labels=periodLabels(state.freq,12);
     const ser=[{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}];
     let tier=m.dora?'<span class="tier '+TC[tierOf(m.key,s.cur)]+'">'+tierOf(m.key,s.cur)+'</span>':'';
@@ -1933,7 +1960,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function loadDrawerPeople(mk){
     const box=$("drawerItems");if(!box)return;
-    jget("/api/metrics/"+mk+"/people?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/metrics/"+mk+"/people?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(rows=>{
         const box2=$("drawerItems");if(!box2)return;
         if(!rows.length){
@@ -1956,7 +1983,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function loadDrawerItems(mk,unit){
     const box=$("drawerItems");if(!box)return;
-    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(items=>{
         const box2=$("drawerItems");if(!box2)return; // drawer may have been closed/reopened meanwhile
         if(!items.length){box2.innerHTML='<div class="card-note">Nenhum item no período atual.</div>';return;}
@@ -1972,7 +1999,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       })
       .catch(()=>{const box3=$("drawerItems");if(box3)box3.innerHTML='<div class="callout danger">Não foi possível carregar os itens.</div>';});
   }
-  function closeDrawer(){state.openDrawerKey=null;$("drawer").classList.remove("open");$("scrim").classList.remove("open");}
+  function closeDrawer(){state.openDrawerKey=null;state.drawerNode=null;$("drawer").classList.remove("open");$("scrim").classList.remove("open");}
   $("scrim").addEventListener("click",closeDrawer);
 
   function openActivityDrawer(id){
