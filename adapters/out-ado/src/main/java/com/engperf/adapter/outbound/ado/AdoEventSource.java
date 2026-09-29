@@ -284,9 +284,13 @@ public final class AdoEventSource implements AdoEventSourcePort {
     ParentTypeResolver.resolve(client, org, collected, typeById, token, WORKITEM_ID_BATCH);
 
     Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
+    UnmappedTypes unmapped = new UnmappedTypes();
     Instant now = Instant.now();
     for (JsonNode wi : collected) {
       String type = wi.path("fields").path("System.WorkItemType").asText("");
+      if (!AdoMapper.isMappedType(type)) {
+        unmapped.record(type);
+      }
       Function<String, Segment> classify =
           classifierByType.computeIfAbsent(type, t -> stateClassifier(org, proj, t, token));
       // The update history (one call per item; no batch endpoint) gives the state transitions.
@@ -297,6 +301,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
       String parentType = typeById.get(wi.path("fields").path("System.Parent").asText(""));
       events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj, parentType));
     }
+    unmapped.report(org, proj);
     return collected.size();
   }
 
