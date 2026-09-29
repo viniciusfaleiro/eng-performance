@@ -262,11 +262,12 @@ public final class AdoEventSource implements AdoEventSourcePort {
     }
     String fields =
         "System.WorkItemType,System.Title,System.ChangedDate,System.CreatedDate,"
-            + "System.AssignedTo";
-    Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
-    Instant now = Instant.now();
-    int n = 0;
-    // ADO caps the workitems batch GET at 200 ids per request — page the id list.
+            + "System.AssignedTo,System.Parent";
+    // Três fases. Coletar tudo antes de mapear é o que permite resolver os pais em lote: uma Task é
+    // classificada pelo pai, e perguntar item a item multiplicaria o custo pelo tipo mais numeroso
+    // do board.
+    List<JsonNode> collected = new ArrayList<>();
+    Map<String, String> typeById = new HashMap<>();
     for (int i = 0; i < ids.size(); i += WORKITEM_ID_BATCH) {
       StringJoiner batch = new StringJoiner(",");
       ids.subList(i, Math.min(i + WORKITEM_ID_BATCH, ids.size())).forEach(batch::add);
@@ -274,19 +275,29 @@ public final class AdoEventSource implements AdoEventSourcePort {
           client.get(
               org + "/_apis/wit/workitems?ids=" + batch + "&fields=" + fields + "&" + API, token);
       for (JsonNode wi : arr(items)) {
-        String type = wi.path("fields").path("System.WorkItemType").asText("");
-        Function<String, Segment> classify =
-            classifierByType.computeIfAbsent(type, t -> stateClassifier(org, proj, t, token));
-        // The update history (one call per item; no batch endpoint) gives the state transitions.
-        JsonNode updates =
-            client.get(
-                org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
-                token);
-        events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj));
-        n++;
+        collected.add(wi);
+        // O pai que também mudou na janela já vem aqui — e então não custa chamada nenhuma.
+        typeById.put(
+            wi.path("id").asText(), wi.path("fields").path("System.WorkItemType").asText(""));
       }
     }
-    return n;
+    ParentTypeResolver.resolve(client, org, collected, typeById, token, WORKITEM_ID_BATCH);
+
+    Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
+    Instant now = Instant.now();
+    for (JsonNode wi : collected) {
+      String type = wi.path("fields").path("System.WorkItemType").asText("");
+      Function<String, Segment> classify =
+          classifierByType.computeIfAbsent(type, t -> stateClassifier(org, proj, t, token));
+      // The update history (one call per item; no batch endpoint) gives the state transitions.
+      JsonNode updates =
+          client.get(
+              org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
+              token);
+      String parentType = typeById.get(wi.path("fields").path("System.Parent").asText(""));
+      events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj, parentType));
+    }
+    return collected.size();
   }
 
   /**
