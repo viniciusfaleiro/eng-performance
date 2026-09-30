@@ -32,7 +32,7 @@ val ossIndexEnabled = !ossIndexUser.isNullOrBlank() && !ossIndexToken.isNullOrBl
 
 allprojects {
     group = "com.engperf"
-    version = "0.0.11"
+    version = "0.0.12"
 
     repositories {
         mavenCentral()
