@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,12 @@ public class JpaEventStore implements EventStorePort {
         .stream()
         .map(JpaEventStore::toDomain)
         .toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Set<String> parentWorkItemIds() {
+    return Set.copyOf(events.findDistinctParentEventIds());
   }
 
   @Override

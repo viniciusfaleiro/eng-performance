@@ -90,4 +90,33 @@ class JpaEventStoreTest {
               assertThat(e.detail()).containsEntry("num", "1").containsEntry("den", "1");
             });
   }
+
+  /**
+   * O índice de pais é do corpus inteiro. O teste prova as duas metades: um pai referenciado por um
+   * filho de janeiro aparece mesmo que ninguém leia janeiro, e um item sem pai não aparece. Se o
+   * índice fosse recortado por período, a mesma User Story seria contêiner para quem olha o
+   * trimestre e trabalho folha para quem olha a semana.
+   */
+  @Test
+  void parentIdsComeFromTheWholeCorpusRegardlessOfAnyWindow() {
+    assertThat(store.parentWorkItemIds()).isEmpty(); // sem pais: conjunto vazio, não falha
+
+    store.saveAll(
+        List.of(
+            workItem("wi:10", "2026-06-10T10:00:00Z", null), // a própria mãe, sem pai
+            workItem("wi:11", "2026-06-11T10:00:00Z", "wi:10"),
+            workItem("wi:12", "2026-06-12T10:00:00Z", "wi:10"), // pai repetido → um id só
+            workItem("wi:13", "2026-01-05T10:00:00Z", "wi:99"))); // filho fora de qualquer janela
+
+    assertThat(store.parentWorkItemIds()).containsExactlyInAnyOrder("wi:10", "wi:99");
+  }
+
+  private static RawEvent workItem(String id, String at, String parentEventId) {
+    Map<String, String> detail =
+        parentEventId == null
+            ? Map.of("type", "feature")
+            : Map.of("parent_event_id", parentEventId);
+    return new RawEvent(
+        id, EventType.WORKITEM, Instant.parse(at), null, "id-ana", null, null, false, detail);
+  }
 }

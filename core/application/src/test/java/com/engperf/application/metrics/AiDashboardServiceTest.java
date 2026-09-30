@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 
@@ -250,6 +251,11 @@ class AiDashboardServiceTest {
           .filter(e -> e.type() == type)
           .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
           .toList();
+    }
+
+    @Override
+    public Set<String> parentWorkItemIds() {
+      return Set.of();
     }
 
     @Override

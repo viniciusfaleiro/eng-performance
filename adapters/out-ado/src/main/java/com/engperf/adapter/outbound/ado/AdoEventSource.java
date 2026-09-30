@@ -298,8 +298,9 @@ public final class AdoEventSource implements AdoEventSourcePort {
           client.get(
               org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
               token);
-      String parentType = typeById.get(wi.path("fields").path("System.Parent").asText(""));
-      events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj, parentType));
+      String parentId = wi.path("fields").path("System.Parent").asText("");
+      String parentType = typeById.get(parentId);
+      events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj, parentType, parentId));
     }
     unmapped.report(org, proj);
     return collected.size();

@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -135,6 +136,11 @@ class AdoStatsServiceTest {
           .filter(e -> e.type() == type)
           .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
           .toList();
+    }
+
+    @Override
+    public Set<String> parentWorkItemIds() {
+      return Set.of();
     }
 
     @Override
