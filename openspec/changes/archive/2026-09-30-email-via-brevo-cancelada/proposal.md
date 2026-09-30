@@ -1,3 +1,6 @@
+> **CANCELADA em 2026-09-30, sem nenhuma tarefa implementada.** Ver `CANCELLED.md` ao lado. O texto
+> abaixo é o que se propunha na época e não descreve o sistema.
+
 ## Why
 
 A rede do ambiente de homologação bloqueia SMTP de saída de forma silenciosa: a conexão TCP para
