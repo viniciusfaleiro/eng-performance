@@ -107,12 +107,25 @@ public final class MetricsDtos {
     }
   }
 
-  /** How the metric is calculated, in reader-facing text — what the "i" icon opens. */
+  /**
+   * How the metric is calculated, in reader-facing text — what the "i" icon opens.
+   *
+   * <p>{@code placement} is which date or interval puts an item inside the selected period. It
+   * travels as its own field because a sentence about it is what was missing when the WIP text and
+   * the WIP calculation disagreed: both readings fit the same words, so nothing on screen could
+   * reveal it.
+   */
   public record ExplanationDto(
-      String rule, String source, String included, String excluded, String example) {
+      String rule,
+      String source,
+      String included,
+      String excluded,
+      String placement,
+      String example) {
 
     public static ExplanationDto from(MetricExplanation e) {
-      return new ExplanationDto(e.rule(), e.source(), e.included(), e.excluded(), e.example());
+      return new ExplanationDto(
+          e.rule(), e.source(), e.included(), e.excluded(), e.placement(), e.example());
     }
   }
 

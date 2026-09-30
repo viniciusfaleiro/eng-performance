@@ -19,6 +19,10 @@ final class FakeEvents implements EventStorePort {
     all.add(e);
   }
 
+  void clear() {
+    all.clear();
+  }
+
   @Override
   public void saveAll(Collection<RawEvent> events) {
     all.addAll(events);
@@ -34,6 +38,11 @@ final class FakeEvents implements EventStorePort {
 
   // Derivado do corpus inteiro, como o adapter real: é justamente a diferença entre "do corpus" e
   // "do período" que os testes da regra de folha precisam poder observar.
+  @Override
+  public List<RawEvent> findByType(EventType type) {
+    return findByTypeBetween(type, Instant.MIN, Instant.MAX);
+  }
+
   @Override
   public Set<String> parentWorkItemIds() {
     return all.stream()

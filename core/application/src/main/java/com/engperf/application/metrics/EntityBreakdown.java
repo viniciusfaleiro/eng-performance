@@ -5,6 +5,7 @@ import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,11 +37,13 @@ final class EntityBreakdown {
       MetricDefinition def,
       String nodeId,
       Period period,
+      Instant readNow,
       Predicate<RawEvent> population) {
     List<Matched> ms =
         MetricsEngine.inBucket(
-            MetricsEngine.match(index, events, def, nodeId, population),
-            new Bucket(period.start(), period.end()));
+            MetricsEngine.match(index, events, def, nodeId, population, readNow),
+            new Bucket(period.start(), period.end()),
+            def);
     Map<String, long[]> byEntity = new LinkedHashMap<>(); // [matching, total]
     for (Matched m : ms) {
       long[] counts = byEntity.computeIfAbsent(m.entity(), k -> new long[2]);

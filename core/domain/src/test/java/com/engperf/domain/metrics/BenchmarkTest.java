@@ -9,17 +9,8 @@ class BenchmarkTest {
   private static MetricDefinition dora(
       String key, Aggregation agg, Direction dir, TierBands bands) {
     return new MetricDefinition(
-        key,
-        key,
-        "dora",
-        EventType.DEPLOY,
-        AttributionScope.REPO,
-        agg,
-        MetricDefinition.VALUE,
-        "u",
-        dir,
-        bands,
-        null);
+            key, key, "dora", EventType.DEPLOY, AttributionScope.REPO, agg, "u", dir)
+        .graded(bands);
   }
 
   private static final MetricDefinition LEAD_TIME =

@@ -89,12 +89,16 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     // Um índice só, do corpus inteiro: a pergunta "este item tem filhas?" não pode ter resposta
     // diferente por janela, senão a mesma User Story é contêiner para quem olha o trimestre e
     // trabalho folha para quem olha a semana.
+    // O relógio da leitura, e não o da ingestão: um item ainda aberto fica em progresso até agora,
+    // senão as horas dele param na última sincronização e a mesma tela passa a ter duas noções de
+    // "em progresso até quando".
     WorkDistribution distribution =
         WorkDistribution.of(
             within(workItems, periodFrom, periodTo),
             events.parentWorkItemIds(),
             periodFrom,
-            periodTo);
+            periodTo,
+            clock.instant());
 
     return new IndividualDashboard(
         personNodeId,

@@ -12,6 +12,8 @@ interface RawEventJpaRepository extends JpaRepository<RawEventEntity, String> {
   List<RawEventEntity> findByTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThan(
       EventType type, Instant fromInclusive, Instant toExclusive);
 
+  List<RawEventEntity> findByType(EventType type);
+
   /**
    * The distinct parents referenced by any work item. Native because the relationship lives inside
    * the {@code jsonb} detail; one column, no join, and the result grows with the number of items

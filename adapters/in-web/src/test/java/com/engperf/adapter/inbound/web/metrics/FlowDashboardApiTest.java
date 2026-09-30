@@ -44,17 +44,15 @@ class FlowDashboardApiTest {
 
   private static final MetricDefinition CYCLE =
       new MetricDefinition(
-          "cycle_time",
-          "Cycle Time (código)",
-          "fluxo",
-          EventType.PR,
-          AttributionScope.PERSON,
-          Aggregation.MEDIAN,
-          "cycle_h",
-          "h",
-          Direction.LOWER_BETTER,
-          null,
-          null);
+              "cycle_time",
+              "Cycle Time (código)",
+              "fluxo",
+              EventType.PR,
+              AttributionScope.PERSON,
+              Aggregation.MEDIAN,
+              "h",
+              Direction.LOWER_BETTER)
+          .reading("cycle_h");
 
   private MockMvc mvc;
 

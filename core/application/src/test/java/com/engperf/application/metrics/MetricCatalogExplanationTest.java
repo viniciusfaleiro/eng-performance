@@ -59,8 +59,53 @@ class MetricCatalogExplanationTest {
               assertThat(e.source()).as("fonte de %s", d.key()).isNotBlank();
               assertThat(e.included()).as("inclusões de %s", d.key()).isNotBlank();
               assertThat(e.excluded()).as("exclusões de %s", d.key()).isNotBlank();
+              assertThat(e.placement()).as("colocação no tempo de %s", d.key()).isNotBlank();
               assertThat(e.example()).as("exemplo de %s", d.key()).isNotBlank();
             });
+  }
+
+  /**
+   * O texto do WIP prometia "itens que estiveram em andamento em algum momento do período" enquanto
+   * a conta contava itens cuja última alteração caiu no período. As duas leituras cabem na mesma
+   * frase, então nada na tela podia revelar a divergência.
+   *
+   * <p>Isto não prova que o texto está certo — nenhum teste prova isso. Prende o vocabulário em que
+   * a divergência se esconde: a colocação no tempo do WIP tem de falar de intervalo, e não pode
+   * dizer que item concluído fica de fora, porque agora ele conta.
+   */
+  @Test
+  void theWipExplanationDescribesTheIntervalRuleAndNotTheOldOne() {
+    MetricExplanation wip =
+        catalog.all().stream()
+            .filter(d -> d.key().equals("wip"))
+            .findFirst()
+            .orElseThrow()
+            .explained()
+            .orElseThrow();
+
+    assertThat(wip.placement()).containsIgnoringCase("intervalo").containsIgnoringCase("atravess");
+    assertThat(wip.placement())
+        .as("a não-aditividade precisa estar dita onde o número é lido")
+        .containsIgnoringCase("não é aditiva");
+    assertThat(wip.excluded())
+        .as("item concluído dentro do período passou a contar")
+        .doesNotContainIgnoringCase("Itens concluídos e");
+    assertThat(wip.included()).containsIgnoringCase("concluídos dentro dele");
+  }
+
+  /** Quem conta só item concluído tem de dizer isso na colocação no tempo. */
+  @Test
+  void theCompletedOnlyMetricsSayTheyArePlacedByCompletion() {
+    for (String key : List.of("flow_efficiency", "active_time", "waiting_time", "review_time")) {
+      MetricExplanation e =
+          catalog.all().stream()
+              .filter(d -> d.key().equals(key))
+              .findFirst()
+              .orElseThrow()
+              .explained()
+              .orElseThrow();
+      assertThat(e.placement()).as("colocação no tempo de %s", key).containsIgnoringCase("concluí");
+    }
   }
 
   @Test

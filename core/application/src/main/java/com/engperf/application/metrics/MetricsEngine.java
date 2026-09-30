@@ -1,17 +1,18 @@
 package com.engperf.application.metrics;
 
 import com.engperf.application.metrics.StructureIndex.Attribution;
-import com.engperf.domain.metrics.Aggregation;
 import com.engperf.domain.metrics.Aggregations;
 import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Frequency;
+import com.engperf.domain.metrics.InProgressSpans;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -32,6 +33,15 @@ public final class MetricsEngine {
 
   private MetricsEngine() {}
 
+  private static final InProgressSpans EMPTY_SPANS = new InProgressSpans(List.of());
+
+  /**
+   * One event that attributed to the queried node.
+   *
+   * <p>{@code spans} carries the event's in-progress intervals, read once here rather than per
+   * bucket: the trend chart asks about twelve buckets and the same parse would otherwise run twelve
+   * times per item. It is empty for every metric read at an instant, which is all of them but one.
+   */
   record Matched(
       LocalDate date,
       Instant at,
@@ -40,7 +50,8 @@ public final class MetricsEngine {
       double numerator,
       double denominator,
       String entity,
-      RawEvent source) {}
+      RawEvent source,
+      InProgressSpans spans) {}
 
   public static MetricSeries series(
       StructureIndex index,
@@ -48,9 +59,9 @@ public final class MetricsEngine {
       MetricDefinition def,
       String nodeId,
       Period period,
-      LocalDate today,
+      Instant readNow,
       int bucketCount) {
-    return series(index, events, def, nodeId, period, today, bucketCount, e -> true);
+    return series(index, events, def, nodeId, period, readNow, bucketCount, e -> true);
   }
 
   /** As {@link #series}, but only events matching {@code population} feed the metric. */
@@ -60,17 +71,21 @@ public final class MetricsEngine {
       MetricDefinition def,
       String nodeId,
       Period period,
-      LocalDate today,
+      Instant readNow,
       int bucketCount,
       Predicate<RawEvent> population) {
 
     Frequency freq = period.frequency();
-    List<Matched> matched = match(index, events, def, nodeId, population);
+    // Um relógio só. O motor precisava de uma data (o período em curso) e passou a precisar de um
+    // instante (até quando um item aberto está em progresso); receber os dois convidaria os dois a
+    // divergirem.
+    LocalDate today = LocalDate.ofInstant(readNow, ZoneOffset.UTC);
+    List<Matched> matched = match(index, events, def, nodeId, population, readNow);
     List<Bucket> buckets = period.slices(bucketCount);
 
     double[] values = new double[buckets.size()];
     for (int i = 0; i < buckets.size(); i++) {
-      values[i] = aggregate(def, inBucket(matched, buckets.get(i)));
+      values[i] = aggregate(def, inBucket(matched, buckets.get(i), def));
     }
 
     int last = buckets.size() - 1;
@@ -90,7 +105,7 @@ public final class MetricsEngine {
         // Compare the elapsed slice against the same elapsed slice of the previous bucket.
         LocalDate prevStart = buckets.get(i - 1).start();
         Bucket sameSlice = new Bucket(prevStart, prevStart.plusDays(elapsed));
-        previous = aggregate(def, inBucket(matched, sameSlice));
+        previous = aggregate(def, inBucket(matched, sameSlice, def));
       } else {
         previous = values[i - 1];
       }
@@ -109,9 +124,9 @@ public final class MetricsEngine {
       MetricDefinition def,
       String nodeId,
       Period period,
-      LocalDate today,
+      Instant readNow,
       int bucketCount) {
-    return card(index, events, def, nodeId, period, today, bucketCount, e -> true);
+    return card(index, events, def, nodeId, period, readNow, bucketCount, e -> true);
   }
 
   /** As {@link #card}, but only events matching {@code population} feed the metric. */
@@ -121,12 +136,14 @@ public final class MetricsEngine {
       MetricDefinition def,
       String nodeId,
       Period period,
-      LocalDate today,
+      Instant readNow,
       int bucketCount,
       Predicate<RawEvent> population) {
-    List<Matched> matched = match(index, events, def, nodeId, population);
+    List<Matched> matched = match(index, events, def, nodeId, population, readNow);
     return new MetricCard(
-        def, selectedValue(matched, def, period, today), coverage(index, events, def, population));
+        def,
+        selectedValue(matched, def, period, LocalDate.ofInstant(readNow, ZoneOffset.UTC)),
+        coverage(index, events, def, population));
   }
 
   /**
@@ -139,7 +156,7 @@ public final class MetricsEngine {
    */
   private static MetricValue selectedValue(
       List<Matched> matched, MetricDefinition def, Period period, LocalDate today) {
-    double now = aggregate(def, inBucket(matched, new Bucket(period.start(), period.end())));
+    double now = aggregate(def, inBucket(matched, new Bucket(period.start(), period.end()), def));
     Period before = period.previous();
     // A fatia decorrida só existe para o balde que ainda está correndo. Um período passado já
     // terminou, e um intervalo escolhido é por definição o que foi pedido: comparar "1 dia de
@@ -150,100 +167,7 @@ public final class MetricsEngine {
                 before.start(),
                 before.start().plusDays(period.frequency().elapsedDays(period.start(), today)))
             : new Bucket(before.start(), before.end());
-    return MetricValue.of(now, aggregate(def, inBucket(matched, baseline)), def.direction());
-  }
-
-  /**
-   * The raw events considered for {@code def} at {@code nodeId} in the bucket starting at {@code
-   * bucketStart} — the exact same attribution/population {@link #series} uses, so this can never
-   * list something the displayed value didn't actually use. Each item is flagged {@code counted}
-   * exactly as {@link #aggregate} would use it, mirrored case-by-case per {@link
-   * com.engperf.domain.metrics.Aggregation} so the list never drifts from the number it explains.
-   */
-  public static List<MetricDrilldownItem> items(
-      StructureIndex index,
-      List<RawEvent> events,
-      MetricDefinition def,
-      String nodeId,
-      Period period,
-      Predicate<RawEvent> population) {
-    List<Matched> matched = match(index, events, def, nodeId, population);
-    Bucket bucket = new Bucket(period.start(), period.end());
-    List<Matched> ms = inBucket(matched, bucket);
-    return select(def, ms).stream().map(s -> toItem(def, s)).toList();
-  }
-
-  private record Selected(Matched matched, boolean counted, String excludedReason) {}
-
-  private static List<Selected> select(MetricDefinition def, List<Matched> ms) {
-    return switch (def.aggregation()) {
-      // SUM/RATIO/DISTINCT_RATIO: aggregate() uses every matched event, so every item counts.
-      case SUM, RATIO, DISTINCT_RATIO -> ms.stream().map(m -> new Selected(m, true, null)).toList();
-      // MEDIAN: aggregate() filters to Matched::hasMeasure — mirror that filter here.
-      case MEDIAN ->
-          ms.stream()
-              .map(m -> new Selected(m, m.hasMeasure(), m.hasMeasure() ? null : "sem medida"))
-              .toList();
-      case SNAPSHOT -> selectSnapshot(ms);
-    };
-  }
-
-  /** Mirrors {@link #snapshot}: only each entity's latest measured event counts. */
-  private static List<Selected> selectSnapshot(List<Matched> ms) {
-    Map<String, Matched> latestByEntity = new HashMap<>();
-    for (Matched m : ms) {
-      if (!m.hasMeasure()) {
-        continue;
-      }
-      Matched cur = latestByEntity.get(m.entity());
-      if (cur == null || m.at().isAfter(cur.at())) {
-        latestByEntity.put(m.entity(), m);
-      }
-    }
-    List<Selected> out = new ArrayList<>();
-    for (Matched m : ms) {
-      if (!m.hasMeasure()) {
-        out.add(new Selected(m, false, "sem medida"));
-        continue;
-      }
-      boolean counted = latestByEntity.get(m.entity()) == m;
-      out.add(
-          new Selected(
-              m, counted, counted ? null : "superado por evento mais recente da mesma entidade"));
-    }
-    return out;
-  }
-
-  private static MetricDrilldownItem toItem(MetricDefinition def, Selected s) {
-    Matched m = s.matched();
-    RawEvent e = m.source();
-    String label = e.detail().getOrDefault("summary", "");
-    if (label.isBlank()) {
-      label = e.id();
-    }
-    return new MetricDrilldownItem(
-        e.id(),
-        e.type(),
-        e.detail().getOrDefault("url", ""),
-        label,
-        m.entity(),
-        e.occurredAt(),
-        contribution(def, m, s),
-        s.counted(),
-        s.excludedReason());
-  }
-
-  /**
-   * What this event actually added to the aggregated value. A SUM counts events ({@code
-   * aggregate()} returns {@code ms.size()}), so a counted event contributes exactly 1 — reporting
-   * its raw measure would show 0 for events that carry no numeric value, like a commit. Every other
-   * aggregation reads the measure itself.
-   */
-  private static double contribution(MetricDefinition def, Matched m, Selected s) {
-    if (def.aggregation() == Aggregation.SUM) {
-      return s.counted() ? 1 : 0;
-    }
-    return m.measure();
+    return MetricValue.of(now, aggregate(def, inBucket(matched, baseline, def)), def.direction());
   }
 
   public static Coverage coverage(
@@ -275,7 +199,8 @@ public final class MetricsEngine {
       List<RawEvent> events,
       MetricDefinition def,
       String nodeId,
-      Predicate<RawEvent> population) {
+      Predicate<RawEvent> population,
+      Instant readNow) {
     List<Matched> matched = new ArrayList<>();
     for (RawEvent e : events) {
       if (!population.test(e)) {
@@ -293,7 +218,8 @@ public final class MetricsEngine {
                 detail(e, "num", e.ai() ? 1.0 : 0.0),
                 detail(e, "den", 1.0),
                 attr.get().entityKey(),
-                e));
+                e,
+                def.readsIntervals() ? InProgressSpans.of(e, readNow) : EMPTY_SPANS));
       }
     }
     return matched;
@@ -333,14 +259,34 @@ public final class MetricsEngine {
     }
   }
 
-  static List<Matched> inBucket(List<Matched> matched, Bucket bucket) {
+  /**
+   * The matched events a period contains — the <strong>only</strong> place that decides it.
+   *
+   * <p>The card's value, every point of the trend chart and the openable item list all come through
+   * here, which is why a change of concept has one place to happen and why the list cannot disagree
+   * with the number above it.
+   *
+   * <p>An instant metric is contained by the period holding the event's own date. An interval
+   * metric is contained by every period its in-progress interval overlaps, and the event's date
+   * decides nothing — an item left in progress and untouched carries an old date and is still in
+   * progress today.
+   */
+  static List<Matched> inBucket(List<Matched> matched, Bucket bucket, MetricDefinition def) {
     List<Matched> out = new ArrayList<>();
+    boolean byInterval = def.readsIntervals();
+    Instant from = byInterval ? startOf(bucket.start()) : null;
+    Instant to = byInterval ? startOf(bucket.endExclusive()) : null;
     for (Matched m : matched) {
-      if (bucket.contains(m.date())) {
+      boolean in = byInterval ? m.spans().overlaps(from, to) : bucket.contains(m.date());
+      if (in) {
         out.add(m);
       }
     }
     return out;
+  }
+
+  private static Instant startOf(LocalDate date) {
+    return date.atStartOfDay(ZoneOffset.UTC).toInstant();
   }
 
   private static double aggregate(MetricDefinition def, List<Matched> ms) {

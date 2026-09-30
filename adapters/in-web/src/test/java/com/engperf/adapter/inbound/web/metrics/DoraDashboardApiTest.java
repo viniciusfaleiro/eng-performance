@@ -45,17 +45,15 @@ class DoraDashboardApiTest {
 
   private static final MetricDefinition LEAD_TIME =
       new MetricDefinition(
-          "lead_time",
-          "Lead Time for Changes",
-          "dora",
-          EventType.DEPLOY,
-          AttributionScope.REPO,
-          Aggregation.MEDIAN,
-          MetricDefinition.VALUE,
-          "h",
-          Direction.LOWER_BETTER,
-          new TierBands(24, 168, 720),
-          null);
+              "lead_time",
+              "Lead Time for Changes",
+              "dora",
+              EventType.DEPLOY,
+              AttributionScope.REPO,
+              Aggregation.MEDIAN,
+              "h",
+              Direction.LOWER_BETTER)
+          .graded(new TierBands(24, 168, 720));
 
   private MockMvc mvc;
 

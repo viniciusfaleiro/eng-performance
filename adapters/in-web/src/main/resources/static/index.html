@@ -837,6 +837,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     else{
       body='<div class="xp-rule">'+escHtml(e.rule)+'</div>'+
         row("Fonte",e.source)+row("Entra na conta",e.included)+row("Fica de fora",e.excluded)+
+        // Qual data ou intervalo coloca o item no período: é a linha que faltava quando o texto do
+        // WIP e a conta do WIP discordavam, porque as duas leituras caíam na mesma frase.
+        (e.placement?row("Cai no período por",e.placement):"")+
         '<div class="xp-ex"><div class="xp-k">Exemplo</div><div class="xp-v">'+
           escHtml(e.example).replace(/\n/g,"<br>")+'</div></div>'+
         (EXPLAIN.attribution?'<div class="xp-attr">'+escHtml(EXPLAIN.attribution)+'</div>':"");

@@ -6,6 +6,7 @@ import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
+import com.engperf.domain.metrics.Occupation;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.TierBands;
 import java.util.List;
@@ -108,96 +109,90 @@ public final class MetricCatalog {
                   Aggregation.DISTINCT_RATIO,
                   "%",
                   Direction.HIGHER_BETTER),
+              // WIP = quantos work items estiveram em progresso em algum momento do período.
+              //
+              // É a única métrica do catálogo que ocupa um intervalo em vez de um instante, e por
+              // isso se declara: o item entra pelo período que o trabalho dele atravessa, não pela
+              // data do registro. Contado pela data, um item deixado em progresso e intocado
+              // carrega
+              // uma data velha e sumia de todo período recente — a métrica que existe para expor
+              // trabalho parado ficava cega exatamente para o trabalho que parou.
+              //
+              // Contagem, e não soma de horas: muitos itens simultâneos não podem inflá-la.
               new MetricDefinition(
-                  // WIP = number of work items in progress in the period (count of WORKITEM events
-                  // in
-                  // the bucket). A count is concurrency-safe: many simultaneous items can't inflate
-                  // it
-                  // the way summing each item's hours did. Lower-is-better; unit "itens", not
-                  // hours.
-                  "wip",
-                  "Work in Progress",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.SUM,
-                  "itens",
-                  Direction.LOWER_BETTER),
+                      "wip",
+                      "Work in Progress",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.SUM,
+                      "itens",
+                      Direction.LOWER_BETTER)
+                  .over(Occupation.INTERVAL),
               // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
               new MetricDefinition(
-                  // Cycle Time = median of the work item's first-active → terminal duration.
-                  "cycle_time",
-                  "Cycle Time",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "cycle_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      // Cycle Time = median of the work item's first-active → terminal duration.
+                      "cycle_time",
+                      "Cycle Time",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("cycle_h"),
               new MetricDefinition(
-                  // Flow Lead Time = median of creation → completion; distinct from DORA lead_time.
-                  "flow_lead_time",
-                  "Lead Time (fluxo)",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "lead_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      // Flow Lead Time = median of creation → completion; distinct from DORA
+                      // lead_time.
+                      "flow_lead_time",
+                      "Lead Time (fluxo)",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("lead_h"),
               new MetricDefinition(
-                  "active_time",
-                  "Ativo",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "active_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      "active_time",
+                      "Ativo",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("active_h"),
               new MetricDefinition(
-                  "waiting_time",
-                  "Espera",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "wait_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      "waiting_time",
+                      "Espera",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("wait_h"),
               new MetricDefinition(
-                  "review_time",
-                  "Review",
-                  "fluxo",
-                  EventType.WORKITEM,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "review_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      "review_time",
+                      "Review",
+                      "fluxo",
+                      EventType.WORKITEM,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("review_h"),
               new MetricDefinition(
-                  "pr_size",
-                  "PR Size (médio)",
-                  "fluxo",
-                  EventType.PR,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "lines",
-                  "linhas",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      "pr_size",
+                      "PR Size (médio)",
+                      "fluxo",
+                      EventType.PR,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "linhas",
+                      Direction.LOWER_BETTER)
+                  .reading("lines"),
               new MetricDefinition(
                   // Flow Efficiency = working time / (working + wait) over the work item's board
                   // life.
@@ -207,25 +202,20 @@ public final class MetricCatalog {
                   EventType.WORKITEM,
                   AttributionScope.PERSON,
                   Aggregation.RATIO,
-                  MetricDefinition.VALUE,
                   "%",
-                  Direction.HIGHER_BETTER,
-                  null,
-                  null),
+                  Direction.HIGHER_BETTER),
               // Code drill-downs kept on the PR: the AI dashboard compares AI vs non-AI over these
               // (the AI flag lives on commits/PRs, not work items). Not shown as Fluxo cards.
               new MetricDefinition(
-                  "code_cycle_time",
-                  "Cycle Time (código)",
-                  "fluxo",
-                  EventType.PR,
-                  AttributionScope.PERSON,
-                  Aggregation.MEDIAN,
-                  "cycle_h",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  null,
-                  null),
+                      "code_cycle_time",
+                      "Cycle Time (código)",
+                      "fluxo",
+                      EventType.PR,
+                      AttributionScope.PERSON,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("cycle_h"),
               new MetricDefinition(
                   "code_throughput",
                   "PRs concluídos",
@@ -263,53 +253,46 @@ public final class MetricCatalog {
                   Direction.HIGHER_BETTER),
               // ---- DORA (with benchmark tiers) ----
               new MetricDefinition(
-                  "deploy_freq",
-                  "Deployment Frequency",
-                  "dora",
-                  EventType.DEPLOY,
-                  AttributionScope.REPO,
-                  Aggregation.SUM,
-                  MetricDefinition.VALUE,
-                  "deploys",
-                  Direction.HIGHER_BETTER,
-                  new TierBands(1.0, 1.0 / 7.0, 1.0 / 30.0),
-                  null),
+                      "deploy_freq",
+                      "Deployment Frequency",
+                      "dora",
+                      EventType.DEPLOY,
+                      AttributionScope.REPO,
+                      Aggregation.SUM,
+                      "deploys",
+                      Direction.HIGHER_BETTER)
+                  .graded(new TierBands(1.0, 1.0 / 7.0, 1.0 / 30.0)),
               new MetricDefinition(
-                  "lead_time",
-                  "Lead Time for Changes",
-                  "dora",
-                  EventType.DEPLOY,
-                  AttributionScope.REPO,
-                  Aggregation.MEDIAN,
-                  MetricDefinition.VALUE,
-                  "h",
-                  Direction.LOWER_BETTER,
-                  new TierBands(24, 168, 720),
-                  null),
+                      "lead_time",
+                      "Lead Time for Changes",
+                      "dora",
+                      EventType.DEPLOY,
+                      AttributionScope.REPO,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .graded(new TierBands(24, 168, 720)),
               new MetricDefinition(
-                  "cfr",
-                  "Change Failure Rate",
-                  "dora",
-                  EventType.DEPLOY,
-                  AttributionScope.REPO,
-                  Aggregation.RATIO,
-                  MetricDefinition.VALUE,
-                  "%",
-                  Direction.LOWER_BETTER,
-                  new TierBands(0.15, 0.30, 0.45),
-                  null),
+                      "cfr",
+                      "Change Failure Rate",
+                      "dora",
+                      EventType.DEPLOY,
+                      AttributionScope.REPO,
+                      Aggregation.RATIO,
+                      "%",
+                      Direction.LOWER_BETTER)
+                  .graded(new TierBands(0.15, 0.30, 0.45)),
               new MetricDefinition(
-                  "mttr",
-                  "Mean Time to Restore",
-                  "dora",
-                  EventType.DEPLOY,
-                  AttributionScope.REPO,
-                  Aggregation.MEDIAN,
-                  "recovery_hours",
-                  "h",
-                  Direction.LOWER_BETTER,
-                  new TierBands(1, 24, 168),
-                  null)));
+                      "mttr",
+                      "Mean Time to Restore",
+                      "dora",
+                      EventType.DEPLOY,
+                      AttributionScope.REPO,
+                      Aggregation.MEDIAN,
+                      "h",
+                      Direction.LOWER_BETTER)
+                  .reading("recovery_hours")
+                  .graded(new TierBands(1, 24, 168))));
 
   /**
    * How attribution works — identical for every metric, so the UI says it once per explanation
@@ -378,7 +361,19 @@ public final class MetricCatalog {
           "throughput", completed(),
           "cycle_time", completed(),
           "flow_lead_time", completed(),
-          "wip", e -> "1".equals(e.detail().get("in_progress")));
+          // O WIP não filtra mais por "está aberto": quem decide o período é a sobreposição do
+          // intervalo, e um item concluído dentro do período esteve em progresso nele. O que a
+          // população garante é só que o item chegou a entrar em estado de trabalho — quem nunca
+          // saiu do backlog não tem intervalo nenhum e não é trabalho em progresso.
+          "wip", e -> e.detail().containsKey("spans") || e.detail().containsKey("in_progress"),
+          // As fases e a eficiência descrevem a mesma população do Cycle Time exibido ao lado.
+          // Item inacabado tem medida parcial, que ainda pode andar nos dois sentidos; e item sem
+          // histórico aproveitável não recebe num/den, caindo nos defaults do motor (0 sobre 1) e
+          // afundando a razão por não ter dado em vez de por ter esperado.
+          "flow_efficiency", completed(),
+          "active_time", completed(),
+          "waiting_time", completed(),
+          "review_time", completed());
 
   private static Predicate<RawEvent> completed() {
     return e -> "1".equals(e.detail().get("completed"));
