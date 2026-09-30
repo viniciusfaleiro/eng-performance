@@ -1,5 +1,6 @@
 package com.engperf.application.metrics;
 
+import com.engperf.domain.metrics.InProgressSpans;
 import com.engperf.domain.metrics.RawEvent;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -57,7 +58,7 @@ public record WorkDistribution(
    *     behaviour is what it was before the relationship was recorded
    */
   public static WorkDistribution of(
-      List<RawEvent> items, Set<String> parentIds, Instant from, Instant to) {
+      List<RawEvent> items, Set<String> parentIds, Instant from, Instant to, Instant readNow) {
     List<RawEvent> leaves = new ArrayList<>();
     int containers = 0;
     for (RawEvent w : items) {
@@ -67,7 +68,7 @@ public record WorkDistribution(
         leaves.add(w);
       }
     }
-    Tally tally = tally(leaves, from, to);
+    Tally tally = tally(leaves, from, to, readNow);
     return new WorkDistribution(slices(tally), containers, shortItems(tally));
   }
 
@@ -102,41 +103,28 @@ public record WorkDistribution(
 
   private record Span(long start, long end, String itemId) {}
 
-  private static Tally tally(List<RawEvent> leaves, Instant from, Instant to) {
-    long lo = from.toEpochMilli();
-    long hi = to.toEpochMilli();
+  private static Tally tally(List<RawEvent> leaves, Instant from, Instant to, Instant readNow) {
     Map<String, Item> byId = new LinkedHashMap<>();
     List<Span> spans = new ArrayList<>();
     for (RawEvent w : leaves) {
       Item item = new Item(w, typeOf(w));
-      String raw = w.detail().get("spans");
-      if (raw == null) {
-        // Eventos antigos, sem histórico de spans: a hora total é o que existe. Não é prorrateada
-        // nem recortada — é o comportamento que já havia, e mudá-lo aqui misturaria duas correções.
-        if (w.detail().containsKey("hours")) {
+      List<InProgressSpans.Interval> mine = InProgressSpans.of(w, readNow).within(from, to);
+      if (mine.isEmpty()) {
+        // Eventos antigos, sem histórico de intervalos: a hora total é o que existe. Não é
+        // prorrateada nem recortada — é o comportamento que já havia, e mudá-lo aqui misturaria
+        // duas correções.
+        if (w.detail().containsKey("hours") && !w.detail().containsKey("spans")) {
           item.elapsed = doubleDetail(w, "hours");
           item.counted = item.elapsed;
           byId.put(w.id(), item);
         }
         continue;
       }
-      boolean any = false;
-      for (String part : raw.split(",")) {
-        int c = part.indexOf(':');
-        if (c < 0) {
-          continue;
-        }
-        long a = Math.max(Long.parseLong(part.substring(0, c)), lo);
-        long b = Math.min(Long.parseLong(part.substring(c + 1)), hi);
-        if (b > a) {
-          spans.add(new Span(a, b, w.id()));
-          item.elapsed += (b - a) / 3_600_000.0;
-          any = true;
-        }
+      for (InProgressSpans.Interval i : mine) {
+        spans.add(new Span(i.start(), i.end(), w.id()));
+        item.elapsed += i.hours();
       }
-      if (any) {
-        byId.put(w.id(), item);
-      }
+      byId.put(w.id(), item);
     }
     prorate(spans, byId);
     return new Tally(byId);

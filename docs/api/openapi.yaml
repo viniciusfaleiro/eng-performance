@@ -1186,6 +1186,13 @@ components:
         source:   { type: string, description: De que evento sai e o que é lido dele. }
         included: { type: string, description: Quais eventos entram na conta. }
         excluded: { type: string, description: Quais ficam de fora, e por quê. }
+        placement:
+          type: string
+          description: >-
+            Qual data ou intervalo coloca o item dentro do período selecionado. Campo próprio porque
+            é a frase que faltava quando o texto do WIP e a conta do WIP discordavam: "itens em
+            andamento no período" descreve tanto "itens cuja última alteração caiu no período" quanto
+            "itens cujo trabalho atravessou o período", e nada na tela podia distinguir os dois.
         example:  { type: string, description: Um cálculo concreto com números ilustrativos. }
     # ---- Enums / primitives ----
     Frequency:

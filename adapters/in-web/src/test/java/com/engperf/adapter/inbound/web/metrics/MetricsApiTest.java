@@ -311,7 +311,7 @@ class MetricsApiTest {
     @Override
     public java.util.Map<String, com.engperf.domain.metrics.MetricExplanation> viewExplanations() {
       return java.util.Map.of(
-          "trend", new com.engperf.domain.metrics.MetricExplanation("r", "s", "i", "e", "x"));
+          "trend", new com.engperf.domain.metrics.MetricExplanation("r", "s", "i", "e", "p", "x"));
     }
 
     @Override

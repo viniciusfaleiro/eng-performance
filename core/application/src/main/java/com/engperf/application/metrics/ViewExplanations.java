@@ -25,6 +25,8 @@ final class ViewExplanations {
               "Os períodos completos dentro da janela, na frequência selecionada.",
               "O período corrente, quando ainda não terminou — ele pareceria uma queda que é só"
                   + " falta de dias.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "Na frequência semanal, 12 pontos cobrem as últimas 12 semanas. Trocar para mensal"
                   + " não muda o cálculo, muda o tamanho do balde."),
           "heatmap",
@@ -35,6 +37,8 @@ final class ViewExplanations {
               "Times ou verticais do escopo atual, conforme a seleção.",
               "Métricas de volume (Commits e Pull Requests) não entram aqui: ranquear times por"
                   + " volume de código é um proxy fácil de manipular e não diz nada sobre entrega.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "Se três times têm cycle time de 20h, 40h e 90h, o verde vai para 20h e o vermelho"
                   + " para 90h. A cor é relativa ao grupo, não a um alvo absoluto."),
           "cycle_time_phases",
@@ -53,6 +57,8 @@ final class ViewExplanations {
               "O tempo no backlog antes do primeiro estado de trabalho é ignorado — ele entra no"
                   + " Lead Time (fluxo), não aqui. A Espera conta apenas a ociosidade entre o"
                   + " início do trabalho e a conclusão.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "Um item criado dia 1º, iniciado dia 5, parado em 'Blocked' dos dias 7 a 9, em 'Code"
                   + " Review' dos dias 9 a 10 e concluído dia 10: Ativo 48h, Espera 48h, Review"
                   + " 24h — cycle time de 120h. Os 4 dias entre criação e início não aparecem em"
@@ -67,6 +73,8 @@ final class ViewExplanations {
               "Work items concluídos, pelo tipo registrado no Azure Boards.",
               "Itens concluídos no período, com o tempo rateado quando houve concorrência.",
               "Itens sem tipo classificado entram como Outros, não são descartados.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "42% feature, 22% bug, 15% dívida técnica. A soma é sempre 100% do tempo medido."),
           "coverage",
           new MetricExplanation(
@@ -75,6 +83,8 @@ final class ViewExplanations {
               "Todos os eventos brutos ingeridos do Azure DevOps.",
               "Numerador: eventos atribuídos. Denominador: todos os eventos do período.",
               "Nada é excluído — é justamente o não-atribuído que este número existe para expor.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "9 de 10 eventos atribuídos → 90%. Os 10% restantes são identidades de commit sem"
                   + " pessoa vinculada, e eles não aparecem em nenhum número de time."),
           "individual",
@@ -84,6 +94,8 @@ final class ViewExplanations {
               "Eventos atribuídos a ela no período de cada seção.",
               "Comparação com pessoas de outros times, e qualquer forma de ranking público — a"
                   + " plataforma mede para melhorar o sistema, não para vigiar pessoas.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "Throughput de 6 itens diz o que passou pelas mãos dela, não se ela é melhor que"
                   + " alguém. Sem o contexto do time, o número isolado engana."),
           "ado_stats",
@@ -92,6 +104,8 @@ final class ViewExplanations {
               "Os eventos gravados na ingestão: commits, PRs, deploys e work items.",
               "Tudo que foi ingerido desde a marca da última sincronização.",
               "Repositórios não cadastrados em Admin → Repositórios: eles nunca são consultados.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
               "1.200 commits e 180 PRs num repositório e zero em outro geralmente significa"
                   + " cadastro faltando, não repositório parado."));
 

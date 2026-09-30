@@ -190,6 +190,11 @@ class AdoSyncServiceTest {
     }
 
     @Override
+    public List<RawEvent> findByType(EventType type) {
+      return findByTypeBetween(type, Instant.MIN, Instant.MAX);
+    }
+
+    @Override
     public Set<String> parentWorkItemIds() {
       return Set.of();
     }

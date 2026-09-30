@@ -26,7 +26,7 @@ import org.springframework.stereotype.Component;
 class EventFixtures implements CommandLineRunner {
 
   private static final LocalDate FROM = LocalDate.of(2026, 1, 1);
-  private static final LocalDate TO = LocalDate.of(2026, 6, 30); // exclusive
+  static final LocalDate TO = LocalDate.of(2026, 6, 30); // exclusive
 
   private static final String[] LINKED = {
     "ana.souza@empresa.com", "bruno.lima@empresa.com", "eduardo.alves@empresa.com"
@@ -53,7 +53,7 @@ class EventFixtures implements CommandLineRunner {
   };
 
   /** Work-item types (individual work distribution), in the panel's legend order. */
-  private static final String[] WORK_TYPES = {"feature", "bug", "tech_debt", "maintenance", "docs"};
+  static final String[] WORK_TYPES = {"feature", "bug", "tech_debt", "maintenance", "docs"};
 
   private final EventStorePort events;
   private final com.engperf.application.port.inbound.PlatformConfigUseCase config;
@@ -112,12 +112,12 @@ class EventFixtures implements CommandLineRunner {
         batch.add(commit(identity, day, i, ai));
       }
       // One work item per active person per day: WIP snapshot + a task type & effort hours.
-      batch.add(workitem(identity, day));
+      batch.add(WorkItemFixtures.workitem(identity, day));
       // Uma vez por semana, uma User Story que só agrupa as Tasks do dia. Sem ela o fixture não
       // tem nenhum contêiner e a regra de trabalho folha fica invisível na demonstração — que é a
       // única forma de conferir, antes do reprocessamento em produção, que a regra faz o que diz.
       if (day.getDayOfWeek() == java.time.DayOfWeek.MONDAY) {
-        batch.addAll(containerWithChildren(identity, day));
+        batch.addAll(WorkItemFixtures.containerWithChildren(identity, day));
       }
       // Reviews the person gives on a colleague's PRs (drives reviews given/received).
       int reviews = pick(identity + "|rv|" + d, 3); // 0..2 reviews given
@@ -211,90 +211,6 @@ class EventFixtures implements CommandLineRunner {
         detail);
   }
 
-  private static final String[] WI_TITLES = {
-    "Ajustar validação de CPF no checkout",
-    "Retry no gateway de pagamento",
-    "Extrair serviço de antifraude",
-    "Cobrir cenários de timeout",
-    "Atualizar dependências do core",
-    "Reduzir N+1 na listagem"
-  };
-
-  private static RawEvent workitem(String identity, LocalDate day) {
-    String d = day.toString();
-    double wip = 3 + pick(identity + "|wip|" + d, 8);
-    double hours = 2 + pick(identity + "|whrs|" + d, 8); // 2..9h
-    Map<String, String> detail = new java.util.HashMap<>();
-    detail.put("type", WORK_TYPES[pick(identity + "|wtype|" + d, WORK_TYPES.length)]);
-    detail.put("hours", Double.toString(hours));
-    detail.put("ado_type", "Task");
-    workItemChrome(detail, identity, day, 0, hours);
-    return new RawEvent(
-        id("wip", identity, day, 0),
-        EventType.WORKITEM,
-        at(day),
-        null,
-        identity,
-        wip,
-        null,
-        false,
-        detail);
-  }
-
-  /**
-   * Uma User Story aberta o dia inteiro com duas Tasks filhas dentro dela — a forma exata do
-   * problema que a regra de trabalho folha resolve: sem a regra, a mãe disputa cada hora com as
-   * filhas e reduz a fatia de cada uma; com ela, as horas ficam com as filhas.
-   */
-  private static List<RawEvent> containerWithChildren(String identity, LocalDate day) {
-    String parentId = id("wip-us", identity, day, 0);
-    String type = WORK_TYPES[pick(identity + "|ctype|" + day, WORK_TYPES.length)];
-    List<RawEvent> out = new java.util.ArrayList<>();
-    Map<String, String> parent = new java.util.HashMap<>();
-    parent.put("type", type);
-    parent.put("ado_type", "User Story");
-    parent.put("hours", "9.0");
-    workItemChrome(parent, identity, day, 90, 9.0);
-    out.add(
-        new RawEvent(
-            parentId, EventType.WORKITEM, at(day), null, identity, 1.0, null, false, parent));
-    for (int i = 0; i < 2; i++) {
-      double hours = 3 + pick(identity + "|chrs|" + day + i, 4); // 3..6h
-      Map<String, String> child = new java.util.HashMap<>();
-      child.put("type", type);
-      child.put("ado_type", "Task");
-      child.put("hours", Double.toString(hours));
-      child.put("parent_event_id", parentId);
-      workItemChrome(child, identity, day, 91 + i, hours);
-      out.add(
-          new RawEvent(
-              id("wip-task", identity, day, i),
-              EventType.WORKITEM,
-              at(day),
-              null,
-              identity,
-              1.0,
-              null,
-              false,
-              child));
-    }
-    return out;
-  }
-
-  /**
-   * Título, deep-link e a janela em andamento. Sem {@code spans} a distribuição cai no caminho
-   * antigo, que não é prorrateado nem recortado pelo período; sem título e link, a lista de itens
-   * abre com ids e links mortos, e uma lista que não se pode conferir não serve para conferir.
-   */
-  private static void workItemChrome(
-      Map<String, String> detail, String identity, LocalDate day, int slot, double hours) {
-    int num = 1000 + Math.abs((identity + day).hashCode() % 8000) + slot;
-    detail.put("summary", WI_TITLES[pick(identity + "|wt|" + day + slot, WI_TITLES.length)]);
-    detail.put("url", "https://dev.azure.com/minhaorg/Plataforma/_workitems/edit/" + num);
-    long start = at(day).toEpochMilli() + 9L * 3_600_000L; // começa às 9h
-    detail.put("spans", start + ":" + (start + (long) (hours * 3_600_000L)));
-  }
-
   private static RawEvent review(
       String reviewer, String author, LocalDate day, int i, boolean approved, int comments) {
     Map<String, String> detail = new java.util.HashMap<>();
@@ -350,11 +266,11 @@ class EventFixtures implements CommandLineRunner {
         detail);
   }
 
-  private static String id(String kind, String owner, LocalDate day, int i) {
+  static String id(String kind, String owner, LocalDate day, int i) {
     return kind + ":" + owner + ":" + day + ":" + i;
   }
 
-  private static Instant at(LocalDate day) {
+  static Instant at(LocalDate day) {
     return day.atTime(10, 0).toInstant(ZoneOffset.UTC);
   }
 
@@ -366,7 +282,7 @@ class EventFixtures implements CommandLineRunner {
   }
 
   /** Deterministic 0..(bound-1) from a string key — String.hashCode is specified/stable. */
-  private static int pick(String key, int bound) {
+  static int pick(String key, int bound) {
     return Math.floorMod(key.hashCode(), bound);
   }
 }

@@ -12,7 +12,6 @@ import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.structure.Person;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,14 +61,14 @@ public final class MetricsService implements MetricsQueryUseCase {
 
   @Override
   public List<MetricCard> cards(String nodeId, Period period) {
-    LocalDate today = LocalDate.now(clock);
+    Instant readNow = clock.instant();
     StructureIndex index = buildIndex();
     List<MetricCard> cards = new ArrayList<>();
     for (MetricDefinition def : catalog.all()) {
       List<RawEvent> window = fetch(def, period);
       cards.add(
           MetricsEngine.card(
-              index, window, def, nodeId, period, today, BUCKETS, catalog.population(def.key())));
+              index, window, def, nodeId, period, readNow, BUCKETS, catalog.population(def.key())));
     }
     return cards;
   }
@@ -84,7 +83,7 @@ public final class MetricsService implements MetricsQueryUseCase {
         def,
         nodeId,
         period,
-        LocalDate.now(clock),
+        clock.instant(),
         BUCKETS,
         catalog.population(metricKey));
   }
@@ -100,7 +99,7 @@ public final class MetricsService implements MetricsQueryUseCase {
         def,
         nodeId,
         period,
-        LocalDate.now(clock),
+        clock.instant(),
         BUCKETS,
         catalog.population(metricKey).and(e -> e.ai() == aiAssisted));
   }
@@ -109,8 +108,8 @@ public final class MetricsService implements MetricsQueryUseCase {
   public List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
-    return MetricsEngine.items(
-        buildIndex(), window, def, nodeId, period, catalog.population(metricKey));
+    return MetricsDrilldown.items(
+        buildIndex(), window, def, nodeId, period, clock.instant(), catalog.population(metricKey));
   }
 
   @Override
@@ -121,7 +120,13 @@ public final class MetricsService implements MetricsQueryUseCase {
           "métrica " + metricKey + " não é contada por pessoa — use o detalhamento de itens");
     }
     return EntityBreakdown.of(
-            buildIndex(), fetch(def, period), def, nodeId, period, catalog.population(metricKey))
+            buildIndex(),
+            fetch(def, period),
+            def,
+            nodeId,
+            period,
+            clock.instant(),
+            catalog.population(metricKey))
         .stream()
         .map(
             s ->
@@ -150,6 +155,12 @@ public final class MetricsService implements MetricsQueryUseCase {
    * interval it grows with the interval, which is why neither case needs a rule of its own here.
    */
   private List<RawEvent> fetch(MetricDefinition def, Period period) {
+    // Métrica de intervalo não se busca por janela de datas: o período a que o item pertence é o
+    // que o trabalho dele atravessa, e a data do registro não diz nada sobre isso. Ver o contrato
+    // de findByType para por que alargar a janela não substitui isto.
+    if (def.readsIntervals()) {
+      return events.findByType(def.eventType());
+    }
     Bucket span = period.readSpan(BUCKETS);
     Instant from = span.start().atStartOfDay(ZoneOffset.UTC).toInstant();
     Instant to = span.endExclusive().atStartOfDay(ZoneOffset.UTC).toInstant();

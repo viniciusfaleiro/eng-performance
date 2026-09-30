@@ -48,6 +48,12 @@ public class JpaEventStore implements EventStorePort {
 
   @Override
   @Transactional(readOnly = true)
+  public List<RawEvent> findByType(EventType type) {
+    return events.findByType(type).stream().map(JpaEventStore::toDomain).toList();
+  }
+
+  @Override
+  @Transactional(readOnly = true)
   public Set<String> parentWorkItemIds() {
     return Set.copyOf(events.findDistinctParentEventIds());
   }

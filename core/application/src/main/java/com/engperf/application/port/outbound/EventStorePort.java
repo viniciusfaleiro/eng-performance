@@ -19,6 +19,22 @@ public interface EventStorePort {
   List<RawEvent> findByTypeBetween(EventType type, Instant fromInclusive, Instant toExclusive);
 
   /**
+   * Every event of a type, with no window.
+   *
+   * <p>For a metric counted over the interval its events occupy, a window on the event's own date
+   * is the wrong question: an item in progress since August carries an August date and is still in
+   * progress today, and an item worked in June may carry an August date because that is when it was
+   * completed. A trailing window misses the first; no trailing window can contain the second. Only
+   * widening it until it holds everything would work, so it is read as everything on purpose,
+   * instead of a horizon chosen to look wide enough while still being wrong at the edges.
+   *
+   * <p>Cost grows with the corpus and not with the period. Narrowing it again is an optimisation
+   * that changes no number: the store would pre-filter on the interval's bounds and the exact
+   * per-interval test would still run on top.
+   */
+  List<RawEvent> findByType(EventType type);
+
+  /**
    * The ids of the work-item events that appear as some other work item's parent, over the
    * <strong>whole ingested corpus</strong> — ids, not events.
    *

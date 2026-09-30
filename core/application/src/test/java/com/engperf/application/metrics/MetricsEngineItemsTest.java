@@ -29,6 +29,9 @@ class MetricsEngineItemsTest {
   private static final LocalDate JAN1 = LocalDate.of(2026, 1, 1);
   private static final LocalDate BUCKET_START = LocalDate.of(2026, 6, 1);
 
+  /** O relógio da leitura; nenhuma métrica deste teste é de intervalo, então só precisa existir. */
+  private static final Instant READ_NOW = Instant.parse("2026-06-30T12:00:00Z");
+
   private static StructureIndex index() {
     Person ana = Person.create("p:ana", "Ana", null, "t:eng", JAN1);
     Person bruno = Person.create("p:bruno", "Bruno", null, "t:eng", JAN1);
@@ -56,17 +59,15 @@ class MetricsEngineItemsTest {
 
   private static MetricDefinition def(String measure, Aggregation agg) {
     return new MetricDefinition(
-        "k",
-        "K",
-        "fluxo",
-        EventType.WORKITEM,
-        AttributionScope.PERSON,
-        agg,
-        measure,
-        "u",
-        Direction.HIGHER_BETTER,
-        null,
-        null);
+            "k",
+            "K",
+            "fluxo",
+            EventType.WORKITEM,
+            AttributionScope.PERSON,
+            agg,
+            "u",
+            Direction.HIGHER_BETTER)
+        .reading(measure);
   }
 
   @Test
@@ -74,12 +75,13 @@ class MetricsEngineItemsTest {
     RawEvent e1 = event("wi:1", "id-ana", Map.of());
     RawEvent e2 = event("wi:2", "id-bruno", Map.of());
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(e1, e2),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items).hasSize(2);
@@ -94,12 +96,13 @@ class MetricsEngineItemsTest {
     RawEvent withMeasure = event("wi:1", "id-ana", Map.of("hours", "3"));
     RawEvent withoutMeasure = event("wi:2", "id-bruno", Map.of());
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(withMeasure, withoutMeasure),
             def("hours", Aggregation.MEDIAN),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items)
@@ -114,12 +117,13 @@ class MetricsEngineItemsTest {
     RawEvent e1 = event("wi:1", "id-ana", Map.of("num", "1", "den", "1"));
     RawEvent e2 = event("wi:2", "id-bruno", Map.of("num", "0", "den", "1"));
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(e1, e2),
             def(MetricDefinition.VALUE, Aggregation.RATIO),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items).hasSize(2);
@@ -130,12 +134,13 @@ class MetricsEngineItemsTest {
   void distinctRatioCountsEveryItem() {
     RawEvent e1 = event("wi:1", "id-ana", Map.of());
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(e1),
             def(MetricDefinition.VALUE, Aggregation.DISTINCT_RATIO),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items).hasSize(1);
@@ -167,12 +172,13 @@ class MetricsEngineItemsTest {
             false,
             Map.of("wip", "1"));
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(older, newer),
             def("wip", Aggregation.SNAPSHOT),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items)
@@ -188,12 +194,13 @@ class MetricsEngineItemsTest {
         event("wi:1", "id-ana", Map.of("summary", "Corrige bug X", "url", "https://ado/wi/1"));
     RawEvent withoutSummary = event("wi:2", "id-bruno", Map.of());
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(withSummary, withoutSummary),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     MetricDrilldownItem i1 =
@@ -221,12 +228,13 @@ class MetricsEngineItemsTest {
             false,
             Map.of());
     List<MetricDrilldownItem> items =
-        MetricsEngine.items(
+        MetricsDrilldown.items(
             index(),
             List.of(inBucket, outOfBucket),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
             Period.of(Frequency.MONTHLY, BUCKET_START),
+            READ_NOW,
             e -> true);
 
     assertThat(items).extracting(MetricDrilldownItem::eventId).containsExactly("wi:1");
