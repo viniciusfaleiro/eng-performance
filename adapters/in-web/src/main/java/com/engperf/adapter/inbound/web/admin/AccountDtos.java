@@ -17,8 +17,19 @@ final class AccountDtos {
 
   record PasswordRequest(String newPassword) {}
 
+  /**
+   * @param lastLoginAt quando a conta entrou pela última vez, ou {@code null} para quem nunca
+   *     entrou — a tela precisa distinguir os dois, porque "nunca acessou" é o caso que importa
+   *     numa implantação, não um dado faltando
+   */
   record UserView(
-      String id, String name, String email, String role, String status, String personId) {
+      String id,
+      String name,
+      String email,
+      String role,
+      String status,
+      String personId,
+      String lastLoginAt) {
 
     static UserView from(UserAccount a) {
       return new UserView(
@@ -27,7 +38,8 @@ final class AccountDtos {
           a.email(),
           a.role().name().toLowerCase(Locale.ROOT),
           a.status().name().toLowerCase(Locale.ROOT),
-          a.personId());
+          a.personId(),
+          a.lastLoginAt() == null ? null : a.lastLoginAt().toString());
     }
   }
 }

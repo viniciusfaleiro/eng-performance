@@ -28,7 +28,10 @@ public class AuthWiring {
   @Bean
   AuthUseCase authUseCase(
       UserAccountRepositoryPort accounts, PasswordHasher passwordHasher, TokenService tokens) {
-    return new AuthService(accounts, passwordHasher, tokens);
+    // Relógio real, não o das métricas: aquele pode estar fixado por METRICS_REFERENCE_DATE para
+    // demonstração, e um login acontece no tempo de verdade — datá-lo pelo relógio fixo gravaria
+    // um acesso que nunca ocorreu naquela data.
+    return new AuthService(accounts, passwordHasher, tokens, Clock.systemUTC());
   }
 
   @Bean

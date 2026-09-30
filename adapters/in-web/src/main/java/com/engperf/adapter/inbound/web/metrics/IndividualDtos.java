@@ -61,6 +61,19 @@ public final class IndividualDtos {
     }
   }
 
+  /**
+   * Acesso da pessoa à plataforma, à parte das métricas de entrega. {@code hasAccount=false} quer
+   * dizer que não há o que mostrar; {@code lastLoginAt=null} com conta quer dizer que ela nunca
+   * acessou — que é informação, não dado faltando.
+   */
+  public record PlatformAccessDto(boolean hasAccount, String lastLoginAt) {
+
+    public static PlatformAccessDto from(IndividualDashboard.PlatformAccess a) {
+      return new PlatformAccessDto(
+          a.hasAccount(), a.lastLoginAt() == null ? null : a.lastLoginAt().toString());
+    }
+  }
+
   public record IndividualDashboardDto(
       String nodeId,
       String label,
@@ -70,7 +83,8 @@ public final class IndividualDtos {
       ReviewStatsDto reviews,
       List<WorkTypeDto> workTypes,
       List<ActivityDto> activity,
-      List<ConventionFlagDto> conventions) {
+      List<ConventionFlagDto> conventions,
+      PlatformAccessDto access) {
 
     public static IndividualDashboardDto from(IndividualDashboard d) {
       return new IndividualDashboardDto(
@@ -82,7 +96,8 @@ public final class IndividualDtos {
           ReviewStatsDto.from(d.reviews()),
           d.workTypes().stream().map(WorkTypeDto::from).toList(),
           d.activity().stream().map(ActivityDto::from).toList(),
-          d.conventions().stream().map(ConventionFlagDto::from).toList());
+          d.conventions().stream().map(ConventionFlagDto::from).toList(),
+          PlatformAccessDto.from(d.access()));
     }
   }
 }

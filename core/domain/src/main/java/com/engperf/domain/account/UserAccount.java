@@ -1,6 +1,7 @@
 package com.engperf.domain.account;
 
 import com.engperf.domain.common.Text;
+import java.time.Instant;
 import java.util.Objects;
 
 /**
@@ -8,6 +9,9 @@ import java.util.Objects;
  * the RBAC scope enforced in S2). The password is stored only as an opaque hash.
  *
  * @param personId linked Person id, or {@code null}
+ * @param lastLoginAt when this account last signed in, or {@code null} for an account that never
+ *     has — which is information in its own right, not missing data: on a rollout it is exactly the
+ *     case worth finding
  */
 public record UserAccount(
     String id,
@@ -16,7 +20,8 @@ public record UserAccount(
     Role role,
     AccountStatus status,
     String personId,
-    String passwordHash) {
+    String passwordHash,
+    Instant lastLoginAt) {
 
   public UserAccount {
     id = Text.required(id, "account id");
@@ -31,6 +36,28 @@ public record UserAccount(
     passwordHash = Text.required(passwordHash, "passwordHash");
   }
 
+  /** An account that has never signed in. */
+  public UserAccount(
+      String id,
+      String name,
+      String email,
+      Role role,
+      AccountStatus status,
+      String personId,
+      String passwordHash) {
+    this(id, name, email, role, status, personId, passwordHash, null);
+  }
+
+  /** The same account, having just signed in at {@code at}. */
+  public UserAccount withLoginAt(Instant at) {
+    return new UserAccount(id, name, email, role, status, personId, passwordHash, at);
+  }
+
+  /** Whether this account has ever signed in — the question a rollout actually asks. */
+  public boolean hasLoggedIn() {
+    return lastLoginAt != null;
+  }
+
   public UserAccount withProfile(
       String newName, Role newRole, AccountStatus newStatus, String newPersonId) {
     return new UserAccount(
@@ -40,10 +67,11 @@ public record UserAccount(
         newRole == null ? role : newRole,
         newStatus == null ? status : newStatus,
         newPersonId,
-        passwordHash);
+        passwordHash,
+        lastLoginAt);
   }
 
   public UserAccount withPasswordHash(String newHash) {
-    return new UserAccount(id, name, email, role, status, personId, newHash);
+    return new UserAccount(id, name, email, role, status, personId, newHash, lastLoginAt);
   }
 }

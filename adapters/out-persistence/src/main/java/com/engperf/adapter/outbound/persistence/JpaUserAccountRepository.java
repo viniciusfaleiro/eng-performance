@@ -28,7 +28,8 @@ public class JpaUserAccountRepository implements UserAccountRepositoryPort {
             account.role(),
             account.status(),
             account.personId(),
-            account.passwordHash()));
+            account.passwordHash(),
+            account.lastLoginAt()));
     return account;
   }
 
@@ -63,6 +64,7 @@ public class JpaUserAccountRepository implements UserAccountRepositoryPort {
         e.getRole(),
         e.getStatus(),
         e.getPersonId(),
-        e.getPasswordHash());
+        e.getPasswordHash(),
+        e.getLastLoginAt());
   }
 }

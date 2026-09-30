@@ -1587,7 +1587,14 @@ components:
           nullable: true
           description: Pessoa da estrutura vinculada a esta conta (para escopo/RBAC).
         createdAt: { type: string, format: date-time }
-        lastLoginAt: { type: string, format: date-time, nullable: true }
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Último login desta conta. `null` significa que ela **nunca** acessou — informação em si,
+            não dado faltando: numa implantação é o caso que mais interessa. Não há valor
+            retroativo: só passou a ser registrado a partir da sua introdução.
     UserAccountCreate:
       type: object
       required: [name, email, password, role]

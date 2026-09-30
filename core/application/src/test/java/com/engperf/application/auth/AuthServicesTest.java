@@ -2,6 +2,7 @@ package com.engperf.application.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.engperf.application.port.outbound.PasswordHasher;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
@@ -15,7 +16,10 @@ import com.engperf.domain.structure.Person;
 import com.engperf.domain.structure.Repository;
 import com.engperf.domain.structure.Team;
 import com.engperf.domain.structure.Vertical;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,6 +29,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class AuthServicesTest {
+
+  private static final Instant NOW = Instant.parse("2026-09-30T14:00:00Z");
+  private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
   private FakeAccounts accounts;
   private AuthService auth;
@@ -59,7 +66,7 @@ class AuthServicesTest {
   @BeforeEach
   void setUp() {
     accounts = new FakeAccounts();
-    auth = new AuthService(accounts, HASHER, TOKENS);
+    auth = new AuthService(accounts, HASHER, TOKENS, CLOCK);
     authz = new AuthorizationService(accounts, new FakeStructure());
     accounts.save(
         new UserAccount(
@@ -67,6 +74,42 @@ class AuthServicesTest {
     accounts.save(
         new UserAccount(
             "u:ex", "Ex", "ex@x.com", Role.CONTRIBUTOR, AccountStatus.DISABLED, null, "h:secret"));
+  }
+
+  /**
+   * Sem esse registro ninguém sabe se a plataforma está sendo usada — o sinal de que um dashboard
+   * não é aberto por ninguém simplesmente não existia.
+   */
+  @Test
+  void aSuccessfulLoginRecordsWhenItHappened() {
+    assertThat(accounts.findById("u:ana").orElseThrow().hasLoggedIn()).isFalse();
+
+    auth.login("ana@x.com", "secret");
+
+    assertThat(accounts.findById("u:ana").orElseThrow().lastLoginAt()).isEqualTo(NOW);
+  }
+
+  @Test
+  void aRejectedLoginLeavesNoTrace() {
+    assertThatThrownBy(() -> auth.login("ana@x.com", "errada"))
+        .isInstanceOf(AuthenticationException.class);
+    assertThatThrownBy(() -> auth.login("ex@x.com", "secret"))
+        .isInstanceOf(AuthenticationException.class);
+
+    assertThat(accounts.findById("u:ana").orElseThrow().hasLoggedIn()).isFalse();
+    assertThat(accounts.findById("u:ex").orElseThrow().hasLoggedIn()).isFalse();
+  }
+
+  /**
+   * Perder a entrada de alguém para salvar uma estatística de adoção seria inverter a prioridade.
+   */
+  @Test
+  void aFailureToRecordDoesNotBlockTheLogin() {
+    accounts.failOnSave = true;
+
+    LoginResult r = auth.login("ana@x.com", "secret");
+
+    assertThat(r.token()).isEqualTo("tok:u:ana");
   }
 
   @Test
@@ -116,8 +159,13 @@ class AuthServicesTest {
   private static final class FakeAccounts implements UserAccountRepositoryPort {
     private final Map<String, UserAccount> byId = new LinkedHashMap<>();
 
+    boolean failOnSave;
+
     @Override
     public UserAccount save(UserAccount a) {
+      if (failOnSave) {
+        throw new IllegalStateException("banco indisponível");
+      }
       byId.put(a.id(), a);
       return a;
     }

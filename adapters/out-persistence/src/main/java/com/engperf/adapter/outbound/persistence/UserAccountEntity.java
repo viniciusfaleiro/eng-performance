@@ -8,6 +8,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 
 /** JPA mapping for a platform login account. */
 @Entity
@@ -36,6 +37,10 @@ public class UserAccountEntity {
   @Column(name = "password_hash", nullable = false)
   private String passwordHash;
 
+  /** Null = nunca acessou; ver a migração V8 para o porquê de não haver backfill. */
+  @Column(name = "last_login_at")
+  private Instant lastLoginAt;
+
   protected UserAccountEntity() {}
 
   public UserAccountEntity(
@@ -45,7 +50,8 @@ public class UserAccountEntity {
       Role role,
       AccountStatus status,
       String personId,
-      String passwordHash) {
+      String passwordHash,
+      Instant lastLoginAt) {
     this.id = id;
     this.name = name;
     this.email = email;
@@ -53,6 +59,11 @@ public class UserAccountEntity {
     this.status = status;
     this.personId = personId;
     this.passwordHash = passwordHash;
+    this.lastLoginAt = lastLoginAt;
+  }
+
+  public Instant getLastLoginAt() {
+    return lastLoginAt;
   }
 
   public String getId() {
