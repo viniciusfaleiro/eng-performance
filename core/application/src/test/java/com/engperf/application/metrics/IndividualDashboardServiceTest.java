@@ -2,6 +2,9 @@ package com.engperf.application.metrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.engperf.domain.account.AccountStatus;
+import com.engperf.domain.account.Role;
+import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.Period;
@@ -27,10 +30,11 @@ class IndividualDashboardServiceTest {
 
   private final FakeStructure structure = new FakeStructure();
   private final FakeEvents events = new FakeEvents();
+  private final FakeAccounts accounts = new FakeAccounts();
   private final MetricsService metrics =
       new MetricsService(structure, events, new MetricCatalog(), CLOCK);
   private final IndividualDashboardService individual =
-      new IndividualDashboardService(structure, events, metrics, CLOCK);
+      new IndividualDashboardService(structure, events, metrics, accounts, CLOCK);
 
   private int seq = 0;
 
@@ -70,6 +74,55 @@ class IndividualDashboardServiceTest {
     assertThat(may.calendar().stream().mapToInt(CalendarDay::count).sum())
         .as("o commit de junho está fora da janela que termina em maio")
         .isEqualTo(1);
+  }
+
+  /**
+   * Acesso à plataforma é adesão a uma ferramenta, não trabalho de engenharia — mas quem conduz a
+   * implantação precisa do sinal, e ele não existia.
+   */
+  @Test
+  void thePanelReportsWhenThePersonLastSignedIn() {
+    baseStructure();
+    Instant access = Instant.parse("2026-06-20T09:00:00Z");
+    accounts.all.add(
+        new UserAccount(
+            "u:ana",
+            "Ana",
+            "ana@x.com",
+            Role.CONTRIBUTOR,
+            AccountStatus.ACTIVE,
+            "p:ana",
+            "h",
+            access));
+
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
+
+    assertThat(dash.access().hasAccount()).isTrue();
+    assertThat(dash.access().lastLoginAt()).isEqualTo(access);
+  }
+
+  @Test
+  void aPersonWhoNeverSignedInIsReportedAsSuch() {
+    baseStructure();
+    accounts.all.add(
+        new UserAccount(
+            "u:ana", "Ana", "ana@x.com", Role.CONTRIBUTOR, AccountStatus.ACTIVE, "p:ana", "h"));
+
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
+
+    assertThat(dash.access().hasAccount()).isTrue();
+    assertThat(dash.access().lastLoginAt()).as("nunca acessou, e isso é informação").isNull();
+  }
+
+  /** Sem conta não há o que afirmar — a tela omite em vez de sugerir que alguém deixou de usar. */
+  @Test
+  void aPersonWithoutAnAccountReportsNoPlatformAccess() {
+    baseStructure();
+
+    var dash = individual.dashboard("p:ana", period(Frequency.MONTHLY));
+
+    assertThat(dash.access().hasAccount()).isFalse();
+    assertThat(dash.access().lastLoginAt()).isNull();
   }
 
   @Test

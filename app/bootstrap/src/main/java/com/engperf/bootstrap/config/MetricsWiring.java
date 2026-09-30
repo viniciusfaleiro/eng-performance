@@ -17,6 +17,7 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -95,7 +96,8 @@ public class MetricsWiring {
       StructureRepositoryPort structure,
       EventStorePort events,
       MetricsQueryUseCase metrics,
+      UserAccountRepositoryPort accounts,
       Clock metricsClock) {
-    return new IndividualDashboardService(structure, events, metrics, metricsClock);
+    return new IndividualDashboardService(structure, events, metrics, accounts, metricsClock);
   }
 }

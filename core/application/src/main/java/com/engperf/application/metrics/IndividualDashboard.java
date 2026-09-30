@@ -17,7 +17,21 @@ public record IndividualDashboard(
     ReviewStats reviews,
     List<WorkTypeSlice> workTypes,
     List<ActivityItem> activity,
-    List<ConventionFlag> conventions) {
+    List<ConventionFlag> conventions,
+    PlatformAccess access) {
+
+  /**
+   * Acesso da pessoa à plataforma. Fica fora da lista de métricas de propósito: mede adesão a uma
+   * ferramenta, não trabalho de engenharia, e misturar as duas coisas convidaria a ler "não acessa
+   * há 20 dias" como parte do desempenho.
+   *
+   * @param hasAccount se a pessoa tem conta; sem conta não há o que afirmar
+   * @param lastLoginAt quando acessou pela última vez, ou {@code null} para quem nunca acessou
+   */
+  public record PlatformAccess(boolean hasAccount, java.time.Instant lastLoginAt) {
+
+    public static final PlatformAccess NO_ACCOUNT = new PlatformAccess(false, null);
+  }
 
   public IndividualDashboard {
     calendar = List.copyOf(calendar);

@@ -100,7 +100,8 @@ class PasswordResetApiTest {
             (to, subject, body) -> {},
             new FakeConfig(),
             clock);
-    AuthService authService = new AuthService(accounts, HASHER, new FakeSessionTokens());
+    AuthService authService =
+        new AuthService(accounts, HASHER, new FakeSessionTokens(), java.time.Clock.systemUTC());
     AuthorizationService authz = new AuthorizationService(accounts, new FakeStructure());
 
     mvc =

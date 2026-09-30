@@ -76,7 +76,8 @@ class AuthApiTest {
     accounts.save(acct("u:bruno", "bruno@x.com", Role.CONTRIBUTOR, "p:bruno"));
 
     TokenService tokens = new FakeTokens();
-    AuthService authService = new AuthService(accounts, HASHER, tokens);
+    AuthService authService =
+        new AuthService(accounts, HASHER, tokens, java.time.Clock.systemUTC());
     AuthorizationService authz = new AuthorizationService(accounts, structure);
     StructureService structureService = new StructureService(structure);
 

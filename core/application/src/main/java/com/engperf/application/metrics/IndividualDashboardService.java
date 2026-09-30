@@ -4,6 +4,7 @@ import com.engperf.application.port.inbound.IndividualDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
@@ -44,16 +45,19 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   private final StructureRepositoryPort structure;
   private final EventStorePort events;
   private final MetricsQueryUseCase metrics;
+  private final UserAccountRepositoryPort accounts;
   private final Clock clock;
 
   public IndividualDashboardService(
       StructureRepositoryPort structure,
       EventStorePort events,
       MetricsQueryUseCase metrics,
+      UserAccountRepositoryPort accounts,
       Clock clock) {
     this.structure = Objects.requireNonNull(structure, "structure must not be null");
     this.events = Objects.requireNonNull(events, "events must not be null");
     this.metrics = Objects.requireNonNull(metrics, "metrics must not be null");
+    this.accounts = Objects.requireNonNull(accounts, "accounts must not be null");
     this.clock = Objects.requireNonNull(clock, "clock must not be null");
   }
 
@@ -101,7 +105,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
             within(commits, calFrom, calTo),
             within(prs, calFrom, calTo),
             within(workItems, calFrom, calTo),
-            within(reviewsReceived, calFrom, calTo)));
+            within(reviewsReceived, calFrom, calTo)),
+        PlatformAccessLookup.of(accounts, personNodeId));
   }
 
   private static Instant startOf(LocalDate date) {

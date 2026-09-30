@@ -89,7 +89,9 @@ class IndividualDashboardApiTest {
           new ReviewStats(40, 3, 1, 5, 2),
           List.of(new WorkTypeSlice("feature", "Feature", 10.0, 50.0)),
           List.of(),
-          List.of());
+          List.of(),
+          new IndividualDashboard.PlatformAccess(
+              true, java.time.Instant.parse("2026-06-28T09:00:00Z")));
     }
   }
 }

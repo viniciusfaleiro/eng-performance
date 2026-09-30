@@ -62,6 +62,8 @@ h1,h2,h3{margin:0;}
 .ppl-block{margin-bottom:14px;}
 .ppl-head{display:flex;align-items:baseline;gap:10px;font-size:12px;font-weight:600;margin-bottom:6px;}
 .ppl-pct{font-size:13px;font-weight:600;align-self:center;}
+.access-note{display:flex;align-items:baseline;gap:10px;margin:12px 0;padding:8px 12px;border-left:2px solid var(--outline-var);font-size:12.5px;color:var(--on-surface-var);}
+.never{color:var(--warn);font-size:12px;}
 .nodata{font-size:13px;color:var(--muted);font-family:var(--mono);letter-spacing:.3px;}
 .sync-fails{display:grid;gap:8px;margin:10px 0;}
 .sync-fail{border-left:2px solid var(--crit);padding:4px 0 4px 10px;}
@@ -683,7 +685,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         teams.forEach(t=>{if(t.managerId)TEAM_MANAGER[t.id.replace(/^t:/,"")]=nameById[t.managerId]||t.managerId;});
         coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
         repos.forEach(r=>REPOS.push({repo:r.key,org:r.organization,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null,stage:r.productionStage}));
-        accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null}));
+        accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null,lastLoginAt:u.lastLoginAt}));
         ADO_CFG=ado;AI_CFG=ai;EMAIL_CFG=email;
       }else if(state.mode==="admin"){state.mode="structure";}
       rebuildStructure();
@@ -1329,6 +1331,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const labels=periodLabels(freq,12);
     let h='<p class="baseline-note"><span class="pill">'+n.vertical+' › '+n.team+'</span><span class="pill">'+freq+' · vs. '+bw+'</span><span class="pill">visão de contribuição individual</span></p>';
 
+    // Acesso à plataforma vem antes das seções de entrega e fora delas: mede adesão a uma
+    // ferramenta, não trabalho de engenharia, e misturar as duas convidaria a ler "não acessa há
+    // 20 dias" como parte do desempenho.
+    h+=platformAccessNote(c);
+
     if(c&&c.conventions){h+=conventionBlock(c.conventions,id);}
 
     const firstPass=c?Math.round(c.assertivenessPct):Math.round(58+hash(id+"fp")*36);
@@ -1519,11 +1526,29 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA,email:adminEmail}[state.adminTab]||adminUsers;
     return h+fn();
   }
+  // Nulo aqui significa "nunca acessou" — é o caso que mais importa numa implantação, então a tela
+  // diz isso em vez de mostrar um travessão que se confunde com dado faltando.
+  function lastAccess(iso){
+    if(!iso)return '<span class="never">nunca acessou</span>';
+    const d=new Date(iso),dias=Math.floor((Date.now()-d.getTime())/86400000);
+    const quando=d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    const rel=dias<=0?"hoje":dias===1?"ontem":"há "+dias+" dias";
+    return '<span title="'+quando+'">'+rel+'</span>';
+  }
+  function platformAccessNote(c){
+    const a=c&&c.access;
+    if(!a||!a.hasAccount)return ""; // sem conta não há o que afirmar
+    const txt=a.lastLoginAt
+      ? "Último acesso à plataforma: "+lastAccess(a.lastLoginAt)
+      : "Nunca acessou a plataforma";
+    return '<div class="access-note">'+txt+'<span class="card-note">acesso à ferramenta, '+
+      'não medida de trabalho</span></div>';
+  }
   function adminUsers(){
-    const rows=USERS.map((u,i)=>'<tr><td>'+u.name+'</td><td><span class="code">'+u.email+'</span></td><td>'+roleBadge(u.role)+'</td><td>'+statusBadge(u.status)+'</td><td>'+(u.person||'<span style="color:var(--muted)">—</span>')+'</td><td style="white-space:nowrap"><button class="btn ghost sm" data-aact="edit-user" data-i="'+i+'">Editar</button> <button class="btn ghost sm" data-aact="reset-pass" data-i="'+i+'">Redefinir senha</button> <button class="btn ghost sm" data-aact="del-user" data-i="'+i+'">Remover</button></td></tr>').join("");
+    const rows=USERS.map((u,i)=>'<tr><td>'+u.name+'</td><td><span class="code">'+u.email+'</span></td><td>'+roleBadge(u.role)+'</td><td>'+statusBadge(u.status)+'</td><td>'+(u.person||'<span style="color:var(--muted)">—</span>')+'</td><td>'+lastAccess(u.lastLoginAt)+'</td><td style="white-space:nowrap"><button class="btn ghost sm" data-aact="edit-user" data-i="'+i+'">Editar</button> <button class="btn ghost sm" data-aact="reset-pass" data-i="'+i+'">Redefinir senha</button> <button class="btn ghost sm" data-aact="del-user" data-i="'+i+'">Remover</button></td></tr>').join("");
     return '<div class="callout">Contas de login da plataforma (email · senha · perfil). O vínculo a uma <b>Pessoa</b> define o escopo/RBAC do que a conta enxerga.</div>'+
       '<div class="admin-bar"><button class="btn" data-aact="add-user">+ Novo usuário</button></div>'+
-      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Status</th><th>Pessoa vinculada</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      '<div class="panel" style="padding:6px 12px;overflow-x:auto"><table class="tbl"><thead><tr><th>Nome</th><th>Email</th><th>Perfil</th><th>Status</th><th>Pessoa vinculada</th><th>Último acesso</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }
   function adminStructure(){
     let rows="";
