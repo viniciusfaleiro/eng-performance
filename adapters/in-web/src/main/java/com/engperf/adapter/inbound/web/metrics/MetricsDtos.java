@@ -47,14 +47,41 @@ public final class MetricsDtos {
    * The resolved period and the one the system considers current — {@code start} is the first day
    * of the bucket, which is also what the API accepts back.
    */
-  public record PeriodDto(String start, String end, String currentStart, boolean current) {
+  /**
+   * The period a request was actually computed for, plus what it is compared against.
+   *
+   * <p>{@code days} is here so the browser stops deriving it from the frequency. That derivation
+   * was a second copy of a rule the engine already owns — correct only while every period was a
+   * bucket, and wrong for any chosen range — and duplicated rules of that kind have cost us bugs
+   * before.
+   *
+   * <p>{@code bucket} says whether the period is a calendar bucket, which is what the UI needs to
+   * know to label the comparison honestly: a bucket compares against the previous bucket, anything
+   * else against the dates in {@code previousStart}/{@code previousEnd}.
+   *
+   * @param end exclusive, as the engine reads it — the day after the last day included
+   */
+  public record PeriodDto(
+      String start,
+      String end,
+      String currentStart,
+      boolean current,
+      long days,
+      boolean bucket,
+      String previousStart,
+      String previousEnd) {
 
     public static PeriodDto from(Period resolved, Period current) {
+      Period previous = resolved.previous();
       return new PeriodDto(
           resolved.start().toString(),
           resolved.end().toString(),
           current.start().toString(),
-          resolved.equals(current));
+          resolved.equals(current),
+          resolved.days(),
+          resolved.isBucket(),
+          previous.start().toString(),
+          previous.end().toString());
     }
   }
 

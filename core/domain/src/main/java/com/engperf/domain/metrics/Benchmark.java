@@ -11,14 +11,14 @@ public final class Benchmark {
 
   private Benchmark() {}
 
-  public static Optional<Tier> classify(MetricDefinition def, double value, int bucketDays) {
+  public static Optional<Tier> classify(MetricDefinition def, double value, int periodDays) {
     return def.tierBands()
-        .map(bands -> Tier.of(normalize(def, value, bucketDays), bands, def.direction()));
+        .map(bands -> Tier.of(normalize(def, value, periodDays), bands, def.direction()));
   }
 
-  static double normalize(MetricDefinition def, double value, int bucketDays) {
-    if (def.aggregation() == Aggregation.SUM && bucketDays > 0) {
-      return value / bucketDays;
+  static double normalize(MetricDefinition def, double value, int periodDays) {
+    if (def.aggregation() == Aggregation.SUM && periodDays > 0) {
+      return value / periodDays;
     }
     return value;
   }

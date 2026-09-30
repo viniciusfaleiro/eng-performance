@@ -152,12 +152,104 @@ class MetricsApiTest {
     mvc.perform(
             get("/api/metrics/throughput/items?node=all").requestAttr(AuthWeb.USER, user(admin())))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$[0].label").value("period=2026-06-29"));
+        .andExpect(jsonPath("$[0].label").value("period=2026-06-29..2026-07-06"));
     // Qualquer data dentro do período resolve para o período — o cliente não precisa arredondar.
     mvc.perform(
             get("/api/metrics/throughput/items?node=all&freq=Mensal&period=2026-05-17")
                 .requestAttr(AuthWeb.USER, user(admin())))
-        .andExpect(jsonPath("$[0].label").value("period=2026-05-01"));
+        .andExpect(jsonPath("$[0].label").value("period=2026-05-01..2026-06-01"));
+  }
+
+  /**
+   * O intervalo chega ao motor exatamente como foi pedido — a ponta final inclusiva do usuário vira
+   * o fim exclusivo do motor, e é aí que um off-by-one apareceria como um dia faltando na conta.
+   */
+  @Test
+  void anExplicitRangeIsPassedThroughAsChosen() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&freq=Mensal&from=2026-03-12&to=2026-06-27")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].label").value("period=2026-03-12..2026-06-28"));
+  }
+
+  /** A janela móvel é resolvida no servidor: o relógio do navegador não decide o período. */
+  @Test
+  void aRollingWindowIsResolvedAgainstTheServerClock() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&freq=Semanal&window=7")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].label").value("period=2026-06-24..2026-07-01"));
+  }
+
+  /** Sem parâmetro de intervalo, nada muda: o balde de calendário de sempre. */
+  @Test
+  void withoutRangeParametersTheBucketIsUnchanged() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&freq=Mensal")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].label").value("period=2026-06-01..2026-07-01"));
+  }
+
+  /**
+   * Um intervalo impossível é recusado com o motivo legível, em vez de virar um período qualquer.
+   * Adivinhar a borda que falta mostraria silenciosamente um período que ninguém pediu.
+   */
+  @Test
+  void anImpossibleOrIncompleteRangeIsRefusedWithAReason() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&from=2026-06-27&to=2026-03-12")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("termina antes")));
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&from=2026-03-12")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest())
+        .andExpect(
+            jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("início e fim")));
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&from=12/03/2026&to=2026-06-27")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("AAAA-MM-DD")));
+  }
+
+  /** Um intervalo que ainda não começou é recusado como um balde futuro. */
+  @Test
+  void aFutureRangeIsRefusedLikeAFutureBucket() throws Exception {
+    mvc.perform(
+            get("/api/metrics/throughput/items?node=all&from=2026-12-01&to=2026-12-31")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest());
+  }
+
+  /**
+   * O período resolvido precisa dizer sua duração e contra o que compara. Sem isso o frontend
+   * recalcula o divisor por conta própria — uma segunda cópia de uma regra do motor, que só estava
+   * certa enquanto todo período era um balde.
+   */
+  @Test
+  void theResolvedPeriodCarriesItsDurationAndBaseline() throws Exception {
+    mvc.perform(get("/api/metrics/period?freq=Mensal&period=2026-05-17"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.start").value("2026-05-01"))
+        .andExpect(jsonPath("$.end").value("2026-06-01"))
+        .andExpect(jsonPath("$.days").value(31))
+        .andExpect(jsonPath("$.bucket").value(true))
+        .andExpect(jsonPath("$.previousStart").value("2026-04-01"))
+        .andExpect(jsonPath("$.current").value(false))
+        .andExpect(jsonPath("$.currentStart").value("2026-06-01"));
+
+    mvc.perform(get("/api/metrics/period?freq=Mensal&from=2026-03-12&to=2026-06-27"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.days").value(108))
+        .andExpect(jsonPath("$.bucket").value(false))
+        .andExpect(jsonPath("$.previousStart").value("2025-11-24"))
+        .andExpect(jsonPath("$.previousEnd").value("2026-03-12"));
   }
 
   /**
@@ -261,7 +353,8 @@ class MetricsApiTest {
               "pr:1",
               EventType.PR,
               "https://ado/pr/1",
-              "period=" + period.start(), // echoes the param so the test can assert it
+              // echoes the resolved interval so the test can assert what the engine was handed
+              "period=" + period.start() + ".." + period.end(),
               nodeId,
               Instant.parse("2026-06-10T10:00:00Z"),
               1.0,

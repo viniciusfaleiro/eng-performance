@@ -82,10 +82,14 @@ paths:
       description: >
         O "hoje" do servidor pode estar fixado por configuração, então o cliente não deve deduzir o
         período corrente do relógio local — um rótulo calculado no browser diria um mês que o motor
-        nunca usou.
+        nunca usou. Vale para as três leituras: o balde de calendário, o intervalo escolhido
+        (`from`/`to`) e a janela móvel (`window`).
       parameters:
         - { name: freq, in: query, schema: { type: string }, example: Mensal }
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: OK
@@ -94,12 +98,26 @@ paths:
               schema:
                 type: object
                 properties:
-                  start:        { type: string, format: date }
-                  end:          { type: string, format: date, description: Primeiro dia após o período. }
-                  currentStart: { type: string, format: date }
-                  current:      { type: boolean }
+                  start:         { type: string, format: date }
+                  end:           { type: string, format: date, description: Primeiro dia após o período. }
+                  currentStart:  { type: string, format: date }
+                  current:       { type: boolean }
+                  days:
+                    type: integer
+                    description: >
+                      Duração do período em dias. É o divisor das métricas "por dia"; vem do servidor
+                      para o cliente não recalcular por frequência — essa conta só valia enquanto todo
+                      período era um balde.
+                  bucket:
+                    type: boolean
+                    description: >
+                      Verdadeiro quando o período é exatamente o balde de calendário da frequência.
+                      É o que distingue as duas leituras da comparação: um balde compara contra o
+                      balde anterior, qualquer outro período contra as datas em `previousStart`/`previousEnd`.
+                  previousStart: { type: string, format: date }
+                  previousEnd:   { type: string, format: date, description: Exclusivo — igual a `start`. }
         "400":
-          description: Período ainda não começou.
+          description: Período ainda não começou, ou intervalo inválido (invertido, incompleto ou fora do formato).
 
   /metrics/explanations:
     get:
@@ -283,6 +301,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - name: group
           in: query
           required: true
@@ -308,6 +329,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - $ref: "#/components/parameters/Periods"
         - name: split
           in: query
@@ -334,6 +358,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - name: bucket
           in: query
           schema: { type: string, format: date }
@@ -366,6 +393,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: Painel do grupo.
@@ -387,6 +417,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - name: metricKey
           in: query
           required: true
@@ -415,6 +448,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - name: scope
           in: query
           description: |
@@ -442,6 +478,9 @@ paths:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: Resumo individual.
@@ -477,6 +516,9 @@ paths:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
         - $ref: "#/components/parameters/Periods"
         - name: metric
           in: query
@@ -497,6 +539,9 @@ paths:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: Métricas de review.
@@ -512,6 +557,9 @@ paths:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: Esforço por tipo.
@@ -991,6 +1039,9 @@ paths:
         - $ref: "#/components/parameters/NodeId"
         - $ref: "#/components/parameters/Frequency"
         - $ref: "#/components/parameters/Period"
+        - $ref: "#/components/parameters/RangeFrom"
+        - $ref: "#/components/parameters/RangeTo"
+        - $ref: "#/components/parameters/Window"
       responses:
         "200":
           description: Percentuais de cobertura por dimensão.
@@ -1051,6 +1102,35 @@ components:
         o presente. Um período que ainda não começou é recusado com 400; um período passado sem
         eventos responde 200 com zero — são respostas diferentes de propósito.
       schema: { type: string, format: date }
+    RangeFrom:
+      name: from
+      in: query
+      required: false
+      description: >
+        Primeiro dia de um intervalo escolhido livremente (ex. `2026-03-12`). Precisa vir junto de
+        `to`: metade de um intervalo é recusada com 400, porque adivinhar a borda que falta mostraria
+        um período que ninguém pediu. Com o intervalo ativo, `period` é ignorado e a frequência passa
+        a ser a granularidade do gráfico, não a escolha do balde.
+      schema: { type: string, format: date }
+    RangeTo:
+      name: to
+      in: query
+      required: false
+      description: >
+        Último dia do intervalo, **inclusivo** como uma pessoa escreve ("12/03 a 27/06" inclui o dia
+        27). Internamente o motor usa o fim exclusivo, então a resposta de `/metrics/period` devolve
+        o dia seguinte em `end`.
+      schema: { type: string, format: date }
+    Window:
+      name: window
+      in: query
+      required: false
+      description: >
+        Leitura móvel: os últimos N dias terminando em `period` (ou em hoje, se omitido) — 7 ou 30 na
+        interface. Uma janela móvel está sempre cheia, então nunca recebe o recorte de fatia decorrida
+        que um balde em curso recebe, e compara contra os N dias imediatamente anteriores. Ignorado
+        quando `from`/`to` estão presentes.
+      schema: { type: integer, minimum: 1 }
     Frequency:
       name: frequency
       in: query

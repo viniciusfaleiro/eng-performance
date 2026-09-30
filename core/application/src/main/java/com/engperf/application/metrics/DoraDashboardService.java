@@ -43,14 +43,14 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
 
   @Override
   public DoraDashboard dashboard(String nodeId, Period period) {
-    int bucketDays = bucketDays(period);
-    List<DoraCard> cards = cardsFor(nodeId, period, bucketDays);
+    int periodDays = periodDays(period);
+    List<DoraCard> cards = cardsFor(nodeId, period, periodDays);
 
     List<Child> children = children(nodeId);
     String childType = childType(nodeId);
     List<RankingRow> ranking = new ArrayList<>();
     for (Child c : children) {
-      ranking.add(new RankingRow(c.id(), c.label(), cardsFor(c.id(), period, bucketDays)));
+      ranking.add(new RankingRow(c.id(), c.label(), cardsFor(c.id(), period, periodDays)));
     }
     ranking.sort(rankingOrder());
     if (ranking.size() > TOP_N) {
@@ -59,7 +59,7 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
     return new DoraDashboard(nodeId, childType, cards, ranking);
   }
 
-  private List<DoraCard> cardsFor(String nodeId, Period period, int bucketDays) {
+  private List<DoraCard> cardsFor(String nodeId, Period period, int periodDays) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
     for (MetricCard card : metrics.cards(nodeId, period)) {
       byKey.put(card.definition().key(), card);
@@ -71,7 +71,7 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
         continue;
       }
       double value = card.current().value();
-      var tier = Benchmark.classify(def, value, bucketDays).orElse(null);
+      var tier = Benchmark.classify(def, value, periodDays).orElse(null);
       cards.add(new DoraCard(def, card.current(), tier, card.coverage()));
     }
     return cards;
@@ -116,8 +116,13 @@ public final class DoraDashboardService implements DoraDashboardUseCase {
     return null;
   }
 
-  private int bucketDays(Period period) {
-    return (int) (period.end().toEpochDay() - period.start().toEpochDay());
+  /**
+   * The days a "per day" benchmark divides by — the duration of whatever period was selected.
+   * Always was, for a bucket; saying it as the interval's duration is what makes a 45-day range
+   * divide by 45 instead of by the length of some bucket it never had.
+   */
+  private int periodDays(Period period) {
+    return (int) period.days();
   }
 
   private record Child(String id, String label) {}

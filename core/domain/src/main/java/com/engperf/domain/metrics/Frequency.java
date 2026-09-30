@@ -55,6 +55,24 @@ public enum Frequency {
     return buckets;
   }
 
+  /**
+   * The buckets covering {@code [from, toExclusive)}, clipped to those edges.
+   *
+   * <p>Clipping is the point: slicing "12 March to 27 June" by month has to give a March slice that
+   * starts on the 12th, not on the 1st. An unclipped first slice would count events from outside
+   * the interval, and the chart would stop adding up to the card above it.
+   */
+  public List<Bucket> slice(LocalDate from, LocalDate toExclusive) {
+    List<Bucket> slices = new ArrayList<>();
+    LocalDate cursor = from;
+    while (cursor.isBefore(toExclusive)) {
+      LocalDate next = nextBucketStart(bucketStart(cursor));
+      slices.add(new Bucket(cursor, next.isAfter(toExclusive) ? toExclusive : next));
+      cursor = next;
+    }
+    return slices;
+  }
+
   /** Days elapsed into the bucket starting at {@code start}, inclusive, as of {@code reference}. */
   public int elapsedDays(LocalDate start, LocalDate reference) {
     LocalDate end = nextBucketStart(start);

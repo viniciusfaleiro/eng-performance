@@ -70,6 +70,16 @@ h1,h2,h3{margin:0;}
 .sync-fail-src{font-size:12.5px;font-family:var(--mono);}
 .sync-fail-why{font-size:11.5px;color:var(--on-surface-var);line-height:1.45;margin-top:2px;}
 .period-ctl{display:flex;align-items:center;gap:4px;}
+.read-ctl{display:flex;gap:4px;margin-top:4px;}
+.read-opt{all:unset;cursor:pointer;font-size:10.5px;font-family:var(--mono);letter-spacing:.3px;padding:3px 8px;border:1px solid var(--outline-var);border-radius:6px;color:var(--muted);}
+.read-opt:hover,.read-opt:focus-visible{border-color:var(--primary);color:var(--on-surface);}
+.read-opt.on{background:color-mix(in srgb,var(--primary) 16%,transparent);color:var(--on-surface);border-color:var(--primary);}
+.range-form{display:grid;gap:10px;margin-top:10px;}
+.range-row{display:flex;gap:10px;flex-wrap:wrap;}
+.range-row label{display:grid;gap:4px;font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.4px;}
+.range-row input{font:inherit;font-size:13px;padding:7px 9px;border:1px solid var(--outline-var);border-radius:8px;background:var(--surface-2);color:var(--on-surface);}
+.range-hint{font-size:12px;color:var(--on-surface-var);line-height:1.5;}
+.range-err{font-size:12px;color:var(--crit);min-height:1em;}
 .period-label{all:unset;cursor:pointer;font-size:12.5px;font-family:var(--mono);padding:6px 10px;border:1px solid var(--outline-var);border-radius:8px;background:var(--surface-2);min-width:130px;text-align:center;white-space:nowrap;}
 .period-label:hover,.period-label:focus-visible{border-color:var(--primary);}
 #periodField.past .period-label{border-color:var(--warn);color:var(--warn);}
@@ -518,7 +528,11 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           <button class="icon-btn sm" id="periodPrev" aria-label="Período anterior">‹</button>
           <button class="period-label" id="periodLabel" aria-haspopup="listbox"></button>
           <button class="icon-btn sm" id="periodNext" aria-label="Próximo período">›</button>
-          <button class="btn ghost sm" id="periodNow" title="Voltar ao período atual">Hoje</button>
+          <button class="btn ghost sm" id="periodNow" title="Voltar ao período de calendário atual">Hoje</button>
+        </div>
+        <div class="read-ctl" id="readCtl" role="group" aria-label="Leitura do período">
+          <button class="read-opt" id="readCal" data-read="cal">calendário</button>
+          <button class="read-opt" id="readRoll" data-read="roll"></button>
         </div>
       </div>
       <button class="btn ghost sm" id="exportBtn" title="Exportar a visão atual em PDF" style="align-self:flex-end">⭳ PDF</button>
@@ -604,9 +618,30 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const jpost=(u,b)=>jsend("POST",u,b),jput=(u,b)=>jsend("PUT",u,b);
   const jdel=(u)=>fetch(u,{method:"DELETE",headers:authHeaders()}).then(jcheck);
   /* ---------- Período exibido ----------
-     state.period é a data ISO de início do balde, ou null para "o período corrente". Data absoluta,
-     não deslocamento: um link para julho precisa continuar apontando para julho amanhã. */
-  const periodQ=()=>state.period?("&period="+encodeURIComponent(state.period)):"";
+     Três leituras do mesmo controle, e o servidor resolve todas: o balde de calendário
+     (state.period), o intervalo escolhido (state.range) e a janela móvel (state.rolling dias
+     terminando em state.period, ou em hoje). Datas absolutas, nunca deslocamentos: um link para
+     julho precisa continuar apontando para julho amanhã.
+
+     A frequência muda de papel entre elas. No calendário ela escolhe o balde; com intervalo ativo
+     ela só fatia o gráfico. É a mesma palavra com dois significados, então a tela diz qual vale. */
+  const ISO_DAY=/^\d{4}-\d{2}-\d{2}$/;
+  const rangeActive=()=>!!state.range;
+  const rollingActive=()=>!state.range&&!!state.rolling&&state.freq!=="Diário";
+  function periodQ(){
+    if(state.range)return "&from="+encodeURIComponent(state.range.from)+"&to="+encodeURIComponent(state.range.to);
+    let q=state.period?("&period="+encodeURIComponent(state.period)):"";
+    if(rollingActive())q+="&window="+state.rolling;
+    return q;
+  }
+  // A chave de cache precisa distinguir as três leituras: sem isso, trocar de intervalo mostraria
+  // os números do anterior — o cache serve para não repetir a chamada, não para responder outra
+  // pergunta.
+  function selKey(){
+    if(state.range)return "r"+state.range.from+".."+state.range.to;
+    const anchor=state.period||"";
+    return rollingActive()?(anchor+"w"+state.rolling):anchor;
+  }
   const D=(iso)=>{const [y,m,d]=iso.split("-").map(Number);return new Date(Date.UTC(y,m-1,d));};
   const iso=(dt)=>dt.toISOString().slice(0,10);
   const MONTHS=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
@@ -642,6 +677,31 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       jget("/api/metrics/period?freq="+encodeURIComponent(f))
         .then(p=>{CURRENT[f]=p.currentStart;}).catch(()=>{})));
   }
+  // O "hoje" do servidor, que pode estar fixado por configuração: o balde diário corrente É o dia
+  // corrente. Serve para não oferecer navegação para o futuro em nenhuma das três leituras.
+  const serverToday=()=>CURRENT["Diário"]||null;
+  // "Últimos 1 dia" e "hoje" são o mesmo intervalo — oferecer a escolha no diário ensinaria o
+  // usuário a desconfiar dos controles.
+  const ROLL_DAYS={"Semanal":7,"Mensal":30};
+  const rollDays=()=>ROLL_DAYS[state.freq]||null;
+
+  /* O período resolvido — duração e intervalo de comparação — vem do servidor. O divisor por dia
+     era recalculado aqui a partir da frequência: uma segunda cópia de uma regra do motor, correta
+     só enquanto todo período era um balde e errada para qualquer intervalo escolhido. */
+  const RESOLVED={},RESOLVED_LOADING=new Set();
+  const resolvedKey=()=>state.freq+"|"+selKey();
+  function ensureResolvedPeriod(){
+    const k=resolvedKey();
+    if(RESOLVED[k]||RESOLVED_LOADING.has(k))return;
+    RESOLVED_LOADING.add(k);
+    jget("/api/metrics/period?freq="+encodeURIComponent(state.freq)+periodQ())
+      .then(p=>{RESOLVED[k]=p;})
+      .catch(()=>{RESOLVED[k]={error:true};})
+      .finally(()=>{RESOLVED_LOADING.delete(k);render();});
+  }
+  const resolved=()=>{const r=RESOLVED[resolvedKey()];return (r&&!r.error)?r:null;};
+  // null enquanto não chegou: quem divide por dias espera, em vez de mostrar um número sem divisor.
+  const periodDays=()=>{const r=resolved();if(r)return r.days;ensureResolvedPeriod();return null;};
 
   const escHtml=(s)=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
   const apiErr=(e)=>{const m=(e&&e.message)||String(e);
@@ -797,19 +857,19 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const IA_KEYS=new Set(["aic","aad","aim"]);
   function snap(id,m,freq){
     if(m.dora){
-      const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+      const c=DORA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:e.pct,dir:e.dir,trend:snapSyn(id,m,freq).trend};
       }
     }else if(FLOW_KEYS.has(m.key)){
-      const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+      const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
       }
     }else if(IA_KEYS.has(m.key)){
-      const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+      const c=IA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
@@ -817,7 +877,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     }
     // Nada real para esta métrica/nó. "Carregando" e "não existe" são coisas diferentes: anunciar
     // ausência enquanto a resposta está a caminho faria o card piscar uma informação falsa.
-    const k=state.node+"|"+state.freq+"|"+(state.period||"");
+    const k=state.node+"|"+state.freq+"|"+selKey();
     const loading=(m.dora&&DORA_LOADING.has(k))||(FLOW_KEYS.has(m.key)&&FLOW_LOADING.has(k))
       ||(IA_KEYS.has(m.key)&&IA_LOADING.has(k));
     return Object.assign(snapSyn(id,m,freq),loading?{loading:true}:{noData:true});
@@ -828,14 +888,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      + its tiles read real data; the dashboard card grids remain the mock until then. */
   const PROTO2METRIC={df:"deploy_freq",lt:"lead_time",cfr:"cfr",mttr:"mttr",tp:"throughput",flt:"flow_lead_time",wip:"wip",rt:"pr_review_time",aic:"ai_share",aad:"ai_adoption",ct:"cycle_time",ps:"pr_size",fe:"flow_efficiency",cmt:"commit_count",prc:"pr_count"};
   const TREND={},TREND_LOADING=new Set();
-  const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq+"|"+(state.period||"");
+  const trendKey=(mk)=>mk+"|"+state.node+"|"+state.freq+"|"+selKey();
   function ensureTrend(mk){
     const k=trendKey(mk);
     if(TREND[k]||TREND_LOADING.has(k))return;
     TREND_LOADING.add(k);
     jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{const pts=d.points.map(p=>p.value);const lp=d.points[d.points.length-1]||{};
-        TREND[k]={pts,cur:pts[pts.length-1],prev:pts[pts.length-2],
+        TREND[k]={pts,labels:d.points.map(p=>p.bucket),cur:pts[pts.length-1],prev:pts[pts.length-2],
           pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
           dir:(lp.sentiment==="good"?"up":lp.sentiment==="bad"?"down":"flat")};})
       .catch(()=>{TREND[k]={error:true};})
@@ -854,12 +914,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const DORA_CACHE={},DORA_LOADING=new Set();
   const API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr"};
   const TIER_PT={elite:"Elite",alto:"Alto",medio:"Médio",baixo:"Baixo"};
-  const freqDays=()=>({"Diário":1,"Diario":1,"Semanal":7,"Mensal":30}[state.freq]||7);
   function ensureDora(){
-    const k=state.node+"|"+state.freq+"|"+(state.period||"");
+    const k=state.node+"|"+state.freq+"|"+selKey();
     if(DORA_CACHE[k]||DORA_LOADING.has(k))return;
+    const days=periodDays();
+    if(days==null)return; // o divisor por dia vem do servidor; render() volta quando chegar
     DORA_LOADING.add(k);
-    const days=freqDays();
     jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
       .then(d=>{DORA_CACHE[k]=indexDora(d,days);})
       .catch(()=>{DORA_CACHE[k]={error:true,byNode:{},ranking:[]};})
@@ -876,7 +936,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.ranking||[]).forEach(r=>put(r.nodeId,r.cards));
     return {byNode,childType:d.childType,ranking:(d.ranking||[]).map(r=>r.nodeId)};
   }
-  function doraTier(id,key){const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+  function doraTier(id,key){const c=DORA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
     if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][key]&&c.byNode[id][key].tier)return TIER_PT[c.byNode[id][key].tier];
     return null;}
   /* Fluxo dashboard wired to the real engine: /api/dashboards/flow gives the node's six cards, the
@@ -885,7 +945,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   const FLOW_CACHE={},FLOW_LOADING=new Set();
   const FLOW_API2PROTO={cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",commit_count:"cmt",pr_count:"prc"};
   function ensureFlow(){
-    const k=state.node+"|"+state.freq+"|"+(state.period||"");
+    const k=state.node+"|"+state.freq+"|"+selKey();
     if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
     FLOW_LOADING.add(k);
     jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
@@ -904,14 +964,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
     return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
   }
-  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
+  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
   /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
      (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
      with/without-AI cycle-time series. ai_share/ai_adoption arrive as 0..1 ratios, shown as %. */
   const IA_CACHE={},IA_LOADING=new Set();
   const IA_API2PROTO={ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
   function ensureIA(){
-    const k=state.node+"|"+state.freq+"|"+(state.period||"");
+    const k=state.node+"|"+state.freq+"|"+selKey();
     if(IA_CACHE[k]||IA_LOADING.has(k))return;
     IA_LOADING.add(k);
     jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
@@ -936,18 +996,20 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      carry the server label; values are normalised to the same display units as the dashboards. */
   const CMP_CACHE={},CMP_LOADING=new Set();
   const CMP_API2PROTO={deploy_freq:"df",lead_time:"lt",cfr:"cfr",mttr:"mttr",cycle_time:"ct",throughput:"tp",flow_lead_time:"flt",wip:"wip",pr_review_time:"rt",pr_size:"ps",flow_efficiency:"fe",ai_share:"aic",ai_adoption:"aad",ai_impact:"aim"};
-  const cmpKey=()=>state.node+"|"+state.freq+"|"+(state.period||"")+"|"+(state.node==="all"?state.cmpScope:"-");
+  const cmpKey=()=>state.node+"|"+state.freq+"|"+selKey()+"|"+(state.node==="all"?state.cmpScope:"-");
   function ensureCmp(){
     const k=cmpKey();
     if(CMP_CACHE[k]||CMP_LOADING.has(k))return;
+    const days=periodDays();
+    if(days==null)return; // idem: o heatmap normaliza deploys por dia
     CMP_LOADING.add(k);
     const scope=state.cmpScope==="verticais"?"verticais":"times";
     jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+"&scope="+scope)
-      .then(d=>{CMP_CACHE[k]=indexCmp(d);})
+      .then(d=>{CMP_CACHE[k]=indexCmp(d,days);})
       .catch(()=>{CMP_CACHE[k]={error:true,byNode:{},rows:[]};})
       .finally(()=>{CMP_LOADING.delete(k);render();});
   }
-  function indexCmp(d){
+  function indexCmp(d,days){
     const byNode={},rows=[];
     // As colunas são as que o servidor mandou, não uma lista paralela no frontend: o heatmap não
     // publica métricas de volume (ranquear time por commit é proxy manipulável), e uma lista local
@@ -956,7 +1018,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.rows||[]).forEach(r=>{
       const m={};
       (d.metrics||[]).forEach((mc,ci)=>{const pk=CMP_API2PROTO[mc.key]||mc.key;let v=r.values[ci];
-        if(pk==="df")v=v/freqDays();else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
+        if(pk==="df")v=v/days;else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
       byNode[r.nodeId]=m;rows.push({id:r.nodeId,label:r.label,rowType:r.rowType});
     });
     return {byNode,rows,cols};
@@ -966,7 +1028,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      work-type distribution and recent activity (with ADO deep-links). Coaching-only on the
      backend (403 otherwise). */
   const IND_CACHE={},IND_LOADING=new Set();
-  const indKey=()=>state.node+"|"+state.freq+"|"+(state.period||"");
+  const indKey=()=>state.node+"|"+state.freq+"|"+selKey();
   function ensureInd(){
     if(!state.node.startsWith("p:"))return;
     const k=indKey();
@@ -999,7 +1061,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,drawerNode:null,period:null};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,drawerNode:null,period:null,range:null,rolling:null};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -1054,6 +1116,17 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     return '<div class="chart"><svg viewBox="0 0 '+w+' '+h+'" role="img">'+g+xl+bars+hits+'</svg></div>';
   }
   function periodLabels(freq,n){const out=[];for(let i=n-1;i>0;i--)out.push(({"Diário":"D-","Semanal":"S-","Mensal":"M-"}[freq])+i);out.push("atual");return out;}
+  /* Com intervalo ativo o eixo passa a ser de datas. Os rótulos relativos ("S-11 … atual") contam
+     baldes terminando no período; um intervalo tem tantos pontos quantas fatias couberem nele, e
+     manter doze rótulos fixos desalinharia rótulo e ponto — o gráfico mostraria a fatia errada sob
+     cada coluna. */
+  const sliceLabel=(isoDate)=>{if(!ISO_DAY.test(isoDate||""))return "";const dt=D(isoDate);return String(dt.getUTCDate()).padStart(2,"0")+"/"+String(dt.getUTCMonth()+1).padStart(2,"0");};
+  function trendLabels(m){
+    const mk=m&&PROTO2METRIC[m.key];
+    const e=mk?TREND[trendKey(mk)]:null;
+    if(e&&e.labels&&(rangeActive()||rollingActive()))return e.labels.map(sliceLabel);
+    return periodLabels(state.freq,(e&&e.pts&&e.pts.length)||12);
+  }
 
   /* ---------- Views ---------- */
   /* ---------- Detailed dashboards (DORA / Fluxo / IA) ---------- */
@@ -1061,12 +1134,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   // their adoption, so the ranking shows real values instead of the team-average fallback.
   function cachedVal(id,m){
     if(!IA_KEYS.has(m.key))return null;
-    const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+    const c=IA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
     if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null)return c.byNode[id][m.key].cur;
     return null;}
   function nodeVal(id,m){const cv=cachedVal(id,m);if(cv!=null)return cv;const nd=NODES[id];if(nd&&nd.level==="Vertical")return nd.teamIds.reduce((a,t)=>a+snap(t,m,state.freq).cur,0)/nd.teamIds.length;return snap(id,m,state.freq).cur;}
   function rankEntities(){const n=NODES[state.node];if(state.node==="all")return {ids:NODES["all"].teamIds,type:"Time"};if(n.level==="Vertical")return {ids:n.teamIds,type:"Time"};if(n.level==="Time")return {ids:n.people,type:"Pessoa"};return {ids:NODES[n.teamIds[0]].people,type:"Pessoa"};}
-  function areaTrend(title,m){const labels=periodLabels(state.freq,12);const s=trendSnap(m);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-head" style="margin-bottom:8px"><div class="chart-title">'+title+'</div>'+evoChip(s)+'</div>'+barChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
+  function areaTrend(title,m){const labels=trendLabels(m);const s=trendSnap(m);return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-head" style="margin-bottom:8px"><div class="chart-title">'+title+'</div>'+evoChip(s)+'</div>'+barChart([{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}],labels,m.unit,230)+'</div>';}
   function rankPanel(title,ids,m){
     const all=ids.map(id=>({n:NODES[id],s:snap(id,m,state.freq)})).filter(r=>r.n);
     if(all.length&&all.every(r=>r.s.loading)){
@@ -1116,7 +1189,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   function dashboardDORA(){
     ensureDora();
-    const c=DORA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+    const c=DORA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
     let ids,et;
     if(c&&!c.error&&c.childType&&c.ranking.length){ids=c.ranking;et=(c.childType==="vertical")?"vertical":"time";}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
@@ -1135,7 +1208,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function dashboardFluxo(){
     ensureFlow();
-    const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+    const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];
     let ids,et;
     if(c&&!c.error&&c.childType&&c.children.length){ids=c.children;et=(c.childType==="vertical")?"vertical":"time";}
     else{const re=rankEntities();ids=re.ids;et=re.type.toLowerCase();}
@@ -1155,7 +1228,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function dashboardIA(){
     ensureIA();
-    const c=IA_CACHE[state.node+"|"+state.freq+"|"+(state.period||"")];
+    const c=IA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
     let ids,et;
     const CHILD_PT={vertical:"vertical",team:"time",person:"pessoa"};
     if(c&&!c.error&&c.childType&&c.adoption.length){ids=c.adoption;et=CHILD_PT[c.childType]||c.childType;}
@@ -1164,7 +1237,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+=areaTrend("% de commits com IA — evolução",M("aic"));
     const aic=snap(state.node,M("aic"),state.freq).cur;
     h+='<div class="dash-grid">'+rankPanel("Adoção de IA por "+et,ids,M("aad"))+donutPanel("Commits com IA vs. sem IA",[{label:"Com IA",value:aic,color:"var(--cat-1)"},{label:"Sem IA",value:Math.max(0,100-aic),color:"var(--surface-4)"}])+'</div>';
-    const labels=periodLabels(state.freq,12);
+    const labels=trendLabels(M("aic"));
     const comIA=(c&&c.withAi&&c.withAi.length===12)?c.withAi:series(state.node,M("ct"),state.freq,12,"ia").map(v=>v*0.82),
           semIA=(c&&c.withoutAi&&c.withoutAi.length===12)?c.withoutAi:series(state.node,M("ct"),state.freq,12,"noia").map(v=>v*1.08);
     h+='<div class="chart-wrap" style="margin-top:14px"><div class="chart-head"><div class="chart-title">Cycle Time: PRs com IA vs. sem IA</div><div class="legend"><span><i style="background:var(--cat-1)"></i>com IA</span><span><i style="background:var(--cat-5)"></i>sem IA</span></div></div>'+barChart([{name:"com IA",color:"var(--cat-1)",pts:comIA},{name:"sem IA",color:"var(--cat-5)",pts:semIA}],labels,"h",230)+'</div>';
@@ -1177,11 +1250,32 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     ]);
     return h;
   }
+  /* Duas frases que deixam de ser óbvias fora do balde de calendário.
+
+     A frequência muda de papel: com intervalo ativo ela não escolhe mais o período, só fatia o
+     gráfico — e quem olhar um print sem o controle à vista não tem como saber qual dos dois
+     significados valia.
+
+     E "vs. período anterior" fica ambíguo: num intervalo de 45 dias a comparação é contra os 45
+     dias anteriores, não contra o mês passado. Sem dizer contra o quê, alguém lê "-12%" achando
+     que é outra coisa. As datas vêm do servidor, que é quem de fato calculou a comparação. */
+  function freqPill(){
+    return rangeActive()
+      ? '<span class="pill">Granularidade do gráfico: '+state.freq+'</span>'
+      : '<span class="pill">Frequência: '+state.freq+'</span>';
+  }
+  function baselinePill(){
+    const r=resolved();
+    if(r&&!r.bucket&&r.previousStart&&r.previousEnd)
+      return '<span class="pill">vs. '+dmy(r.previousStart)+' – '+dmy(lastDay(r.previousEnd))+'</span>';
+    if(!r){ensureResolvedPeriod();}
+    const bw={"Diário":"ontem","Semanal":"semana passada","Mensal":"mês passado"}[state.freq];
+    return '<span class="pill">vs. '+bw+'</span>';
+  }
   function viewPainel(){
     const n=NODES[state.node];
     if(n.level==="Pessoa")return viewIndividual(state.node);
-    const bw={"Diário":"ontem","Semanal":"semana passada","Mensal":"mês passado"}[state.freq];
-    let h='<p class="baseline-note"><span class="pill">Frequência: '+state.freq+'</span><span class="pill">vs. '+bw+'</span>'+(pathOf(state.node)?'<span class="pill">'+pathOf(state.node)+'</span>':'')+'<span class="pill">Clique num card para o detalhe ↗</span></p>';
+    let h='<p class="baseline-note">'+freqPill()+baselinePill()+(pathOf(state.node)?'<span class="pill">'+pathOf(state.node)+'</span>':'')+'<span class="pill">Clique num card para o detalhe ↗</span></p>';
     const tabs=[["dora","DORA"],["fluxo","Fluxo"],["ia","Inteligência Artificial"]];
     h+='<div class="dash-tabs">'+tabs.map(t=>'<button class="dash-tab'+(state.dashTab===t[0]?" on":"")+'" data-dash="'+t[0]+'">'+t[1]+'</button>').join("")+'</div>';
     if(state.dashTab==="fluxo")h+=dashboardFluxo();
@@ -1206,7 +1300,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   function viewTendencias(){
-    const m=M(state.trendMetric);const n=NODES[state.node];const labels=periodLabels(state.freq,12);
+    const m=M(state.trendMetric);const n=NODES[state.node];const labels=trendLabels(m);
     const canAI=(m.key==="ct"||m.key==="tp"||m.key==="lt");
     let ser;
     if(state.trendAI&&canAI){ser=[{name:"com IA",color:"var(--cat-1)",pts:series(state.node,m,state.freq,12,"ia").map(v=>v*(m.higher?1.12:0.82))},{name:"sem IA",color:"var(--cat-5)",pts:series(state.node,m,state.freq,12,"noia").map(v=>v*(m.higher?0.9:1.12))}];}
@@ -1327,9 +1421,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const reviewsRecv=rv?rv.reviewsReceived:Math.round(4+hash(id+freq+"rvr")*16);
     const approvals=rv?rv.approvalsGiven:Math.round(reviewsDone*(0.5+hash(id+freq+"apr")*0.3));
     const rejections=rv?rv.rejectionsGiven:Math.min(Math.round(reviewsDone*(0.12+hash(id+freq+"rej")*0.22)),Math.max(0,reviewsDone-approvals));
-    const bw={"Diário":"ontem","Semanal":"semana passada","Mensal":"mês passado"}[freq];
     const labels=periodLabels(freq,12);
-    let h='<p class="baseline-note"><span class="pill">'+n.vertical+' › '+n.team+'</span><span class="pill">'+freq+' · vs. '+bw+'</span><span class="pill">visão de contribuição individual</span></p>';
+    let h='<p class="baseline-note"><span class="pill">'+n.vertical+' › '+n.team+'</span>'+freqPill()+baselinePill()+'<span class="pill">visão de contribuição individual</span></p>';
 
     // Acesso à plataforma vem antes das seções de entrega e fora delas: mede adesão a uma
     // ferramenta, não trabalho de engenharia, e misturar as duas convidaria a ler "não acessa há
@@ -1959,7 +2052,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function openDrawer(key,node){
     state.openDrawerKey=key;
     state.drawerNode=node||state.node;
-    const m=M(key);const s=trendSnap(m);const labels=periodLabels(state.freq,12);
+    const m=M(key);const s=trendSnap(m);const labels=trendLabels(m);
     const ser=[{name:m.label,color:"var(--cat-1)",pts:trendPts(m)}];
     let tier=m.dora?'<span class="tier '+TC[tierOf(m.key,s.cur)]+'">'+tierOf(m.key,s.cur)+'</span>':'';
     let h='<div class="drawer-head"><div><div class="crumb-level">'+NODES[state.node].label+' · '+state.freq+'</div><h2 style="font-size:20px;margin-top:2px">'+m.label+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
@@ -2127,14 +2220,24 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     // quem estava olhando julho e troca para semanal quer uma semana de julho.
     const anchor=state.period;
     state.freq=b.dataset.freq;
-    if(anchor)state.period=bucketStart(anchor,state.freq);
-    if(state.period===currentPeriod())state.period=null;
+    // Com intervalo ativo a frequência só refatia o gráfico: mexer nas bordas mudaria a pergunta.
+    if(!state.range){
+      if(rollingActive()){
+        // A janela móvel muda de tamanho com a frequência; a âncora (o fim da janela) fica.
+        state.rolling=rollDays();
+        if(!state.rolling)state.period=anchor?bucketStart(anchor,state.freq):null;
+      }else{
+        if(anchor)state.period=bucketStart(anchor,state.freq);
+        if(state.period===currentPeriod())state.period=null;
+      }
+    }
     document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x===b));
     syncUrl();render();
   });
   $("periodPrev").addEventListener("click",()=>stepPeriod(-1));
   $("periodNext").addEventListener("click",()=>stepPeriod(1));
-  $("periodNow").addEventListener("click",()=>setPeriod(null));
+  $("periodNow").addEventListener("click",resetPeriod);
+  $("readCtl").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setReading(b.dataset.read);});
   $("periodLabel").addEventListener("click",openPeriodList);
   $("themeBtn").addEventListener("click",()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;const next=dark?"light":"dark";document.documentElement.setAttribute("data-theme",next);try{localStorage.setItem("ep_theme",next);}catch(e){}});
   $("exportBtn").addEventListener("click",()=>window.print());
@@ -2149,39 +2252,133 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const u=new URL(location.href);
     u.searchParams.set("node",state.node);
     u.searchParams.set("freq",state.freq);
-    if(state.period)u.searchParams.set("period",state.period);else u.searchParams.delete("period");
+    // Um endereço carrega exatamente uma leitura: deixar parâmetros de outra para trás faria o
+    // link reabrir num período diferente do que estava na tela quando foi copiado.
+    ["period","from","to","window"].forEach(k=>u.searchParams.delete(k));
+    if(state.range){u.searchParams.set("from",state.range.from);u.searchParams.set("to",state.range.to);}
+    else{
+      if(state.period)u.searchParams.set("period",state.period);
+      if(rollingActive())u.searchParams.set("window",String(state.rolling));
+    }
     history.replaceState(null,"",u.pathname+u.search+u.hash);
   }
   function readUrl(){
     const q=new URL(location.href).searchParams;
     const f=q.get("freq");if(f&&["Diário","Semanal","Mensal"].includes(f))state.freq=f;
     const n=q.get("node");if(n)state.node=n;
-    const p=q.get("period");if(p&&/^\d{4}-\d{2}-\d{2}$/.test(p))state.period=bucketStart(p,state.freq);
+    const from=q.get("from"),to=q.get("to");
+    if(ISO_DAY.test(from||"")&&ISO_DAY.test(to||"")&&from<=to){
+      // O intervalo vem inteiro ou não vem: metade dele não é uma pergunta mais estreita, é uma
+      // pergunta sem resposta, e o servidor a recusaria.
+      state.range={from:from,to:to};
+    }else{
+      const p=q.get("period");if(ISO_DAY.test(p||""))state.period=bucketStart(p,state.freq);
+      const w=Number(q.get("window"));
+      if(w&&w===rollDays()){state.rolling=w;if(p&&ISO_DAY.test(p))state.period=p;}
+    }
     document.querySelectorAll("#freq button").forEach(x=>x.classList.toggle("active",x.dataset.freq===state.freq));
   }
 
   /* ---------- Controle de período ---------- */
+  const dmy=(isoDate)=>{const dt=D(isoDate);return String(dt.getUTCDate()).padStart(2,"0")+"/"+String(dt.getUTCMonth()+1).padStart(2,"0")+"/"+dt.getUTCFullYear();};
+  const addDays=(isoDate,by)=>{const dt=D(isoDate);dt.setUTCDate(dt.getUTCDate()+by);return iso(dt);};
+  // O fim que o servidor devolve é exclusivo; o usuário lê o último dia incluído.
+  const lastDay=(isoExclusiveEnd)=>addDays(isoExclusiveEnd,-1);
+
+  // "Estou no período de sempre?" — só assim o destaque de período passado significa algo.
+  const atDefaultPeriod=()=>!state.range&&!state.rolling&&isCurrentPeriod();
+  function periodText(){
+    if(state.range)return dmy(state.range.from)+" – "+dmy(state.range.to);
+    if(rollingActive()){
+      const n=state.rolling;
+      return state.period?(n+" dias até "+dmy(state.period)):("últimos "+n+" dias");
+    }
+    const p=shownPeriod();
+    return p?periodLabel(p,state.freq):"…";
+  }
   function renderPeriod(){
     const lbl=$("periodLabel");if(!lbl)return;
-    const p=shownPeriod();
-    if(!p){lbl.textContent="…";return;}
-    lbl.textContent=periodLabel(p,state.freq);
-    // Destaque quando não é o corrente: o risco real é ler número antigo como atual.
-    $("periodField").classList.toggle("past",!isCurrentPeriod());
-    $("periodNow").classList.toggle("lv-hidden",isCurrentPeriod());
-    // Não há período futuro para navegar.
-    $("periodNext").disabled=isCurrentPeriod();
+    lbl.textContent=periodText();
+    // Destaque quando não é o período de sempre: o risco real é ler número antigo como atual.
+    $("periodField").classList.toggle("past",!atDefaultPeriod());
+    $("periodNow").classList.toggle("lv-hidden",atDefaultPeriod());
+    $("periodNext").disabled=!canStep(1);
+    renderReadCtl();
+  }
+  // O alternador só existe onde muda algo: no diário, "último 1 dia" e "hoje" são o mesmo
+  // intervalo. Com intervalo escolhido ele também não se aplica — as bordas já foram digitadas.
+  function renderReadCtl(){
+    const ctl=$("readCtl");if(!ctl)return;
+    const n=rollDays();
+    const show=!!n&&!state.range;
+    ctl.classList.toggle("lv-hidden",!show);
+    if(!show)return;
+    $("readRoll").textContent="últimos "+n+" dias";
+    $("readCal").classList.toggle("on",!rollingActive());
+    $("readRoll").classList.toggle("on",rollingActive());
   }
   function setPeriod(p){
     state.period=(p&&p!==currentPeriod())?p:null;
     syncUrl();render();
   }
-  function stepPeriod(by){
-    const p=shownPeriod();if(!p)return;
-    const next=shiftPeriod(p,state.freq,by);
+  // Volta ao ponto de partida por inteiro: sair do intervalo sem limpar a leitura móvel deixaria o
+  // controle dizendo "calendário" e mostrando outra coisa.
+  function resetPeriod(){
+    state.range=null;state.rolling=null;state.period=null;
+    syncUrl();render();
+  }
+  function setRange(from,to){
+    state.range={from:from,to:to};state.rolling=null;state.period=null;
+    syncUrl();render();
+  }
+  // A janela móvel ancora no período que está à vista: quem estava em maio e troca de leitura quer
+  // os 30 dias que terminam em maio, não os 30 que terminam hoje.
+  function setReading(mode){
+    const n=rollDays();if(!n)return;
+    if(mode==="roll"){
+      if(rollingActive())return;
+      const p=state.period;
+      state.rolling=n;
+      state.period=p?lastDay(shiftPeriod(p,state.freq,1)):null;
+    }else{
+      if(!rollingActive())return;
+      const anchor=state.period;
+      state.rolling=null;
+      state.period=anchor?bucketStart(anchor,state.freq):null;
+      if(state.period===currentPeriod())state.period=null;
+    }
+    syncUrl();render();
+  }
+  /* A seta anda um balde no calendário e a duração da janela nas outras duas leituras — é a mesma
+     regra que a comparação usa, então avançar e comparar contam a mesma história. */
+  function stepTarget(by){
+    if(state.range){
+      const days=Math.round((D(state.range.to)-D(state.range.from))/86400000)+1;
+      return {range:{from:addDays(state.range.from,by*days),to:addDays(state.range.to,by*days)}};
+    }
+    if(rollingActive()){
+      const end=state.period||serverToday();
+      if(!end)return null;
+      return {anchor:addDays(end,by*state.rolling)};
+    }
+    const p=shownPeriod();
+    return p?{anchor:shiftPeriod(p,state.freq,by)}:null;
+  }
+  function canStep(by){
+    const t=stepTarget(by);if(!t)return false;
+    const td=serverToday();
+    // O futuro não tem resposta correta, e o servidor recusa — o controle não deve oferecer.
+    if(t.range)return !td||t.range.from<=td;
+    if(rollingActive())return !td||t.anchor<=td;
     const cur=currentPeriod();
-    if(cur&&next>cur)return; // o futuro não tem resposta correta
-    setPeriod(next);
+    return !cur||t.anchor<=cur;
+  }
+  function stepPeriod(by){
+    if(!canStep(by))return;
+    const t=stepTarget(by);
+    if(t.range){setRange(t.range.from,t.range.to);return;}
+    if(rollingActive()){state.period=t.anchor;syncUrl();render();return;}
+    setPeriod(t.anchor);
   }
   function openPeriodList(){
     const cur=currentPeriod();if(!cur)return;
@@ -2195,11 +2392,48 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     }
     $("modalBody").innerHTML='<div class="modal-title">Escolher período</div>'+
       '<div class="period-list" role="listbox">'+items+'</div>'+
-      '<div class="modal-actions"><button class="btn ghost" id="modalCancel">Cancelar</button></div>';
+      '<div class="modal-actions"><button class="btn ghost" id="modalRange">Intervalo personalizado…</button>'+
+      '<button class="btn ghost" id="modalCancel">Cancelar</button></div>';
     $("modal").classList.add("open");
     $("modalCancel").onclick=closeModal;
+    $("modalRange").onclick=openRangePicker;
     document.querySelectorAll("[data-period]").forEach(b=>b.addEventListener("click",()=>{
-      closeModal();setPeriod(b.dataset.period);}));
+      closeModal();
+      // Escolher um balde sai das outras duas leituras: o rótulo tem de descrever o que está na tela.
+      state.range=null;state.rolling=null;
+      setPeriod(b.dataset.period);}));
+  }
+  /* O intervalo vive no mesmo controle que escolhe dia, semana e mês — é a mesma pergunta ("qual
+     período?"), e um segundo controle em outro canto da tela deixaria as duas respostas
+     concorrendo. */
+  function openRangePicker(){
+    const td=serverToday();
+    const from=state.range?state.range.from:(shownPeriod()||td||"");
+    const to=state.range?state.range.to:(td||"");
+    $("modalBody").innerHTML='<div class="modal-title">Intervalo personalizado</div>'+
+      '<p class="range-hint">As duas datas entram na conta. A comparação passa a ser o intervalo '+
+      'imediatamente anterior de mesma duração, e a frequência escolhida vira a granularidade do gráfico.</p>'+
+      '<div class="range-form">'+
+        '<div class="range-row">'+
+          '<label>De<input type="date" id="rangeFrom" value="'+escHtml(from)+'"'+(td?' max="'+escHtml(td)+'"':'')+'></label>'+
+          '<label>Até<input type="date" id="rangeTo" value="'+escHtml(to)+'"'+(td?' max="'+escHtml(td)+'"':'')+'></label>'+
+        '</div>'+
+        '<div class="range-err" id="rangeErr"></div>'+
+      '</div>'+
+      '<div class="modal-actions">'+
+        (state.range?'<button class="btn ghost" id="rangeClear">Voltar ao calendário</button>':'')+
+        '<button class="btn ghost" id="modalCancel">Cancelar</button>'+
+        '<button class="btn" id="rangeApply">Aplicar</button></div>';
+    $("modalCancel").onclick=closeModal;
+    if($("rangeClear"))$("rangeClear").onclick=()=>{closeModal();resetPeriod();};
+    $("rangeApply").onclick=()=>{
+      const a=$("rangeFrom").value,b=$("rangeTo").value;
+      const err=$("rangeErr");
+      if(!ISO_DAY.test(a)||!ISO_DAY.test(b)){err.textContent="Informe as duas datas.";return;}
+      if(b<a){err.textContent="O fim não pode ser antes do início.";return;}
+      if(td&&a>td){err.textContent="O intervalo ainda não começou.";return;}
+      closeModal();setRange(a,b);
+    };
   }
 
   /* ---------- Login / logout ---------- */
