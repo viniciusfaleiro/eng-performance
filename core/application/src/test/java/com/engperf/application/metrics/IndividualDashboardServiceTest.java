@@ -193,7 +193,7 @@ class IndividualDashboardServiceTest {
     events.add(workItem("id-ana", "2026-06-11", "feature", 4));
     events.add(workItem("id-ana", "2026-06-12", "bug", 10));
 
-    var types = individual.dashboard("p:ana", period(Frequency.MONTHLY)).workTypes();
+    var types = individual.dashboard("p:ana", period(Frequency.MONTHLY)).distribution().types();
     assertThat(types)
         .extracting(WorkTypeSlice::type)
         .containsExactly("feature", "bug", "tech_debt", "maintenance", "docs");
@@ -213,7 +213,7 @@ class IndividualDashboardServiceTest {
         workItemSpan(
             "id-ana", "2026-06-30", "bug", "2026-01-01T00:00:00Z", "2026-12-31T00:00:00Z"));
 
-    var monthly = individual.dashboard("p:ana", period(Frequency.MONTHLY)).workTypes();
+    var monthly = individual.dashboard("p:ana", period(Frequency.MONTHLY)).distribution().types();
     double total = monthly.stream().mapToDouble(WorkTypeSlice::hours).sum();
     // June's ~720h are SHARED by the two concurrent items (360 each) — not 720 each nor ~8736 life.
     assertThat(total).isEqualTo(720.0);

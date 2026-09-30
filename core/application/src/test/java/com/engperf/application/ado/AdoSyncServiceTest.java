@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class AdoSyncServiceTest {
@@ -186,6 +187,11 @@ class AdoSyncServiceTest {
     @Override
     public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
       return new ArrayList<>(byId.values());
+    }
+
+    @Override
+    public Set<String> parentWorkItemIds() {
+      return Set.of();
     }
 
     @Override

@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -98,6 +99,11 @@ class IdentityServiceTest {
     @Override
     public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
       return all.stream().filter(e -> e.type() == type).toList();
+    }
+
+    @Override
+    public Set<String> parentWorkItemIds() {
+      return Set.of();
     }
 
     @Override

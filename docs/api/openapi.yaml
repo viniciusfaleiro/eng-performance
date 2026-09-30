@@ -1612,26 +1612,84 @@ components:
           properties:
             given: { type: integer }
             received: { type: integer }
+        givenDetail:
+          type: array
+          description: >-
+            As reviews por trás das contagens de reviews dadas. Pode vir cortada; as contagens acima
+            não são, então uma lista cortada ainda diz o quanto está escondendo.
+          items: { $ref: "#/components/schemas/ReviewDetail" }
+        receivedDetail:
+          type: array
+          description: >-
+            As pull requests do próprio dev que foram revisadas. Lista PRs, nunca agrega por
+            revisor: somar "quem rejeitou quantas" transformaria a visão de coaching de uma pessoa
+            numa comparação entre duas.
+          items: { $ref: "#/components/schemas/ReviewDetail" }
         deltas:
           type: object
           description: Variações opcionais por indicador.
           additionalProperties: { $ref: "#/components/schemas/Delta" }
+    ReviewDetail:
+      type: object
+      description: >-
+        Uma review. A review não tem registro próprio no Azure DevOps, então `url` aponta para a
+        pull request, que é o registro dela.
+      required: [id, title, url, decision, date]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        url: { type: string, format: uri }
+        decision: { type: string, enum: [approved, changes_requested] }
+        date: { type: string, format: date }
+        comments: { type: integer, minimum: 0 }
+    WorkItemDetail:
+      type: object
+      description: >-
+        Um work item contabilizado, com as duas horas. `elapsedHours` é quanto ficou em andamento
+        dentro do período; `countedHours` é o que entrou na conta depois de dividir cada hora
+        corrida entre os itens simultâneos. É `countedHours` que soma na fatia — a soma de
+        `elapsedHours` pode passar as horas do período, e é exatamente essa diferença que mostra o
+        paralelismo.
+      required: [id, title, url, elapsedHours, countedHours]
+      properties:
+        id: { type: string, example: "wi:27411" }
+        title: { type: string }
+        url: { type: string, format: uri, description: Deep-link para o work item. }
+        elapsedHours: { type: number, minimum: 0 }
+        countedHours: { type: number, minimum: 0 }
     WorkDistributionItem:
       type: object
-      required: [type, label, percent, hours]
+      required: [type, label, percent, hours, itemCount, items]
       properties:
         type: { type: string, example: "feature" }
         label: { type: string }
         percent: { type: number, minimum: 0, maximum: 100 }
         hours: { type: number, minimum: 0 }
+        itemCount:
+          type: integer
+          minimum: 0
+          description: Total de itens contabilizados no tipo, mesmo quando `items` vem cortada.
+        items:
+          type: array
+          description: Os itens por trás de `hours`, do maior para o menor.
+          items: { $ref: "#/components/schemas/WorkItemDetail" }
     WorkDistribution:
       type: object
-      required: [frequency, items]
+      description: >-
+        Conta só trabalho folha: um work item com filhas ingeridas é contêiner e não contribui hora;
+        Epic nunca contribui. As horas são corridas em andamento, não horas trabalhadas.
+      required: [frequency, items, containersExcluded]
       properties:
         frequency: { $ref: "#/components/schemas/Frequency" }
         items:
           type: array
           items: { $ref: "#/components/schemas/WorkDistributionItem" }
+        containersExcluded:
+          type: integer
+          minimum: 0
+          description: >-
+            Quantos itens do período saíram por serem contêiner. É o que separa "não fez trabalho
+            folha" de "não fez nada" — sem isso, uma distribuição vazia é lida como a segunda coisa.
     ActivityItem:
       type: object
       required: [kind, id, title, repository, timestamp, url]

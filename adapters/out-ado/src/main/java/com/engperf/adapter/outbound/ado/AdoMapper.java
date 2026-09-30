@@ -221,7 +221,8 @@ final class AdoMapper {
       Instant now,
       String org,
       String project,
-      String parentAdoType) {
+      String parentAdoType,
+      String parentAdoId) {
     JsonNode f = wi.path("fields");
     Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
     String id = wi.path("id").asText();
@@ -234,6 +235,16 @@ final class AdoMapper {
     detail.put("ado_type", adoType);
     if (parentAdoType != null && !parentAdoType.isBlank()) {
       detail.put("ado_parent_type", parentAdoType);
+    }
+    // O pai, e não só o tipo dele: é a única aresta que permite perguntar "este item tem filhas?",
+    // que é o que separa contêiner de trabalho. A aresta fica no filho de propósito — assim um pai
+    // deletado, sem permissão ou de projeto que não ingerimos não apaga a resposta.
+    //
+    // Guardado como id de evento (o mesmo "wi:<id>" que este mapper gera), não como id cru do ADO:
+    // assim quem lê o índice de pais compara direto com o id do evento, e o formato do id continua
+    // conhecido só aqui, em vez de ser remontado na aplicação e no adapter de persistência.
+    if (parentAdoId != null && !parentAdoId.isBlank()) {
+      detail.put("parent_event_id", "wi:" + parentAdoId);
     }
     detail.put("summary", f.path("System.Title").asText(""));
     detail.put("url", org + "/" + project + "/_workitems/edit/" + id);

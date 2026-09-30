@@ -14,12 +14,10 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -88,6 +86,15 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
 
     List<RawEvent> commitsP = within(commits, periodFrom, periodTo);
     List<RawEvent> prsP = within(prs, periodFrom, periodTo);
+    // Um índice só, do corpus inteiro: a pergunta "este item tem filhas?" não pode ter resposta
+    // diferente por janela, senão a mesma User Story é contêiner para quem olha o trimestre e
+    // trabalho folha para quem olha a semana.
+    WorkDistribution distribution =
+        WorkDistribution.of(
+            within(workItems, periodFrom, periodTo),
+            events.parentWorkItemIds(),
+            periodFrom,
+            periodTo);
 
     return new IndividualDashboard(
         personNodeId,
@@ -98,14 +105,15 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
         reviewStats(
             within(reviewsGiven, periodFrom, periodTo),
             within(reviewsReceived, periodFrom, periodTo)),
-        workTypes(within(workItems, periodFrom, periodTo), periodFrom, periodTo),
+        distribution,
         activity(commitsP, prsP),
         // Coaching flags use the trailing 12 months so a quiet day isn't read as "no activity".
         conventions(
             within(commits, calFrom, calTo),
             within(prs, calFrom, calTo),
             within(workItems, calFrom, calTo),
-            within(reviewsReceived, calFrom, calTo)),
+            within(reviewsReceived, calFrom, calTo),
+            distribution),
         PlatformAccessLookup.of(accounts, personNodeId));
   }
 
@@ -127,7 +135,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
       List<RawEvent> commits,
       List<RawEvent> prs,
       List<RawEvent> workItems,
-      List<RawEvent> reviewsReceived) {
+      List<RawEvent> reviewsReceived,
+      WorkDistribution distribution) {
     // No activity at all → the identity is likely unmapped or the commit email diverges (Grupo A).
     if (commits.isEmpty() && prs.isEmpty() && workItems.isEmpty() && reviewsReceived.isEmpty()) {
       return List.of(
@@ -144,7 +153,15 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     List<ConventionFlag> flags = new ArrayList<>();
     addIfPresent(flags, aiFlag(commits));
     addIfPresent(flags, prFlag(commits, prs));
-    addIfPresent(flags, boardFlag(commits, workItems));
+    ConventionFlag board = boardFlag(commits, workItems);
+    ConventionFlag shortItems = shortItemFlag(distribution);
+    // Os dois falam da mesma convenção 21, e a tela indexa os alertas por código: dois com o mesmo
+    // código fariam um apagar o outro na gaveta do catálogo. Quando há item de minutos, é ele que
+    // tem o que dizer — "board sem transição aproveitável" é contradito pelo próprio dado que
+    // permitiu medir os minutos.
+    addIfPresent(
+        flags, shortItems != null && board != null && "21".equals(board.code()) ? null : board);
+    addIfPresent(flags, shortItems);
     addIfPresent(flags, reviewFlag(prs, reviewsReceived));
     return flags;
   }
@@ -233,6 +250,40 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
         List.of("pr_review_time", "% PRs sem review", "assertividade"));
   }
 
+  /**
+   * Grupo E · 21 — itens que ficaram em andamento poucos minutos: o card provavelmente foi movido
+   * depois do trabalho, não durante. Texto de pergunta e não de acusação: um hotfix real resolvido
+   * em dez minutos cai aqui também, e o alerta existe para o gestor conferir a convenção, não para
+   * afirmar o que a pessoa fez.
+   *
+   * <p>O item continua na distribuição — o alerta explica a fatia perto de zero em vez de
+   * escondê-la, que é a diferença entre um número estranho e um número enganoso.
+   */
+  private static ConventionFlag shortItemFlag(WorkDistribution distribution) {
+    List<WorkItemEntry> shortItems = distribution.shortItems();
+    if (shortItems.isEmpty()) {
+      return null;
+    }
+    String named =
+        shortItems.stream()
+            .limit(3)
+            .map(i -> i.title().isBlank() ? i.id() : i.title())
+            .collect(Collectors.joining("; "));
+    return new ConventionFlag(
+        "21",
+        "info",
+        "Convenção 21 · Boards",
+        shortItems.size() + " item(ns) em andamento por poucos minutos",
+        "Itens que ficaram menos de "
+            + WorkDistribution.SHORT_ITEM_MINUTES
+            + " minutos em andamento: "
+            + named
+            + ". O card pode ter sido movido depois do trabalho, e aí a hora do item não mede o"
+            + " esforço dele. Vale confirmar com o dev se foi isso ou se o trabalho mesmo levou"
+            + " esse tempo.",
+        List.of("distribuição por tipo", "cycle time de WI", "flow_efficiency"));
+  }
+
   private Set<String> identitiesOf(String personNodeId) {
     return structure.findIdentities().stream()
         .filter(i -> personNodeId.equals(i.personId()))
@@ -274,86 +325,31 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
             given.stream()
                 .filter(e -> "changes_requested".equals(e.detail().get("decision")))
                 .count();
-    return new ReviewStats(comments, approvals, rejections, given.size(), received.size());
+    return new ReviewStats(
+        comments,
+        approvals,
+        rejections,
+        given.size(),
+        received.size(),
+        entries(given),
+        entries(received));
   }
 
-  private static List<WorkTypeSlice> workTypes(List<RawEvent> workItems, Instant from, Instant to) {
-    Map<String, Double> hoursByType = new LinkedHashMap<>();
-    for (Map.Entry<String, String> t : WORK_TYPES) {
-      hoursByType.put(t.getKey(), 0.0);
-    }
-    prorate(collectInProgress(workItems, from, to, hoursByType), hoursByType);
-    double total = hoursByType.values().stream().mapToDouble(Double::doubleValue).sum();
-    List<WorkTypeSlice> slices = new ArrayList<>();
-    for (Map.Entry<String, String> t : WORK_TYPES) {
-      double hours = hoursByType.get(t.getKey());
-      double share = total == 0.0 ? 0.0 : hours / total * 100.0;
-      slices.add(new WorkTypeSlice(t.getKey(), t.getValue(), hours, share));
-    }
-    return slices;
-  }
-
-  private record Span(long start, long end, String type) {}
-
-  // Each item's in-progress spans clipped to [from,to), tagged with type. Legacy events with no
-  // spans fall back to their (unclipped) total hours; items with no usable history are skipped.
-  private static List<Span> collectInProgress(
-      List<RawEvent> items, Instant from, Instant to, Map<String, Double> hoursByType) {
-    long lo0 = from.toEpochMilli();
-    long hi0 = to.toEpochMilli();
-    List<Span> spans = new ArrayList<>();
-    for (RawEvent w : items) {
-      String t0 = w.detail().getOrDefault("type", "docs");
-      String type = hoursByType.containsKey(t0) ? t0 : "docs";
-      String raw = w.detail().get("spans");
-      if (raw == null) {
-        if (w.detail().containsKey("hours")) {
-          hoursByType.merge(type, doubleDetail(w, "hours"), Double::sum);
-        }
-        continue;
-      }
-      for (String part : raw.split(",")) {
-        int c = part.indexOf(':');
-        if (c < 0) {
-          continue;
-        }
-        long a = Math.max(Long.parseLong(part.substring(0, c)), lo0);
-        long b = Math.min(Long.parseLong(part.substring(c + 1)), hi0);
-        if (b > a) {
-          spans.add(new Span(a, b, type));
-        }
-      }
-    }
-    return spans;
-  }
-
-  // Splits concurrent wall-clock time among the items in progress at each instant (sweep line), so
-  // simultaneous items share the period instead of each counting it in full — the total can never
-  // exceed the wall-clock the person had at least one item in progress.
-  private static void prorate(List<Span> spans, Map<String, Double> hoursByType) {
-    TreeSet<Long> marks = new TreeSet<>();
-    for (Span s : spans) {
-      marks.add(s.start());
-      marks.add(s.end());
-    }
-    Long[] pts = marks.toArray(new Long[0]);
-    for (int i = 0; i + 1 < pts.length; i++) {
-      long t0 = pts[i];
-      long t1 = pts[i + 1];
-      List<Span> active = new ArrayList<>();
-      for (Span s : spans) {
-        if (s.start() <= t0 && s.end() >= t1) {
-          active.add(s);
-        }
-      }
-      if (active.isEmpty()) {
-        continue;
-      }
-      double per = (t1 - t0) / (double) active.size() / 3_600_000.0;
-      for (Span s : active) {
-        hoursByType.merge(s.type(), per, Double::sum);
-      }
-    }
+  /** Mais recentes primeiro: quem abre a lista está conferindo o que acabou de acontecer. */
+  private static List<ReviewEntry> entries(List<RawEvent> reviews) {
+    return reviews.stream()
+        .sorted(Comparator.comparing(RawEvent::occurredAt).reversed())
+        .limit(WorkDistribution.ITEM_LIMIT)
+        .map(
+            e ->
+                new ReviewEntry(
+                    e.id(),
+                    e.detail().getOrDefault("summary", ""),
+                    e.detail().getOrDefault("url", ""),
+                    e.detail().getOrDefault("decision", ""),
+                    e.occurredOn().toString(),
+                    intDetail(e, "comments")))
+        .toList();
   }
 
   private static List<ActivityItem> activity(List<RawEvent> commits, List<RawEvent> prs) {

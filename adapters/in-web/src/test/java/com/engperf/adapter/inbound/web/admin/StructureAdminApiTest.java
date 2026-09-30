@@ -59,6 +59,11 @@ class StructureAdminApiTest {
         }
 
         @Override
+        public Set<String> parentWorkItemIds() {
+          return Set.of();
+        }
+
+        @Override
         public long count() {
           return 0;
         }

@@ -5,7 +5,9 @@ import com.engperf.application.metrics.ActivityItem;
 import com.engperf.application.metrics.CalendarDay;
 import com.engperf.application.metrics.ConventionFlag;
 import com.engperf.application.metrics.IndividualDashboard;
+import com.engperf.application.metrics.ReviewEntry;
 import com.engperf.application.metrics.ReviewStats;
+import com.engperf.application.metrics.WorkItemEntry;
 import com.engperf.application.metrics.WorkTypeSlice;
 import java.util.List;
 
@@ -20,25 +22,70 @@ public final class IndividualDtos {
     }
   }
 
+  /**
+   * Uma review por trás de uma das contagens. {@code url} aponta para a pull request: a review não
+   * tem registro próprio no Azure DevOps, então a PR é o registro dela.
+   */
+  public record ReviewEntryDto(
+      String id, String title, String url, String decision, String date, int comments) {
+    public static ReviewEntryDto from(ReviewEntry r) {
+      return new ReviewEntryDto(
+          r.id(), r.title(), r.url(), r.decision(), r.occurredOn(), r.comments());
+    }
+  }
+
+  /**
+   * As contagens não são limitadas; as listas são. Uma lista cortada com a contagem ao lado ainda
+   * diz o quanto está escondendo, que é o mínimo para não enganar.
+   */
   public record ReviewStatsDto(
       int commentsGiven,
       int approvalsGiven,
       int rejectionsGiven,
       int reviewsGiven,
-      int reviewsReceived) {
+      int reviewsReceived,
+      List<ReviewEntryDto> given,
+      List<ReviewEntryDto> received) {
     public static ReviewStatsDto from(ReviewStats r) {
       return new ReviewStatsDto(
           r.commentsGiven(),
           r.approvalsGiven(),
           r.rejectionsGiven(),
           r.reviewsGiven(),
-          r.reviewsReceived());
+          r.reviewsReceived(),
+          r.given().stream().map(ReviewEntryDto::from).toList(),
+          r.received().stream().map(ReviewEntryDto::from).toList());
     }
   }
 
-  public record WorkTypeDto(String type, String label, double hours, double sharePct) {
+  /**
+   * Um item contabilizado, com as duas horas: {@code elapsedHours} é quanto ficou em andamento
+   * dentro do período e {@code countedHours} é o que entrou na conta depois de dividir cada hora
+   * corrida entre os itens simultâneos. É a diferença entre as duas que mostra o paralelismo — sem
+   * as duas, a conta não é auditável item a item.
+   */
+  public record WorkItemDto(
+      String id, String title, String url, double elapsedHours, double countedHours) {
+    public static WorkItemDto from(WorkItemEntry w) {
+      return new WorkItemDto(w.id(), w.title(), w.url(), w.elapsedHours(), w.countedHours());
+    }
+  }
+
+  public record WorkTypeDto(
+      String type,
+      String label,
+      double hours,
+      double sharePct,
+      int itemCount,
+      List<WorkItemDto> items) {
     public static WorkTypeDto from(WorkTypeSlice w) {
-      return new WorkTypeDto(w.type(), w.label(), w.hours(), w.sharePct());
+      return new WorkTypeDto(
+          w.type(),
+          w.label(),
+          w.hours(),
+          w.sharePct(),
+          w.itemCount(),
+          w.items().stream().map(WorkItemDto::from).toList());
     }
   }
 
@@ -82,6 +129,7 @@ public final class IndividualDtos {
       List<SeriesDto> delivery,
       ReviewStatsDto reviews,
       List<WorkTypeDto> workTypes,
+      int containersExcluded,
       List<ActivityDto> activity,
       List<ConventionFlagDto> conventions,
       PlatformAccessDto access) {
@@ -94,7 +142,8 @@ public final class IndividualDtos {
           d.calendar().stream().map(CalendarDayDto::from).toList(),
           d.delivery().stream().map(SeriesDto::from).toList(),
           ReviewStatsDto.from(d.reviews()),
-          d.workTypes().stream().map(WorkTypeDto::from).toList(),
+          d.distribution().types().stream().map(WorkTypeDto::from).toList(),
+          d.distribution().containersExcluded(),
           d.activity().stream().map(ActivityDto::from).toList(),
           d.conventions().stream().map(ConventionFlagDto::from).toList(),
           PlatformAccessDto.from(d.access()));

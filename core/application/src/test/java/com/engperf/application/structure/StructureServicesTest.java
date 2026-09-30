@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +48,11 @@ class StructureServicesTest {
         @Override
         public List<RawEvent> findByTypeBetween(EventType type, Instant from, Instant to) {
           return List.of();
+        }
+
+        @Override
+        public Set<String> parentWorkItemIds() {
+          return Set.of();
         }
 
         @Override

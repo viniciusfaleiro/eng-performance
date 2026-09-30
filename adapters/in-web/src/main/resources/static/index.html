@@ -213,6 +213,15 @@ select.sel{font-family:inherit;font-size:13px;color:var(--on-surface);background
 .hbar-name{display:flex;align-items:center;gap:8px;font-size:12.5px;}
 .hbar-name i{width:10px;height:10px;border-radius:3px;flex:none;}
 .hbar-val{font-size:13px;font-weight:600;min-width:56px;text-align:right;font-family:var(--mono);}
+/* Linha que abre detalhe: a seta é a affordance. Sem ela a linha é clicável e ninguém descobre. */
+.hbar-row.click,.mini-row.click{cursor:pointer;border-radius:8px;}
+.hbar-row.click:hover,.mini-row.click:hover{background:var(--surf-2);}
+.hbar-row.click:focus-visible,.mini-row.click:focus-visible{outline:2px solid var(--pri);outline-offset:2px;}
+.row-go{font-size:15px;color:var(--on-surf-var);padding-left:2px;}
+.hbar-row.click:hover .row-go,.mini-row.click:hover .row-go{color:var(--pri);}
+.hours-note{font-size:11.5px;color:var(--on-surf-var);line-height:1.5;margin-top:10px;}
+.wi-h{font-family:var(--mono);font-size:12px;}
+.wi-h.dim{color:var(--on-surf-var);}
 
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:30;display:none;backdrop-filter:blur(2px);}
 .scrim.open{display:block;}
@@ -814,7 +823,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function itemsBtn(key,label){
     const l=escHtml(label||key);
     return '<button class="info-btn items-btn" data-items="'+key+'" data-items-label="'+l+'"'+
-      ' tabindex="0" aria-label="Ver os itens considerados em '+l+'">☰</button>';
+      ' tabindex="0" title="Ver os itens considerados" aria-label="Ver os itens considerados em '
+      + l + '">›</button>';
   }
   function explanationOf(kind,key){
     return kind==="view"?EXPLAIN.views[key]:EXPLAIN.metrics[PROTO2METRIC[key]||key];
@@ -1405,8 +1415,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   function selCard(key,label,value,sub,chip,selected){
     return '<div class="card click'+(selected?" sel":"")+'" data-im="'+key+'" role="button" tabindex="0" aria-pressed="'+selected+'"><div class="card-label">'+label+infoBtn("metric",key,label)+itemsBtn(key,label)+'</div><div class="card-value"><span class="v num" style="font-size:24px">'+value+'</span></div><div class="card-foot">'+(chip||'')+'<span class="card-note">'+sub+'</span></div></div>';
   }
-  function miniBar(label,val,max,color){
-    return '<div style="display:grid;grid-template-columns:160px 1fr auto;gap:12px;align-items:center;padding:6px 0"><span style="font-size:12.5px">'+label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,val/max*100).toFixed(0)+'%;background:'+color+'"></div></div><span class="num" style="font-size:13px;font-weight:600">'+val+'</span></div>';
+  function miniBar(label,val,max,color,reviewDir){
+    const open=!!reviewDir;
+    const cols=open?"160px 1fr auto auto":"160px 1fr auto";
+    return '<div class="mini-row'+(open?' click':'')+'" style="display:grid;grid-template-columns:'+cols+';gap:12px;align-items:center;padding:6px 0"'+
+      (open?' data-reviews="'+escHtml(reviewDir)+'" role="button" tabindex="0" aria-label="Ver as reviews de '+escHtml(label)+'"':'')+'>'+
+      '<span style="font-size:12.5px">'+label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,val/max*100).toFixed(0)+'%;background:'+color+'"></div></div>'+
+      '<span class="num" style="font-size:13px;font-weight:600">'+val+'</span>'+
+      (open?'<span class="row-go" aria-hidden="true">›</span>':'')+'</div>';
   }
   function viewIndividual(id){
     ensureInd();
@@ -1457,13 +1473,16 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       tile("Rejeições dadas",rejections,'<span class="card-note">PRs com mudanças solicitadas</span>')+
       '</div>';
     const mx=Math.max(reviewsDone,reviewsRecv);
+    // As linhas só abrem quando há lista de verdade no payload; com dados sintéticos, abrir uma
+    // gaveta vazia seria pior que não ter a seta.
+    const rvOpen=!!(rv&&(rv.given||rv.received));
     h+='<div class="panel" style="margin-top:12px"><div class="chart-title" style="margin-bottom:10px">Reviews dados vs. recebidos</div>'+
-      miniBar("Reviews que fez",reviewsDone,mx,"var(--cat-2)")+
-      miniBar("Reviews que recebeu",reviewsRecv,mx,"var(--cat-4)")+
+      miniBar("Reviews que fez",reviewsDone,mx,"var(--cat-2)",rvOpen?"given":null)+
+      miniBar("Reviews que recebeu",reviewsRecv,mx,"var(--cat-4)",rvOpen?"received":null)+
       '<div class="card-note" style="margin-top:8px">Razão dado/recebido: '+(reviewsDone/(reviewsRecv||1)).toFixed(1)+'×</div></div>';
 
     h+=sectionHead("Distribuição do trabalho","type_distribution");
-    h+=(c&&c.workTypes&&c.workTypes.length)?workTypeBlock(c.workTypes):taskEffortBlock(id,freq);
+    h+=(c&&c.workTypes&&c.workTypes.length)?workTypeBlock(c.workTypes,c.containersExcluded):taskEffortBlock(id,freq);
     return h;
   }
   // Coaching flags: agreed conventions this contributor may not be following (docs/convenções).
@@ -1544,15 +1563,91 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
   }
+  const WT_COLORS=["var(--cat-1)","var(--cat-5)","var(--cat-4)","var(--cat-2)","var(--cat-3)"];
+  // A natureza das horas fica na tela, não só na cabeça de quem construiu: sem a primeira frase o
+  // total é lido como esforço gasto, e sem a segunda um item de 40 h aberto que aparece com 2 h
+  // parece bug em vez de paralelismo.
+  const HOURS_NOTE='<div class="hours-note">Horas <b>corridas</b> em que o item ficou em andamento — não horas trabalhadas. '+
+    'Cada hora corrida é <b>dividida entre os itens simultâneos</b>, então a hora de um item é menor que o tempo que ele ficou aberto.</div>';
   // Real work-type distribution (% stacked bar + hours per type), matching taskEffortBlock's chrome.
-  function workTypeBlock(types){
-    const colors=["var(--cat-1)","var(--cat-5)","var(--cat-4)","var(--cat-2)","var(--cat-3)"];
+  function workTypeBlock(types,containersExcluded){
+    const colors=WT_COLORS;
     const totalH=Math.round(types.reduce((a,t)=>a+t.hours,0));
+    const excluded=containersExcluded||0;
+    // "Não fez trabalho folha" é uma resposta diferente de "não fez nada", e a segunda é
+    // exatamente a leitura que a decisão de produto proíbe. Uma pizza de zeros diria a segunda.
+    if(totalH===0&&excluded>0){
+      return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">Horas por tipo de tarefa</div>'+
+        '<div class="card-note">Sem trabalho folha no período. Os '+excluded+' item(ns) do período só agrupam outros itens (Epic, Feature ou User Story com filhas), e um item que agrupa não disputa hora com o trabalho que ele agrupa.</div>'+
+        HOURS_NOTE+'</div>';
+    }
     const maxH=Math.max(...types.map(t=>t.hours))||1;
     let out=stackBlock("Esforço por tipo de tarefa (% do tempo)",types.map((t,i)=>({n:t.label,c:colors[i%colors.length],val:t.sharePct})),"%");
-    let bars='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Horas por tipo de tarefa <span class="card-note" style="font-weight:400">· '+totalH+' h no período</span></div>';
-    types.forEach((t,i)=>{const hrs=Math.round(t.hours*10)/10;bars+='<div class="hbar-row"><span class="hbar-name"><i style="background:'+colors[i%colors.length]+'"></i>'+t.label+'</span><div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,t.hours/maxH*100).toFixed(0)+'%;background:'+colors[i%colors.length]+'"></div></div><span class="hbar-val">'+hrs+' h</span></div>';});
-    return out+bars+'</div>';
+    let bars='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Horas por tipo de tarefa <span class="card-note" style="font-weight:400">· '+totalH+' h no período'+(excluded?' · '+excluded+' contêiner(es) fora da conta':'')+'</span></div>';
+    types.forEach((t,i)=>{
+      const hrs=Math.round(t.hours*10)/10;
+      const open=t.itemCount>0;
+      bars+='<div class="hbar-row'+(open?' click':'')+'"'+(open?' data-wtype="'+escHtml(t.type)+'" role="button" tabindex="0" aria-label="Ver os '+t.itemCount+' itens de '+escHtml(t.label)+'"':'')+'>'+
+        '<span class="hbar-name"><i style="background:'+colors[i%colors.length]+'"></i>'+escHtml(t.label)+'</span>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,t.hours/maxH*100).toFixed(0)+'%;background:'+colors[i%colors.length]+'"></div></div>'+
+        '<span class="hbar-val">'+hrs+' h</span>'+(open?'<span class="row-go" aria-hidden="true">›</span>':'<span class="row-go" aria-hidden="true"> </span>')+'</div>';
+    });
+    return out+bars+HOURS_NOTE+'</div>';
+  }
+  // Os itens por trás de uma fatia, com as duas horas. A corrida é o que o board diz; a
+  // contabilizada é o que a métrica usou, e é ela que soma na fatia. A diferença entre as duas é o
+  // paralelismo — que era o que faltava quando conferir a conta exigia consultar o banco.
+  function openWorkItemsDrawer(type){
+    const c=indData();
+    const t=(c&&c.workTypes?c.workTypes:[]).find(x=>x.type===type);
+    if(!t)return;
+    const n=NODES[state.node]||{vertical:"",team:"",label:""};
+    const shown=t.items||[];
+    let rows="";
+    shown.forEach(i=>{
+      const el=Math.round(i.elapsedHours*10)/10,ct=Math.round(i.countedHours*10)/10;
+      rows+='<a class="act-item" href="'+escHtml(i.url)+'" target="_blank" rel="noopener">'+
+        '<div class="act-main"><div class="act-title">'+escHtml(i.title||i.id)+'</div>'+
+        '<div class="act-meta"><span class="act-hash">'+escHtml(i.id)+'</span>'+
+        '<span class="wi-h dim">'+el+' h em andamento</span>'+
+        '<span class="wi-h"><b>'+ct+' h</b> na conta</span></div></div><span class="act-ext">↗</span></a>';
+    });
+    if(!rows)rows='<div class="card-note">Nenhum item contabilizado neste tipo no período.</div>';
+    let h='<div class="drawer-head"><div><div class="crumb-level">'+escHtml(n.vertical+' › '+n.team)+'</div><h2 style="font-size:20px;margin-top:2px">'+escHtml(t.label)+' · '+(Math.round(t.hours*10)/10)+' h</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
+    h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:6px">'+t.itemCount+' item(ns) contabilizados'+(t.itemCount>shown.length?(' · mostrando os '+shown.length+' maiores'):'')+'. Abrem direto no Azure DevOps ↗</div>';
+    h+='<div class="hours-note" style="margin:0 0 14px">Some a coluna <b>na conta</b> para chegar nas '+(Math.round(t.hours*10)/10)+' h da fatia. A coluna <b>em andamento</b> pode somar mais que o período: é o mesmo tempo corrido contado em itens simultâneos.</div>';
+    h+='<div class="act-list">'+rows+'</div></div>';
+    $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
+    $("drawerClose").addEventListener("click",closeDrawer);
+  }
+  // As reviews por trás de uma contagem. Recebidas listam as PRs revisadas e nunca agregam por
+  // revisor: somar "quem rejeitou quantas" transformaria a visão de coaching de uma pessoa numa
+  // comparação entre duas, que é o uso que o produto recusa.
+  function openReviewsDrawer(dir){
+    const c=indData();
+    const rv=c&&c.reviews?c.reviews:null;
+    if(!rv)return;
+    const list=(dir==="received"?rv.received:rv.given)||[];
+    const count=dir==="received"?rv.reviewsReceived:rv.reviewsGiven;
+    const title=dir==="received"?"Reviews que recebeu":"Reviews que fez";
+    const n=NODES[state.node]||{vertical:"",team:"",label:""};
+    let rows="";
+    list.forEach(r=>{
+      const dec=r.decision==="changes_requested"?'<span class="pr-status pr-open">mudanças solicitadas</span>':
+        (r.decision==="approved"?'<span class="pr-status pr-merged">aprovada</span>':'');
+      rows+='<a class="act-item" href="'+escHtml(r.url)+'" target="_blank" rel="noopener">'+
+        '<div class="act-main"><div class="act-title">'+escHtml(r.title||r.id)+'</div>'+
+        '<div class="act-meta"><span>'+escHtml(r.date)+'</span>'+(r.comments?'<span>'+r.comments+' comentário(s)</span>':'')+'</div></div>'+
+        (dec||'<span class="act-ext">↗</span>')+'</a>';
+    });
+    if(!rows)rows='<div class="card-note">Nenhuma review registrada no período.</div>';
+    let h='<div class="drawer-head"><div><div class="crumb-level">'+escHtml(n.vertical+' › '+n.team)+'</div><h2 style="font-size:20px;margin-top:2px">'+title+' · '+count+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
+    h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:14px">'+
+      (dir==="received"?'As pull requests deste contribuidor que foram revisadas. A lista nomeia as PRs, não quem revisou.':'As reviews feitas por este contribuidor.')+
+      ' A review não tem registro próprio no Azure DevOps, então o link abre a pull request ↗</div>';
+    h+='<div class="act-list">'+rows+'</div></div>';
+    $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
+    $("drawerClose").addEventListener("click",closeDrawer);
   }
 
   function viewComparativo(){
@@ -1917,6 +2012,22 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   bindItemsAffordance("click");
   bindItemsAffordance("keydown");
+  // Mesma captura, mesmo motivo: a linha em volta tem keydown próprio com preventDefault().
+  function bindRowAffordance(type,attr,open){
+    document.addEventListener(type,(ev)=>{
+      if(type==="keydown"&&ev.key!=="Enter"&&ev.key!==" ")return;
+      const row=ev.target.closest&&ev.target.closest("["+attr+"]");
+      if(!row)return;
+      // Um link dentro da linha continua sendo um link; a gaveta não pode roubar o clique dele.
+      if(ev.target.closest&&ev.target.closest("a"))return;
+      ev.preventDefault();ev.stopPropagation();
+      open(row.getAttribute(attr));
+    },true);
+  }
+  ["click","keydown"].forEach(t=>{
+    bindRowAffordance(t,"data-wtype",openWorkItemsDrawer);
+    bindRowAffordance(t,"data-reviews",openReviewsDrawer);
+  });
   // Label lookup that tolerates view keys (which have no metric definition).
   function M0(key){try{return M(key);}catch(e){return null;}}
   function openModal(title,body,onSave,saveLabel){
