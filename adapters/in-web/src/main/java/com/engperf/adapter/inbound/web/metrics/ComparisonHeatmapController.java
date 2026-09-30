@@ -7,8 +7,6 @@ import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.ComparisonHeatmap;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.PeriodResolverUseCase;
-import com.engperf.domain.metrics.Frequency;
-import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,27 +32,16 @@ public class ComparisonHeatmapController {
   @GetMapping("/api/comparison/heatmap")
   public ComparisonHeatmapDto heatmap(
       @RequestParam(defaultValue = "all") String node,
-      @RequestParam(defaultValue = "Semanal") String freq,
       @RequestParam(defaultValue = "times") String scope,
-      @RequestParam(required = false) String period,
+      PeriodQuery selection,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
     ComparisonHeatmap heatmap =
-        comparison.heatmap(node, periods.resolve(frequency(freq), period), scope);
+        comparison.heatmap(node, periods.resolve(selection.toRequest()), scope);
     return ComparisonHeatmapDto.from(heatmap, user.scope());
   }
 
   /** Accepts the prototype's PT labels (Diário/Semanal/Mensal) or the enum names. */
-  private static Frequency frequency(String value) {
-    if (value == null) {
-      return Frequency.WEEKLY;
-    }
-    return switch (value.strip().toLowerCase(Locale.ROOT)) {
-      case "diário", "diario", "daily" -> Frequency.DAILY;
-      case "mensal", "monthly" -> Frequency.MONTHLY;
-      default -> Frequency.WEEKLY;
-    };
-  }
 }

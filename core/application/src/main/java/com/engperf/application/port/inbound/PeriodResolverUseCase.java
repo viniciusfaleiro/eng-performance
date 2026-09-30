@@ -21,4 +21,14 @@ public interface PeriodResolverUseCase {
    *     period that simply has no events, which is a legitimate zero
    */
   Period resolve(Frequency frequency, String anyDateInside);
+
+  /**
+   * The period described by {@code request} — a calendar bucket, a freely chosen range, or a
+   * rolling window. The three are decided here, once, so no caller has to know which one it
+   * received.
+   *
+   * @throws IllegalArgumentException if the range is inverted, incomplete, unparseable, or has not
+   *     started yet
+   */
+  Period resolve(PeriodRequest request);
 }

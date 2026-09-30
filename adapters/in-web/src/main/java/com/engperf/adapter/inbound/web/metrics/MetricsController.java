@@ -12,9 +12,7 @@ import com.engperf.adapter.inbound.web.metrics.MetricsDtos.SeriesDto;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.inbound.PeriodResolverUseCase;
-import com.engperf.domain.metrics.Frequency;
 import java.util.List;
-import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -56,21 +54,18 @@ public class MetricsController {
    * local clock would label a card with a period the engine never used.
    */
   @GetMapping("/api/metrics/period")
-  public PeriodDto period(
-      @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String period) {
+  public PeriodDto period(PeriodQuery selection) {
     return PeriodDto.from(
-        periods.resolve(frequency(freq), period), periods.resolve(frequency(freq), null));
+        periods.resolve(selection.toRequest()), periods.resolve(selection.currentRequest()));
   }
 
   @GetMapping("/api/metrics/cards")
   public List<CardDto> cards(
       @RequestParam(defaultValue = "all") String node,
-      @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String period,
+      PeriodQuery selection,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.cards(node, periods.resolve(frequency(freq), period)).stream()
+    return metrics.cards(node, periods.resolve(selection.toRequest())).stream()
         .map(CardDto::from)
         .toList();
   }
@@ -79,22 +74,20 @@ public class MetricsController {
   public SeriesDto series(
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
-      @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String period,
+      PeriodQuery selection,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return SeriesDto.from(metrics.series(key, node, periods.resolve(frequency(freq), period)));
+    return SeriesDto.from(metrics.series(key, node, periods.resolve(selection.toRequest())));
   }
 
   @GetMapping("/api/metrics/{key}/items")
   public List<DrilldownItemDto> items(
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
-      @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String period,
+      PeriodQuery selection,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.items(key, node, periods.resolve(frequency(freq), period)).stream()
+    return metrics.items(key, node, periods.resolve(selection.toRequest())).stream()
         .map(DrilldownItemDto::from)
         .toList();
   }
@@ -108,11 +101,10 @@ public class MetricsController {
   public List<EntityShareDto> people(
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
-      @RequestParam(defaultValue = "Semanal") String freq,
-      @RequestParam(required = false) String period,
+      PeriodQuery selection,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.entityShares(key, node, periods.resolve(frequency(freq), period)).stream()
+    return metrics.entityShares(key, node, periods.resolve(selection.toRequest())).stream()
         .filter(s -> user.scope().canView(s.entityId()))
         .map(EntityShareDto::from)
         .toList();
@@ -125,14 +117,4 @@ public class MetricsController {
   }
 
   /** Accepts the prototype's PT labels (Diário/Semanal/Mensal) or the enum names. */
-  private static Frequency frequency(String value) {
-    if (value == null) {
-      return Frequency.WEEKLY;
-    }
-    return switch (value.strip().toLowerCase(Locale.ROOT)) {
-      case "diário", "diario", "daily" -> Frequency.DAILY;
-      case "mensal", "monthly" -> Frequency.MONTHLY;
-      default -> Frequency.WEEKLY;
-    };
-  }
 }

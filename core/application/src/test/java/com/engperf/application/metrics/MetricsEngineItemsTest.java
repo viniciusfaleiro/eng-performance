@@ -79,7 +79,7 @@ class MetricsEngineItemsTest {
             List.of(e1, e2),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items).hasSize(2);
@@ -99,7 +99,7 @@ class MetricsEngineItemsTest {
             List.of(withMeasure, withoutMeasure),
             def("hours", Aggregation.MEDIAN),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items)
@@ -119,7 +119,7 @@ class MetricsEngineItemsTest {
             List.of(e1, e2),
             def(MetricDefinition.VALUE, Aggregation.RATIO),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items).hasSize(2);
@@ -135,7 +135,7 @@ class MetricsEngineItemsTest {
             List.of(e1),
             def(MetricDefinition.VALUE, Aggregation.DISTINCT_RATIO),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items).hasSize(1);
@@ -172,7 +172,7 @@ class MetricsEngineItemsTest {
             List.of(older, newer),
             def("wip", Aggregation.SNAPSHOT),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items)
@@ -193,7 +193,7 @@ class MetricsEngineItemsTest {
             List.of(withSummary, withoutSummary),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     MetricDrilldownItem i1 =
@@ -226,7 +226,7 @@ class MetricsEngineItemsTest {
             List.of(inBucket, outOfBucket),
             def(MetricDefinition.VALUE, Aggregation.SUM),
             "all",
-            new Period(Frequency.MONTHLY, BUCKET_START),
+            Period.of(Frequency.MONTHLY, BUCKET_START),
             e -> true);
 
     assertThat(items).extracting(MetricDrilldownItem::eventId).containsExactly("wi:1");

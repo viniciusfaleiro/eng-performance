@@ -66,7 +66,7 @@ public final class MetricsEngine {
 
     Frequency freq = period.frequency();
     List<Matched> matched = match(index, events, def, nodeId, population);
-    List<Bucket> buckets = freq.lastBuckets(period.start(), bucketCount);
+    List<Bucket> buckets = period.slices(bucketCount);
 
     double[] values = new double[buckets.size()];
     for (int i = 0; i < buckets.size(); i++) {
@@ -124,9 +124,33 @@ public final class MetricsEngine {
       LocalDate today,
       int bucketCount,
       Predicate<RawEvent> population) {
-    MetricSeries s = series(index, events, def, nodeId, period, today, bucketCount, population);
-    SeriesPoint lastPoint = s.points().get(s.points().size() - 1);
-    return new MetricCard(def, lastPoint.value(), s.coverage());
+    List<Matched> matched = match(index, events, def, nodeId, population);
+    return new MetricCard(
+        def, selectedValue(matched, def, period, today), coverage(index, events, def, population));
+  }
+
+  /**
+   * The value for the period actually selected, compared against the interval before it.
+   *
+   * <p>For a calendar bucket this is the same number the last point of the series carries, by the
+   * same formula. For a chosen interval it has to be computed here instead: the last point of the
+   * series is the interval's last <em>slice</em> — the final partial month of a range, say — and a
+   * card showing that would answer a question nobody asked.
+   */
+  private static MetricValue selectedValue(
+      List<Matched> matched, MetricDefinition def, Period period, LocalDate today) {
+    double now = aggregate(def, inBucket(matched, new Bucket(period.start(), period.end())));
+    Period before = period.previous();
+    // A fatia decorrida só existe para o balde que ainda está correndo. Um período passado já
+    // terminou, e um intervalo escolhido é por definição o que foi pedido: comparar "1 dia de
+    // julho" contra "1 dia de junho" seria inventar um recorte em qualquer um dos dois casos.
+    Bucket baseline =
+        period.inProgress(today)
+            ? new Bucket(
+                before.start(),
+                before.start().plusDays(period.frequency().elapsedDays(period.start(), today)))
+            : new Bucket(before.start(), before.end());
+    return MetricValue.of(now, aggregate(def, inBucket(matched, baseline)), def.direction());
   }
 
   /**

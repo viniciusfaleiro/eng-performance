@@ -144,12 +144,15 @@ public final class MetricsService implements MetricsQueryUseCase {
         structure.findIdentities());
   }
 
-  /** The event window the series needs: BUCKETS buckets ending at the period being computed. */
+  /**
+   * The event window the period needs: everything the series will draw plus the interval it
+   * compares against. For a bucket that is still BUCKETS buckets ending at it; for a chosen
+   * interval it grows with the interval, which is why neither case needs a rule of its own here.
+   */
   private List<RawEvent> fetch(MetricDefinition def, Period period) {
-    List<Bucket> buckets = period.frequency().lastBuckets(period.start(), BUCKETS);
-    Instant from = buckets.get(0).start().atStartOfDay(ZoneOffset.UTC).toInstant();
-    Instant to =
-        buckets.get(buckets.size() - 1).endExclusive().atStartOfDay(ZoneOffset.UTC).toInstant();
+    Bucket span = period.readSpan(BUCKETS);
+    Instant from = span.start().atStartOfDay(ZoneOffset.UTC).toInstant();
+    Instant to = span.endExclusive().atStartOfDay(ZoneOffset.UTC).toInstant();
     return events.findByTypeBetween(def.eventType(), from, to);
   }
 }

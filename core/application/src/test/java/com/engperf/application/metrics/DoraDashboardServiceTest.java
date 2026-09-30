@@ -138,6 +138,48 @@ class DoraDashboardServiceTest {
     return m;
   }
 
+  /**
+   * "Deploys per day" has to divide by the days of the period actually selected. Ten deploys are
+   * elite over ten days and merely high over fifty — the count is the same number, and the tier is
+   * the reading of it, so the divisor is not a detail.
+   */
+  @Test
+  void aPerDayTierDividesByTheDaysOfTheChosenInterval() {
+    structure2Verticals();
+    for (int day = 1; day <= 10; day++) {
+      events.add(deployOn("r:checkout", String.format("2026-06-%02d", day)));
+    }
+
+    var tenDays =
+        dora.dashboard(
+            "t:checkout",
+            Period.between(
+                Frequency.MONTHLY, LocalDate.parse("2026-06-01"), LocalDate.parse("2026-06-10")));
+    var fiftyDays =
+        dora.dashboard(
+            "t:checkout",
+            Period.between(
+                Frequency.MONTHLY, LocalDate.parse("2026-04-22"), LocalDate.parse("2026-06-10")));
+
+    assertThat(index(tenDays).get("deploy_freq").value().value()).isEqualTo(10);
+    assertThat(index(fiftyDays).get("deploy_freq").value().value()).isEqualTo(10);
+    assertThat(index(tenDays).get("deploy_freq").tier()).isEqualTo(Tier.ELITE); // 1,0/dia
+    assertThat(index(fiftyDays).get("deploy_freq").tier()).isEqualTo(Tier.ALTO); // 0,2/dia
+  }
+
+  private RawEvent deployOn(String repo, String date) {
+    return new RawEvent(
+        "e" + (seq++),
+        EventType.DEPLOY,
+        Instant.parse(date + "T10:00:00Z"),
+        repo,
+        null,
+        10.0,
+        null,
+        false,
+        Map.of("outcome", "success", "num", "0", "den", "1"));
+  }
+
   private RawEvent deploy(String repo, String outcome, double leadHours, Double recoveryHours) {
     var detail = new java.util.HashMap<String, String>();
     detail.put("outcome", outcome);

@@ -90,7 +90,7 @@ class BenchmarkTest {
     assertThat(Benchmark.classify(throughput, 42, 7)).isEmpty();
   }
 
-  private static java.util.Optional<Tier> tier(MetricDefinition def, double value, int bucketDays) {
-    return Benchmark.classify(def, value, bucketDays);
+  private static java.util.Optional<Tier> tier(MetricDefinition def, double value, int periodDays) {
+    return Benchmark.classify(def, value, periodDays);
   }
 }
