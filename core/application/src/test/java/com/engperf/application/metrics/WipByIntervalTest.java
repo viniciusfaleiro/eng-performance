@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -177,6 +178,77 @@ class WipByIntervalTest {
     assertThat(wip(Frequency.MONTHLY)).isEqualTo(3.0);
   }
 
+  /**
+   * A lista que abre tem de ser exatamente o conjunto que a conta somou. É a razão de o
+   * pertencimento ao período ser decidido num lugar só: uma lista montada por uma segunda regra
+   * seria uma segunda fonte de verdade, e as duas divergiriam — que é o drill-down deixando de
+   * cumprir a única função que tem.
+   */
+  @Test
+  void theItemListIsExactlyTheCountedSet() {
+    events.add(open("wi:1", "2025-08-10T09:00:00Z")); // conta só por estar aberto até agora
+    events.add(
+        closed("wi:2", "2026-06-03T09:00:00Z", "2026-06-10T17:00:00Z", "2026-06-10T17:00:00Z"));
+    events.add(
+        closed("wi:3", "2026-06-05T09:00:00Z", "2026-06-12T18:00:00Z", "2026-08-20T10:00:00Z"));
+    events.add(
+        gapped(
+            "wi:4",
+            "2026-06-01T00:00:00Z",
+            "2026-06-03T00:00:00Z",
+            "2026-06-20T00:00:00Z",
+            "2026-06-22T00:00:00Z"));
+    events.add(april("wi:5")); // trabalho fora do período
+    Period june = Period.of(Frequency.MONTHLY, LocalDate.of(2026, 6, 15));
+
+    List<MetricDrilldownItem> listed = metrics.items("wip", "p:ana", june);
+
+    assertThat(listed).allMatch(MetricDrilldownItem::counted);
+    assertThat(listed)
+        .extracting(MetricDrilldownItem::eventId)
+        .containsExactlyInAnyOrder("wi:1", "wi:2", "wi:3", "wi:4");
+    assertThat((double) listed.size()).isEqualTo(wipOf(june));
+  }
+
+  /** O item que conta só porque continua aberto tem de aparecer na lista, não só no número. */
+  @Test
+  void anItemCountedOnlyBecauseItIsStillOpenIsListed() {
+    events.add(open("wi:1", "2025-08-10T09:00:00Z"));
+    Period today = Period.of(Frequency.DAILY, LocalDate.now(CLOCK));
+
+    assertThat(metrics.items("wip", "p:ana", today))
+        .extracting(MetricDrilldownItem::eventId)
+        .containsExactly("wi:1");
+    assertThat((double) metrics.items("wip", "p:ana", today).size()).isEqualTo(wipOf(today));
+  }
+
+  /**
+   * A contrapartida: uma métrica de instante continua sendo recortada pela data do evento. Sem
+   * isto, nada impediria a ramificação nova de vazar para as outras métricas.
+   */
+  @Test
+  void anInstantMetricIsStillBucketedByTheEventDate() {
+    // Trabalho em junho, registro (e conclusão) em agosto: o throughput é de instante, então o item
+    // pertence a agosto, e não a junho — ao contrário do WIP, que conta os dois.
+    events.add(
+        closed("wi:3", "2026-06-05T09:00:00Z", "2026-06-12T18:00:00Z", "2026-08-20T10:00:00Z"));
+    Period june = Period.of(Frequency.MONTHLY, LocalDate.of(2026, 6, 15));
+    Period august = Period.of(Frequency.MONTHLY, LocalDate.of(2026, 8, 15));
+
+    assertThat(card("throughput", june)).isZero();
+    assertThat(card("throughput", august)).isEqualTo(1.0);
+    assertThat(wipOf(june)).isEqualTo(1.0);
+  }
+
+  private double card(String key, Period p) {
+    return metrics.cards("p:ana", p).stream()
+        .filter(c -> c.definition().key().equals(key))
+        .findFirst()
+        .orElseThrow()
+        .current()
+        .value();
+  }
+
   // ---- fixture ----
 
   private static RawEvent open(String id, String workStart) {
@@ -212,6 +284,11 @@ class WipByIntervalTest {
             + Instant.parse(b2).toEpochMilli());
     d.put("completed", "1");
     return wi(id, Instant.parse(b2), d);
+  }
+
+  /** Trabalhado e concluído em abril: fora de qualquer leitura de junho. */
+  private static RawEvent april(String id) {
+    return closed(id, "2026-04-05T09:00:00Z", "2026-04-07T17:00:00Z", "2026-04-07T17:00:00Z");
   }
 
   private static Map<String, String> base() {
