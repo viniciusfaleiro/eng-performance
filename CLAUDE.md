@@ -103,6 +103,21 @@ Antes de **qualquer** `git commit`/`git push`, e antes de declarar uma tarefa co
   deve depender do hook: rode o build proativamente.
 - Commit inicial já feito; mensagens de commit = uma linha imperativa curta.
 
+## Versão — bump obrigatório depois de entregar uma feature
+
+Depois de subir uma feature para a `master` (merge + push), **incremente o último dígito** de
+`version` em `build.gradle.kts` (0.0.10 → 0.0.11) e publique essa mudança: branch própria, build
+verde, merge e push, como qualquer outra alteração.
+
+- O bump é **por feature entregue**, não por commit: uma change do openspec que virou merge = um
+  bump. Correção pontual dentro da mesma feature não ganha número novo.
+- **Um dígito só, sempre o último.** Enquanto o produto é pré-1.0, tudo vive no terceiro número —
+  não promova para 0.1.0 nem 1.0.0 sem o usuário pedir.
+- `build.gradle.kts` é a **única** fonte da versão (`allprojects { version = ... }`); não replique o
+  número em outro arquivo, senão passa a existir uma segunda verdade para manter em sincronia.
+- Não deixe para depois: a versão é como o usuário sabe o que está em homologação, e uma feature
+  mergeada sem bump aparece lá como se nada tivesse mudado.
+
 ## Fluxo de trabalho — Spec-Driven Development (openspec)
 
 Mudanças de comportamento passam por **openspec** (`openspec/`, schema `spec-driven`).
