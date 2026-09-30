@@ -16,7 +16,7 @@
 - [x] 2.2 `inBucket` ramifica nisso — é o único ponto onde pertencimento ao período é decidido, e é o
       que mantém card, gráfico e drill-down concordando.
 - [x] 2.3 O motor recebe o relógio da leitura por onde `inBucket` alcança.
-- [ ] 2.4 Testes: métrica de instante não muda de comportamento; métrica de intervalo conta por
+- [x] 2.4 Testes: métrica de instante não muda de comportamento; métrica de intervalo conta por
       sobreposição; a lista do drill-down é exatamente o conjunto contado.
 
 ## 3. WIP por intervalo
@@ -61,4 +61,4 @@
       lead time, as fases e a eficiência liam zero e o dashboard de Fluxo não era conferível; com
       toda trinca aberta, o WIP acumulava seis meses e passava de uma centena de itens por time.
 - [x] 6.4 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL.
-- [ ] 6.5 Bump do último dígito da versão, publicado à parte, conforme a regra do CLAUDE.md.
+- [x] 6.5 Bump do último dígito da versão, publicado à parte, conforme a regra do CLAUDE.md.
