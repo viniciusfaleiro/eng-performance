@@ -37,4 +37,4 @@
       drill-down como não contado, mas a cobertura **não** desce — ela mede atribuição, não presença
       de medida. A spec foi corrigida para dizer isso, e o gap ficou registrado como questão aberta.
 - [x] 5.3 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir BUILD SUCCESSFUL.
-- [ ] 5.4 Bump do último dígito da versão, publicado à parte, conforme a regra do CLAUDE.md.
+- [x] 5.4 Bump do último dígito da versão, publicado à parte, conforme a regra do CLAUDE.md.
