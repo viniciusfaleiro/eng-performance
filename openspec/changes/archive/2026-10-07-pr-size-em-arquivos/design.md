@@ -96,9 +96,11 @@ forma dos payloads — dar-lhe uma chamada de rede destruiria essa propriedade.
   catálogo, e isso é change própria. Enquanto não for, a lista de itens é o único lugar onde a
   exclusão aparece.
 
-- **Até o próximo sync o card fica sem dado.** Os PRs já ingeridos não têm `files`, então a cobertura
-  desce e a mediana some. É a leitura correta — não temos a medida ainda — mas é visível, e vale
-  avisar antes de alguém abrir a tela.
+- **Sem reprocessar, o card fica sem dado para trás — para sempre.** O sync é incremental e pula PR
+  fechado antes do watermark, então ele só preenche `files` nos PRs novos; os já ingeridos nunca são
+  buscados de novo. Períodos passados não se recuperam com o tempo, só com o reprocessamento de 6
+  meses. Escrevi o contrário na primeira versão deste documento ("nada de reprocessamento
+  obrigatório") e estava errado: o Migration Plan abaixo era a parte correta.
 
 - **Uma chamada a mais por commit de PR.** ~1.000 por repositório por sync com 200 PRs de cinco
   commits. Se virar problema, aparece como sync lento, não como número errado. O próximo passo
@@ -113,9 +115,14 @@ forma dos payloads — dar-lhe uma chamada de rede destruiria essa propriedade.
 ## Migration Plan
 
 1. Deploy.
-2. O card reporta cobertura baixa até o próximo sync, porque nenhum PR ingerido tem a contagem.
+2. O card fica sem dado, porque nenhum PR ingerido tem a contagem.
 3. Rodar o sync. A partir daí os PRs novos trazem `files`; o histórico só se preenche com o
    reprocessamento, que já está pendente por outras razões.
+4. **Rodar "Reprocessar 6 meses"** (Admin → Azure DevOps), que ignora o watermark e recarrega a
+   janela aplicando o mapeamento atual. É a execução mais cara que esse botão já teve: agora cada
+   commit de PR custa uma chamada a mais, ~1.000 por repositório com 200 PRs de cinco commits. Vale
+   rodar fora do horário e ler o contador de recargas no relatório — é o número que esta change não
+   conseguiu estimar.
 
 ## Open Questions
 

@@ -48,8 +48,9 @@ nem `GitCommitRef`, nem `GitChange` têm campo de adições/remoções de linha.
   continuar se apresentando como aquilo que nunca foi.
 
 **BREAKING (números, não API):** o PR Size exibido muda de "mediana de commits por PR" para "mediana
-de arquivos por PR" — vai subir. Até o próximo sync, os PRs já ingeridos não têm a contagem e o card
-reporta cobertura baixa, o que é a leitura correta: não temos o dado ainda.
+de arquivos por PR" — vai subir. E **o reprocessamento de 6 meses é necessário**: o sync incremental
+pula todo PR fechado antes do watermark, então os PRs já ingeridos nunca recebem a contagem e os
+períodos passados ficam permanentemente sem dado.
 
 ## Capabilities
 
@@ -62,7 +63,11 @@ alterados) e `flow-dashboard` (PR Size é arquivos).
   chamadas por repositório por sync. A memoização por commit evita a segunda chamada quando o mesmo
   commit também precisa do comentário completo, e o contador de recargas que já existe passa a medir
   o total — o custo fica medido, não estimado.
-- Nada de reprocessamento obrigatório: o card se declara sem dado até o próximo sync preencher.
+- **Exige reprocessar 6 meses.** Um sync comum é incremental e descarta PR fechado antes do
+  watermark (`AdoEventSource`, o teste de `closedDate` contra a marca), então ele preenche a contagem
+  só dos PRs novos. Sem o reprocessamento, junho e qualquer mês anterior ao deploy ficam sem PR Size
+  para sempre, e o mês corrente leva dias para ter amostra. O mesmo reprocessamento também ativa a
+  regra de trabalho folha, pendente desde a change anterior — uma execução resolve as duas.
 - **Fora de escopo:** linhas de verdade, que exigiriam baixar os blobs de cada arquivo e fazer o diff
   do nosso lado — N chamadas por commit, mais binário, arquivo grande e renomeação. Decidido com o
   usuário em 07/10/2026, junto da escolha por arquivos.
