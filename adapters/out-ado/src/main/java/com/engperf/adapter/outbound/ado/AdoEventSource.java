@@ -121,7 +121,14 @@ public final class AdoEventSource implements AdoEventSourcePort {
               client.get(base + "/pullrequests/" + prId + "/commits?" + API, token);
           VoteHistory votes = VoteHistory.fetch(client, base, prId, token);
           events.add(
-              AdoMapper.pullRequest(pr, prCommits, comments.anyAi(base, prCommits, token), votes));
+              AdoMapper.pullRequest(
+                  pr,
+                  prCommits,
+                  comments.anyAi(base, prCommits, token),
+                  votes,
+                  // Memoizado por commit: a varredura de IA acima e esta contagem leem a mesma
+                  // resposta, então o commit é buscado uma vez e não duas.
+                  comments.changedFiles(base, prCommits, token)));
           events.addAll(AdoMapper.reviews(pr, votes));
           prs++;
         }

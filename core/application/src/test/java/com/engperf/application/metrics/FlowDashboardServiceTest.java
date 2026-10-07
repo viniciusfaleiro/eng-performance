@@ -66,8 +66,8 @@ class FlowDashboardServiceTest {
     // Ana: two completed work items (board segments) + two PRs (code drill-downs pr_size/review).
     events.add(doneItem("id-ana", 4, 2, 2)); // active 4, review 2, wait 2 → cycle 8, working 6
     events.add(doneItem("id-ana", 6, 2, 2)); // active 6, review 2, wait 2 → cycle 10, working 8
-    events.add(prCode("id-ana", 2, 200));
-    events.add(prCode("id-ana", 2, 400));
+    events.add(prCode("id-ana", 2, 8));
+    events.add(prCode("id-ana", 2, 20));
 
     var dash = flow.dashboard("t:checkout", period(Frequency.MONTHLY));
     // Volume comes last: context after the delivery headline.
@@ -87,7 +87,7 @@ class FlowDashboardServiceTest {
     var byKey = cards("t:checkout");
     assertThat(byKey.get("cycle_time").value().value()).isEqualTo(9.0); // median(8,10)
     assertThat(byKey.get("throughput").value().value()).isEqualTo(2); // completed items
-    assertThat(byKey.get("pr_size").value().value()).isEqualTo(300.0); // median(200,400)
+    assertThat(byKey.get("pr_size").value().value()).isEqualTo(14.0); // median(8,20) arquivos
     // Flow efficiency = Σworking / Σ(working+wait) = (6+8)/((6+2)+(8+2)) = 14/18.
     assertThat(byKey.get("flow_efficiency").value().value())
         .isCloseTo(14.0 / 18.0, Offset.offset(1e-9));
@@ -209,8 +209,8 @@ class FlowDashboardServiceTest {
         Map.of());
   }
 
-  /** A PR carrying the code drill-downs: numericValue = review hours, detail.lines = PR size. */
-  private RawEvent prCode(String identity, double review, double lines) {
+  /** A PR carrying the code drill-downs: numericValue = review hours, detail.files = PR size. */
+  private RawEvent prCode(String identity, double review, double files) {
     return new RawEvent(
         "e" + (seq++),
         EventType.PR,
@@ -220,6 +220,6 @@ class FlowDashboardServiceTest {
         review,
         "review",
         false,
-        Map.of("lines", Double.toString(lines)));
+        Map.of("files", Double.toString(files)));
   }
 }

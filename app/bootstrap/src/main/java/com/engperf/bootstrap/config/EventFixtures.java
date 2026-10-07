@@ -92,7 +92,7 @@ class EventFixtures implements CommandLineRunner {
         double pickup = 1 + pick(identity + "|pick|" + d + i, 6); // 1..6h
         double review = 1 + pick(identity + "|rev|" + d + i, 8); // 1..8h
         double deploy = 1 + pick(identity + "|dep|" + d + i, 4); // 1..4h
-        int lines = 30 + pick(identity + "|lines|" + d + i, 400); // 30..429
+        int files = 1 + pick(identity + "|files|" + d + i, 24); // 1..24 arquivos
         // The PR is AI-assisted when its commits used AI (convention) — modelled deterministically.
         boolean ai = pick(identity + "|prai|" + d + i, 2) == 1;
         boolean firstPass = pick(identity + "|fp|" + d + i, 3) != 0; // ~2/3 approved first pass
@@ -102,7 +102,7 @@ class EventFixtures implements CommandLineRunner {
                 day,
                 i,
                 new double[] {coding, pickup, review, deploy},
-                lines,
+                files,
                 ai,
                 firstPass));
       }
@@ -163,7 +163,7 @@ class EventFixtures implements CommandLineRunner {
       LocalDate day,
       int i,
       double[] phases,
-      int lines,
+      int files,
       boolean ai,
       boolean firstPass) {
     double coding = phases[0];
@@ -178,7 +178,7 @@ class EventFixtures implements CommandLineRunner {
     detail.put("review_h", Double.toString(review));
     detail.put("deploy_h", Double.toString(deploy));
     detail.put("cycle_h", Double.toString(cycle));
-    detail.put("lines", Integer.toString(lines));
+    detail.put("files", Integer.toString(files));
     detail.put("num", Double.toString(active)); // flow_efficiency numerator
     detail.put("den", Double.toString(cycle)); // flow_efficiency denominator
     detail.put("first_pass", firstPass ? "1" : "0"); // PR assertiveness

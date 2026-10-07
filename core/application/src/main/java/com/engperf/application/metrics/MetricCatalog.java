@@ -190,9 +190,13 @@ public final class MetricCatalog {
                       EventType.PR,
                       AttributionScope.PERSON,
                       Aggregation.MEDIAN,
-                      "linhas",
+                      // Arquivos, e não linhas: linha alterada não existe no Git REST do Azure
+                      // DevOps — nem GitCommit, nem GitCommitRef, nem GitChange têm o campo. O que
+                      // a fonte oferece é contagem de itens alterados, e era isso que a métrica
+                      // media o tempo todo, com o rótulo errado.
+                      "arquivos",
                       Direction.LOWER_BETTER)
-                  .reading("lines"),
+                  .reading("files"),
               new MetricDefinition(
                   // Flow Efficiency = working time / (working + wait) over the work item's board
                   // life.
