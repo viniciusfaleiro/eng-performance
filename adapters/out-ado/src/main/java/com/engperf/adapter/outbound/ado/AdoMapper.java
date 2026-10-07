@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -30,7 +31,11 @@ final class AdoMapper {
    * same goes for {@code votes}: the vote history lives in a separate endpoint.
    */
   static RawEvent pullRequest(
-      JsonNode pr, JsonNode commits, boolean aiAssisted, VoteHistory votes) {
+      JsonNode pr,
+      JsonNode commits,
+      boolean aiAssisted,
+      VoteHistory votes,
+      OptionalInt changedFiles) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -43,6 +48,11 @@ final class AdoMapper {
     detail.put("summary", pr.path("title").asText(""));
     detail.put("url", webLink(pr));
     applyCommitStats(detail, commits, cycleH);
+    // Só quando existe. Sem a contagem o PR cai fora do PR Size e derruba a cobertura dele, que é a
+    // leitura certa: a medida não existe. Preencher com qualquer substituto — como a contagem de
+    // commits, que é o que este mapper fazia — põe um número plausível no mesmo campo e na mesma
+    // unidade, e aí nada na tela consegue revelar que a medição está faltando.
+    changedFiles.ifPresent(n -> detail.put("files", Integer.toString(n)));
 
     return new RawEvent(
         "pr:" + pr.path("pullRequestId").asLong(),
@@ -57,17 +67,19 @@ final class AdoMapper {
   }
 
   /**
-   * From the PR's commits: {@code coding_h} = first→last commit; flow {@code num/den} =
-   * coding/cycle; {@code lines} = summed {@code changeCounts} (else commit count). Best-effort,
-   * acceptance-tuned; a PR with no commit data is excluded from flow_efficiency (num=den=0) and has
-   * no {@code lines}.
+   * From the PR's commits: {@code coding_h} = first→last commit and flow {@code num/den} =
+   * coding/cycle. A PR with no commit data is excluded from flow_efficiency (num=den=0).
+   *
+   * <p>Size is not derived here. It used to be — {@code changeCounts} when present, the commit
+   * count otherwise — and the fallback was the whole bug: {@code changeCounts} never arrives on a
+   * commit list, so every pull request reported its number of commits under a key called {@code
+   * lines}. The count now comes resolved from the caller, which is the only place that can ask for
+   * it.
    */
   private static void applyCommitStats(
       Map<String, String> detail, JsonNode commits, double cycleH) {
     Instant first = null;
     Instant last = null;
-    long lines = 0;
-    boolean hasCounts = false;
     int count = 0;
     for (JsonNode c : commits.path("value")) {
       Instant at = commitDate(c);
@@ -77,11 +89,6 @@ final class AdoMapper {
       count++;
       first = (first == null || at.isBefore(first)) ? at : first;
       last = (last == null || at.isAfter(last)) ? at : last;
-      JsonNode cc = c.path("changeCounts");
-      if (cc.isObject()) {
-        hasCounts = true;
-        lines += cc.path("Add").asLong(0) + cc.path("Edit").asLong(0) + cc.path("Delete").asLong(0);
-      }
     }
     if (count == 0) {
       detail.put("num", "0"); // no commit data → contributes nothing to flow_efficiency
@@ -92,7 +99,6 @@ final class AdoMapper {
     detail.put("coding_h", num(codingH));
     detail.put("num", num(codingH)); // flow_efficiency numerator = active coding time
     detail.put("den", num(cycleH)); //                  denominator = whole cycle
-    detail.put("lines", Long.toString(hasCounts ? lines : count));
   }
 
   private static Instant commitDate(JsonNode c) {

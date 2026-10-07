@@ -11,6 +11,7 @@ import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,6 +21,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 class AdoMapperTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
+
+  /** PR sem contagem de arquivos — o caso em que o tamanho é "sem dado". */
+  private static final OptionalInt NO_FILES = OptionalInt.empty();
 
   /** Histórico lido, sem nenhum voto negativo. */
   private static final VoteHistory APPROVED = new VoteHistory(true, false);
@@ -33,7 +37,7 @@ class AdoMapperTest {
                 + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
                 + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
                 + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
-    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED);
+    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED, OptionalInt.of(7));
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -44,7 +48,8 @@ class AdoMapperTest {
     assertThat(e.detail().get("repo")).isEqualTo("checkout-service");
     assertThat(e.detail().get("url")).contains("pullrequest/42");
     assertThat(e.detail().get("coding_h")).isEqualTo("3.0"); // first 10:00 → last 13:00 commit
-    assertThat(e.detail().get("lines")).isEqualTo("20"); // 10+5+2 + 3+0+0 changed lines
+    // A contagem chega resolvida do chamador: o mapper não a deriva nem a substitui.
+    assertThat(e.detail().get("files")).isEqualTo("7");
     assertThat(e.detail().get("num")).isEqualTo("3.0"); // flow_efficiency = coding 3h / cycle 6h
     assertThat(e.detail().get("den")).isEqualTo("6.0");
   }
@@ -57,8 +62,10 @@ class AdoMapperTest {
   void aPullRequestCarriesTheAiFlagItWasGiven() {
     JsonNode commits = json("{\"value\":[]}");
 
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED).ai()).isTrue();
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED).ai()).isFalse();
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED, NO_FILES).ai())
+        .isTrue();
+    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED, NO_FILES).ai())
+        .isFalse();
   }
 
   /**
@@ -71,7 +78,7 @@ class AdoMapperTest {
 
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, rejectedThenApproved);
+            fixture("pr.json"), json("{\"value\":[]}"), false, rejectedThenApproved, NO_FILES);
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -80,7 +87,7 @@ class AdoMapperTest {
   void anUnreadableHistoryIsNotCountedAsFirstPass() {
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, VoteHistory.UNKNOWN);
+            fixture("pr.json"), json("{\"value\":[]}"), false, VoteHistory.UNKNOWN, NO_FILES);
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -97,10 +104,12 @@ class AdoMapperTest {
 
   @Test
   void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
-    RawEvent e = AdoMapper.pullRequest(fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED);
+    RawEvent e =
+        AdoMapper.pullRequest(
+            fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED, NO_FILES);
     assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
     assertThat(e.detail().get("den")).isEqualTo("0");
-    assertThat(e.detail()).doesNotContainKey("lines"); // size is "no data", not a fake zero
+    assertThat(e.detail()).doesNotContainKey("files"); // size is "no data", not a fake zero
   }
 
   @Test

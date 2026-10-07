@@ -785,7 +785,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     {key:"wip",label:"Work in Progress",unit:"itens",higher:false,base:9},
     {key:"fe",label:"Flow Efficiency",unit:"%",higher:true,base:42},
     {key:"rt",label:"PR Review Time",unit:"h",higher:false,base:7.5},
-    {key:"ps",label:"PR Size (médio)",unit:"linhas",higher:false,base:210},
+    {key:"ps",label:"PR Size (médio)",unit:"arquivos",higher:false,base:12},
     {key:"cmt",label:"Commits",unit:"commits",higher:true,base:180,count:true},
     {key:"prc",label:"Pull Requests",unit:"PRs",higher:true,base:34,count:true},
   ];
@@ -1063,7 +1063,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
       dir:(lp.sentiment==="good"?"up":lp.sentiment==="bad"?"down":"flat")};
   }
-  function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="linhas")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
+  function fmt(v,unit){if(unit==="%"||unit==="itens"||unit==="PRs"||unit==="arquivos")return Math.round(v).toString();return (Math.round(v*10)/10).toString();}
   function tierOf(k,v){switch(k){case"df":return v>=1?"Elite":v>=0.25?"Alto":v>=0.06?"Médio":"Baixo";case"lt":return v<24?"Elite":v<72?"Alto":v<168?"Médio":"Baixo";case"cfr":return v<=5?"Elite":v<=10?"Alto":v<=20?"Médio":"Baixo";case"mttr":return v<1?"Elite":v<24?"Alto":v<72?"Médio":"Baixo";default:return"";}}
   const TC={"Elite":"tier-elite","Alto":"tier-alto","Médio":"tier-medio","Baixo":"tier-baixo"};
   const phaseSplit=(id,freq,total)=>{const w=[0.35,0.45,0.20].map((base,i)=>base*(0.7+hash(id+"|"+freq+"|ph"+i)*0.6));const sum=w.reduce((a,b)=>a+b,0);return w.map(x=>total*x/sum);};

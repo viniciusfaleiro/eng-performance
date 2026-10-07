@@ -93,6 +93,30 @@ class MetricCatalogExplanationTest {
     assertThat(wip.included()).containsIgnoringCase("concluídos dentro dele");
   }
 
+  /**
+   * O card mostrava "linhas" e media contagem de commits, porque `changeCounts` nunca chega numa
+   * lista de commits e o mapper caía num fallback silencioso. Linha alterada não existe no Git REST
+   * do Azure DevOps, então a unidade honesta é arquivo — e o texto não pode voltar a prometer
+   * linha.
+   */
+  @Test
+  void thePrSizeExplanationPromisesFilesAndNotLines() {
+    MetricDefinition d =
+        catalog.all().stream().filter(x -> x.key().equals("pr_size")).findFirst().orElseThrow();
+    MetricExplanation e = d.explained().orElseThrow();
+
+    assertThat(d.unit()).isEqualTo("arquivos");
+    assertThat(d.measure()).isEqualTo("files");
+    assertThat(e.rule()).containsIgnoringCase("arquivos alterados");
+    assertThat(e.rule())
+        .as("a ausência de linhas na fonte precisa estar dita, não só implícita")
+        .containsIgnoringCase("não é medida em linhas");
+    assertThat(e.excluded())
+        .as("sem contagem é sem dado, e a ressalva da pasta fica junto")
+        .containsIgnoringCase("sem dado")
+        .containsIgnoringCase("pasta");
+  }
+
   /** Quem conta só item concluído tem de dizer isso na colocação no tempo. */
   @Test
   void theCompletedOnlyMetricsSayTheyArePlacedByCompletion() {

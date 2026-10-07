@@ -97,7 +97,7 @@ class AdoEventSourceTest {
     // Exactly one detail call: the untruncated commit is mapped straight from the list.
     assertThat(client.urls.stream().filter(u -> u.contains("/commits/")).toList())
         .containsExactly(
-            "https://dev.azure.com/orgX/ProjP/_apis/git/repositories/repoA/commits/truncated?api-version=7.1");
+            "https://dev.azure.com/orgX/ProjP/_apis/git/repositories/repoA/commits/truncated?changeCount=1&api-version=7.1");
     // The trailer only exists in the reloaded body — without the reload this would be false.
     assertThat(commits)
         .extracting(RawEvent::id, RawEvent::ai)

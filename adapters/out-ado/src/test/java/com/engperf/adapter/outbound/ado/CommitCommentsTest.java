@@ -12,7 +12,10 @@ import java.util.Locale;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 
-/** A truncated commit message hides the AI trailers, so it has to be reloaded in full. */
+/**
+ * A busca do commit por inteiro, que serve a dois propósitos: a mensagem truncada esconde os
+ * trailers de IA, e a contagem de arquivos alterados só existe nessa resposta.
+ */
 class CommitCommentsTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -42,7 +45,7 @@ class CommitCommentsTest {
 
     JsonNode result = comments.full(BASE, fixture("commit-truncated.json"), "tok");
 
-    assertThat(client.urls).containsExactly(BASE + "/commits/def456?api-version=7.1");
+    assertThat(client.urls).containsExactly(BASE + "/commits/def456?changeCount=1&api-version=7.1");
     assertThat(comments.reloaded()).isEqualTo(1);
     assertThat(result.path("comment").asText()).contains("Co-authored-by: Copilot");
   }
@@ -136,7 +139,119 @@ class CommitCommentsTest {
                 + "\"comment\":\"feat: régua\"}]}");
 
     assertThat(comments.anyAi(BASE, prCommits, "tok")).isTrue();
-    assertThat(client.urls).containsExactly(BASE + "/commits/t?api-version=7.1");
+    assertThat(client.urls).containsExactly(BASE + "/commits/t?changeCount=1&api-version=7.1");
+  }
+
+  /**
+   * O total do PR é a soma dos commits. Três commits de 2, 3 e 5 itens → 10 arquivos.
+   *
+   * <p>Soma itens, e não um trio fixo de tipos: a API relata também renomeação e mudança de
+   * propriedade, e um arquivo renomeado é tão alterado quanto um editado. Ler só Add/Edit/Delete
+   * subcontaria em silêncio — foi o que o mapper antigo fazia.
+   */
+  @Test
+  void theFileCountIsSummedAcrossTheCommitsOfThePullRequest() {
+    CountingClient client =
+        new CountingClient(
+            java.util.Map.of(
+                "a", "{\"changeCounts\":{\"Add\":2}}",
+                "b", "{\"changeCounts\":{\"Edit\":2,\"Rename\":1}}",
+                "c", "{\"changeCounts\":{\"Add\":1,\"Edit\":3,\"Delete\":1}}"));
+    CommitComments comments = new CommitComments(client, IS_AI);
+
+    assertThat(comments.changedFiles(BASE, prCommits("a", "b", "c"), "tok")).hasValue(10);
+    assertThat(client.urls).hasSize(3);
+  }
+
+  /**
+   * Uma soma faltando um commit é indistinguível de uma medição legítima, e a mediana que a lê não
+   * tem como saber que está baixa. Então o PR inteiro fica sem contagem.
+   */
+  @Test
+  void oneCommitWithoutCountsLeavesThePullRequestWithoutATotal() {
+    CountingClient client =
+        new CountingClient(
+            java.util.Map.of(
+                "a", "{\"changeCounts\":{\"Add\":9}}",
+                "b", "{\"commitId\":\"b\"}")); // resposta sem changeCounts
+
+    assertThat(new CommitComments(client, IS_AI).changedFiles(BASE, prCommits("a", "b"), "tok"))
+        .isEmpty();
+  }
+
+  /** Falha de rede não derruba o sync: o PR vai sem contagem. */
+  @Test
+  void aFailedRequestLeavesThePullRequestWithoutATotal() {
+    AdoRestClient failing =
+        new AdoRestClient() {
+          @Override
+          public JsonNode get(String url, String token) {
+            throw new IllegalStateException("Azure DevOps commits -> HTTP 500");
+          }
+
+          @Override
+          public JsonNode post(String url, String token, String body) {
+            throw new UnsupportedOperationException();
+          }
+        };
+
+    assertThat(new CommitComments(failing, IS_AI).changedFiles(BASE, prCommits("a"), "tok"))
+        .isEmpty();
+  }
+
+  /**
+   * O commit que precisa da mensagem completa <em>e</em> da contagem é buscado uma vez. Sem a
+   * memoização seriam duas chamadas para a mesma resposta, e o custo do sync dobraria sem nenhum
+   * dado novo.
+   */
+  @Test
+  void aCommitNeededForBothPurposesIsFetchedOnce() {
+    CountingClient client =
+        new CountingClient(
+            java.util.Map.of(
+                "t",
+                "{\"commitId\":\"t\",\"comment\":\"feat: x\\n\\nCo-authored-by: Copilot\","
+                    + "\"changeCounts\":{\"Edit\":4}}"));
+    CommitComments comments = new CommitComments(client, IS_AI);
+    JsonNode prCommits =
+        json(
+            "{\"value\":[{\"commitId\":\"t\",\"commentTruncated\":true,"
+                + "\"comment\":\"feat: x\"}]}");
+
+    assertThat(comments.anyAi(BASE, prCommits, "tok")).isTrue();
+    assertThat(comments.changedFiles(BASE, prCommits, "tok")).hasValue(4);
+    assertThat(client.urls).hasSize(1);
+    assertThat(comments.reloaded()).isEqualTo(1);
+  }
+
+  private static JsonNode prCommits(String... ids) {
+    StringBuilder sb = new StringBuilder("{\"value\":[");
+    for (int i = 0; i < ids.length; i++) {
+      sb.append(i == 0 ? "" : ",").append("{\"commitId\":\"").append(ids[i]).append("\"}");
+    }
+    return json(sb.append("]}").toString());
+  }
+
+  /** Responde por id de commit, para o teste poder dar contagens diferentes a cada um. */
+  private static final class CountingClient implements AdoRestClient {
+    private final java.util.Map<String, String> byId;
+    final List<String> urls = new ArrayList<>();
+
+    CountingClient(java.util.Map<String, String> byId) {
+      this.byId = byId;
+    }
+
+    @Override
+    public JsonNode get(String url, String token) {
+      urls.add(url);
+      String id = url.substring(url.lastIndexOf('/') + 1, url.indexOf('?'));
+      return json(byId.getOrDefault(id, "{}"));
+    }
+
+    @Override
+    public JsonNode post(String url, String token, String body) {
+      throw new UnsupportedOperationException();
+    }
   }
 
   private static final class RecordingClient implements AdoRestClient {

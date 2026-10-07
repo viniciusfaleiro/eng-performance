@@ -155,12 +155,19 @@ final class MetricExplanations {
           Map.entry(
               "pr_size",
               new MetricExplanation(
-                  "A mediana de linhas alteradas por pull request, somando adições e remoções.",
-                  "Pull requests do Azure Repos, pelos commits que fazem parte deles.",
-                  "PRs concluídos no período.",
-                  "PRs sem informação de alteração de linhas.",
+                  "A mediana de arquivos alterados por pull request, somando os commits dele. Não é"
+                      + " medida em linhas: o Azure DevOps não informa linhas adicionadas ou"
+                      + " removidas em nenhum lugar da API, só quantos itens cada commit mexeu.",
+                  "Pull requests do Azure Repos, pela contagem de alterações de cada commit, pedida"
+                      + " commit a commit.",
+                  "PRs concluídos no período cuja contagem foi obtida em todos os commits.",
+                  "PRs em que a contagem de algum commit não pôde ser lida — entram como sem dado e"
+                      + " derrubam a cobertura, em vez de receber um número substituto. Ressalva:"
+                      + " uma pasta criada conta como item alterado, então um commit que cria"
+                      + " diretórios lê um pouco maior que os arquivos que toca.",
                   "Pelo instante em que o pull request foi fechado.",
-                  "PRs de 20, 80, 200 e 900 linhas → mediana de 140 linhas.")),
+                  "PRs de 2, 6, 14 e 40 arquivos → mediana de 10 arquivos. Um PR de 3 commits que"
+                      + " toca 1 arquivo cada conta 3 arquivos, não 3 commits.")),
           // ---- Volume ----
           Map.entry(
               "commit_count",
