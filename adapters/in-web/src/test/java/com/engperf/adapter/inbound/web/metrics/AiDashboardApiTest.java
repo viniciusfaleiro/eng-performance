@@ -121,8 +121,12 @@ class AiDashboardApiTest {
   }
 
   private static final class FakeAi implements AiDashboardUseCase {
+    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+
     @Override
-    public AiDashboard dashboard(String nodeId, Period period) {
+    public AiDashboard dashboard(
+        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       List<AiCard> cards =
           List.of(
               new AiCard(
@@ -156,7 +160,8 @@ class AiDashboardApiTest {
     }
 
     @Override
-    public AiCard impact(String nodeId, Period period) {
+    public AiCard impact(
+        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
       return new AiCard(
           MetricCatalog.AI_IMPACT,
           MetricValue.of(40.0, null, Direction.HIGHER_BETTER),

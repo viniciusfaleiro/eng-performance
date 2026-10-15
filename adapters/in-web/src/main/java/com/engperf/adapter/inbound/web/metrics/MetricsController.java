@@ -63,9 +63,10 @@ public class MetricsController {
   public List<CardDto> cards(
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
+      WorkTypeQuery workTypes,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.cards(node, periods.resolve(selection.toRequest())).stream()
+    return metrics.cards(node, periods.resolve(selection.toRequest()), workTypes.filter()).stream()
         .map(CardDto::from)
         .toList();
   }
@@ -75,9 +76,11 @@ public class MetricsController {
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
+      WorkTypeQuery workTypes,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return SeriesDto.from(metrics.series(key, node, periods.resolve(selection.toRequest())));
+    return SeriesDto.from(
+        metrics.series(key, node, periods.resolve(selection.toRequest()), workTypes.filter()));
   }
 
   @GetMapping("/api/metrics/{key}/items")
@@ -85,9 +88,12 @@ public class MetricsController {
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
+      WorkTypeQuery workTypes,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.items(key, node, periods.resolve(selection.toRequest())).stream()
+    return metrics
+        .items(key, node, periods.resolve(selection.toRequest()), workTypes.filter())
+        .stream()
         .map(DrilldownItemDto::from)
         .toList();
   }
@@ -102,9 +108,12 @@ public class MetricsController {
       @PathVariable String key,
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
+      WorkTypeQuery workTypes,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.entityShares(key, node, periods.resolve(selection.toRequest())).stream()
+    return metrics
+        .entityShares(key, node, periods.resolve(selection.toRequest()), workTypes.filter())
+        .stream()
         .filter(s -> user.scope().canView(s.entityId()))
         .map(EntityShareDto::from)
         .toList();

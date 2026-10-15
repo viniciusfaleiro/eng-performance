@@ -2,12 +2,14 @@ package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.FlowDashboard;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 
-/**
- * Inbound port for the composed Fluxo dashboard. Node-scope enforcement (403 outside scope,
- * coaching-only) lives in the web adapter; this port computes the dashboard for an authorized node.
- */
 public interface FlowDashboardUseCase {
 
-  FlowDashboard dashboard(String nodeId, Period period);
+  default FlowDashboard dashboard(String nodeId, Period period) {
+    return dashboard(nodeId, period, WorkTypeFilter.none());
+  }
+
+  /** The dashboard read under a work-type selection; an empty one reads everything. */
+  FlowDashboard dashboard(String nodeId, Period period, WorkTypeFilter workTypes);
 }

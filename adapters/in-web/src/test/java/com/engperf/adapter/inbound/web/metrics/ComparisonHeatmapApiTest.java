@@ -99,8 +99,15 @@ class ComparisonHeatmapApiTest {
   }
 
   private static final class FakeComparison implements ComparisonHeatmapUseCase {
+    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+
     @Override
-    public ComparisonHeatmap heatmap(String nodeId, Period period, String scope) {
+    public ComparisonHeatmap heatmap(
+        String nodeId,
+        Period period,
+        String scope,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       List<HeatmapMetric> metrics =
           List.of(
               new HeatmapMetric("deploy_freq", "Deployment Frequency", "deploys"),

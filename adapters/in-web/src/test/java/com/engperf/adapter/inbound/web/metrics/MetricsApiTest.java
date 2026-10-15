@@ -303,6 +303,9 @@ class MetricsApiTest {
   }
 
   private static final class FakeMetrics implements MetricsQueryUseCase {
+    /** The last work-type selection this fake was asked for — what the API test checks. */
+    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+
     @Override
     public List<MetricDefinition> catalog() {
       return List.of(DEF);
@@ -320,34 +323,55 @@ class MetricsApiTest {
     }
 
     @Override
-    public List<MetricCard> cards(String nodeId, Period period) {
+    public List<MetricCard> cards(
+        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return List.of(new MetricCard(DEF, v, new Coverage(9, 10)));
     }
 
     @Override
-    public MetricSeries series(String metricKey, String nodeId, Period period) {
+    public MetricSeries series(
+        String metricKey,
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
     }
 
     @Override
     public MetricSeries cohortSeries(
-        String metricKey, String nodeId, Period period, boolean aiAssisted) {
+        String metricKey,
+        String nodeId,
+        Period period,
+        boolean aiAssisted,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
     }
 
     @Override
     public List<com.engperf.application.metrics.EntityShare> entityShares(
-        String metricKey, String nodeId, Period period) {
+        String metricKey,
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       return List.of(
           new com.engperf.application.metrics.EntityShare("p:ana", "Ana", 0, 3),
           new com.engperf.application.metrics.EntityShare("p:bruno", "Bruno", 2, 2));
     }
 
     @Override
-    public List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period) {
+    public List<MetricDrilldownItem> items(
+        String metricKey,
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       return List.of(
           new MetricDrilldownItem(
               "pr:1",

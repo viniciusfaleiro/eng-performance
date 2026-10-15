@@ -1,7 +1,6 @@
 package com.engperf.application.metrics;
 
 import com.engperf.application.metrics.StructureIndex.Attribution;
-import com.engperf.domain.metrics.Aggregations;
 import com.engperf.domain.metrics.Bucket;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Frequency;
@@ -10,16 +9,13 @@ import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -74,18 +70,46 @@ public final class MetricsEngine {
       Instant readNow,
       int bucketCount,
       Predicate<RawEvent> population) {
+    return series(
+        index,
+        events,
+        def,
+        nodeId,
+        period,
+        readNow,
+        bucketCount,
+        new MetricPopulation(population, WorkTypeFilter.none()));
+  }
 
+  /**
+   * As {@link #series}, restricted to a cohort and to a work-type selection — the two compose, so
+   * the AI cohort of bug work is one population and not two readings combined afterwards.
+   */
+  public static MetricSeries series(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Period period,
+      Instant readNow,
+      int bucketCount,
+      MetricPopulation requested) {
+
+    Predicate<RawEvent> population = requested.cohort();
+    WorkTypeFilter workTypes = requested.workTypes();
+    boolean filtered = filters(def, workTypes);
+    Predicate<RawEvent> selected = restrict(population, def, workTypes);
     Frequency freq = period.frequency();
     // Um relógio só. O motor precisava de uma data (o período em curso) e passou a precisar de um
     // instante (até quando um item aberto está em progresso); receber os dois convidaria os dois a
     // divergirem.
     LocalDate today = LocalDate.ofInstant(readNow, ZoneOffset.UTC);
-    List<Matched> matched = match(index, events, def, nodeId, population, readNow);
+    List<Matched> matched = match(index, events, def, nodeId, selected, readNow);
     List<Bucket> buckets = period.slices(bucketCount);
 
     double[] values = new double[buckets.size()];
     for (int i = 0; i < buckets.size(); i++) {
-      values[i] = aggregate(def, inBucket(matched, buckets.get(i), def));
+      values[i] = MetricsAggregation.of(def, inBucket(matched, buckets.get(i), def));
     }
 
     int last = buckets.size() - 1;
@@ -105,7 +129,7 @@ public final class MetricsEngine {
         // Compare the elapsed slice against the same elapsed slice of the previous bucket.
         LocalDate prevStart = buckets.get(i - 1).start();
         Bucket sameSlice = new Bucket(prevStart, prevStart.plusDays(elapsed));
-        previous = aggregate(def, inBucket(matched, sameSlice, def));
+        previous = MetricsAggregation.of(def, inBucket(matched, sameSlice, def));
       } else {
         previous = values[i - 1];
       }
@@ -115,7 +139,12 @@ public final class MetricsEngine {
               MetricValue.of(values[i], previous, def.direction())));
     }
 
-    return new MetricSeries(def, points, coverage(index, events, def, population));
+    return new MetricSeries(
+        def,
+        points,
+        coverage(index, events, def, selected),
+        filtered,
+        untypedExcluded(index, events, def, nodeId, population, filtered));
   }
 
   public static MetricCard card(
@@ -139,11 +168,84 @@ public final class MetricsEngine {
       Instant readNow,
       int bucketCount,
       Predicate<RawEvent> population) {
-    List<Matched> matched = match(index, events, def, nodeId, population, readNow);
+    return card(
+        index,
+        events,
+        def,
+        nodeId,
+        period,
+        readNow,
+        bucketCount,
+        new MetricPopulation(population, WorkTypeFilter.none()));
+  }
+
+  /** As {@link #card}, restricted to a cohort and to a work-type selection. */
+  public static MetricCard card(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Period period,
+      Instant readNow,
+      int bucketCount,
+      MetricPopulation requested) {
+    Predicate<RawEvent> population = requested.cohort();
+    WorkTypeFilter workTypes = requested.workTypes();
+    boolean filtered = filters(def, workTypes);
+    Predicate<RawEvent> selected = restrict(population, def, workTypes);
+    List<Matched> matched = match(index, events, def, nodeId, selected, readNow);
     return new MetricCard(
         def,
         selectedValue(matched, def, period, LocalDate.ofInstant(readNow, ZoneOffset.UTC)),
-        coverage(index, events, def, population));
+        coverage(index, events, def, selected),
+        filtered,
+        untypedExcluded(index, events, def, nodeId, population, filtered));
+  }
+
+  /**
+   * Whether this selection reaches this metric. A deploy metric never filters (see {@link
+   * MetricDefinition#filterableByWorkType()}), and an empty selection filters nothing at all.
+   */
+  public static boolean filters(MetricDefinition def, WorkTypeFilter workTypes) {
+    return !workTypes.isEmpty() && def.filterableByWorkType();
+  }
+
+  /**
+   * The cohort predicate narrowed by the work-type selection, when the selection applies. The two
+   * are composed into one population so every statistic — median included — is recomputed over the
+   * selected work instead of being assembled from per-type values.
+   */
+  public static Predicate<RawEvent> restrict(
+      Predicate<RawEvent> population, MetricDefinition def, WorkTypeFilter workTypes) {
+    return filters(def, workTypes) ? population.and(workTypes::matches) : population;
+  }
+
+  /**
+   * How many of the node's events the selection dropped for carrying no work type — a pull request
+   * linked to no work item, typically. Counted apart from coverage on purpose: coverage answers
+   * attribution, and folding these in would make two different problems read as one.
+   */
+  private static long untypedExcluded(
+      StructureIndex index,
+      List<RawEvent> events,
+      MetricDefinition def,
+      String nodeId,
+      Predicate<RawEvent> population,
+      boolean filtered) {
+    if (!filtered) {
+      return 0L;
+    }
+    long n = 0;
+    for (RawEvent e : events) {
+      if (!population.test(e) || !WorkTypeFilter.isUntyped(e)) {
+        continue;
+      }
+      Optional<Attribution> attr = index.attribute(e, def.scope());
+      if (attr.isPresent() && attr.get().belongsTo(nodeId)) {
+        n++;
+      }
+    }
+    return n;
   }
 
   /**
@@ -156,7 +258,9 @@ public final class MetricsEngine {
    */
   private static MetricValue selectedValue(
       List<Matched> matched, MetricDefinition def, Period period, LocalDate today) {
-    double now = aggregate(def, inBucket(matched, new Bucket(period.start(), period.end()), def));
+    double now =
+        MetricsAggregation.of(
+            def, inBucket(matched, new Bucket(period.start(), period.end()), def));
     Period before = period.previous();
     // A fatia decorrida só existe para o balde que ainda está correndo. Um período passado já
     // terminou, e um intervalo escolhido é por definição o que foi pedido: comparar "1 dia de
@@ -167,7 +271,8 @@ public final class MetricsEngine {
                 before.start(),
                 before.start().plusDays(period.frequency().elapsedDays(period.start(), today)))
             : new Bucket(before.start(), before.end());
-    return MetricValue.of(now, aggregate(def, inBucket(matched, baseline, def)), def.direction());
+    return MetricValue.of(
+        now, MetricsAggregation.of(def, inBucket(matched, baseline, def)), def.direction());
   }
 
   public static Coverage coverage(
@@ -287,54 +392,5 @@ public final class MetricsEngine {
 
   private static Instant startOf(LocalDate date) {
     return date.atStartOfDay(ZoneOffset.UTC).toInstant();
-  }
-
-  private static double aggregate(MetricDefinition def, List<Matched> ms) {
-    return switch (def.aggregation()) {
-      // SUM counts events (throughput = # PRs, deploy_freq = # deploys). MEDIAN/SNAPSHOT read the
-      // metric's declared measure and exclude events that lack it (e.g. MTTR only over recovery
-      // deploys); RATIO reads num/den, so one event can feed several metrics.
-      case SUM -> ms.size();
-      case MEDIAN ->
-          Aggregations.median(
-              ms.stream().filter(Matched::hasMeasure).mapToDouble(Matched::measure).toArray());
-      case RATIO ->
-          Aggregations.ratio(
-              ms.stream().mapToDouble(Matched::numerator).sum(),
-              ms.stream().mapToDouble(Matched::denominator).sum());
-      case SNAPSHOT -> snapshot(ms);
-      // DISTINCT_RATIO: distinct people with a matching event (numerator > 0) over distinct people
-      // with any event — each person counted once regardless of how many events they produced.
-      case DISTINCT_RATIO -> distinctRatio(ms);
-    };
-  }
-
-  private static double distinctRatio(List<Matched> ms) {
-    Set<String> active = new HashSet<>();
-    Set<String> matching = new HashSet<>();
-    for (Matched m : ms) {
-      active.add(m.entity());
-      if (m.numerator() > 0) {
-        matching.add(m.entity());
-      }
-    }
-    return Aggregations.ratio(matching.size(), active.size());
-  }
-
-  /**
-   * Value at the end of the bucket: each entity's latest measured event, summed across entities.
-   */
-  private static double snapshot(List<Matched> ms) {
-    Map<String, Matched> latestByEntity = new HashMap<>();
-    for (Matched m : ms) {
-      if (!m.hasMeasure()) {
-        continue;
-      }
-      Matched cur = latestByEntity.get(m.entity());
-      if (cur == null || m.at().isAfter(cur.at())) {
-        latestByEntity.put(m.entity(), m);
-      }
-    }
-    return latestByEntity.values().stream().mapToDouble(Matched::measure).sum();
   }
 }

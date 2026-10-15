@@ -2,6 +2,7 @@ package com.engperf.adapter.outbound.ado;
 
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkType;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Duration;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -35,7 +37,8 @@ final class AdoMapper {
       JsonNode commits,
       boolean aiAssisted,
       VoteHistory votes,
-      OptionalInt changedFiles) {
+      OptionalInt changedFiles,
+      Set<WorkType> workTypes) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -48,6 +51,7 @@ final class AdoMapper {
     detail.put("summary", pr.path("title").asText(""));
     detail.put("url", webLink(pr));
     applyCommitStats(detail, commits, cycleH);
+    AdoWorkTypes.apply(detail, workTypes);
     // Só quando existe. Sem a contagem o PR cai fora do PR Size e derruba a cobertura dele, que é a
     // leitura certa: a medida não existe. Preencher com qualquer substituto — como a contagem de
     // commits, que é o que este mapper fazia — põe um número plausível no mesmo campo e na mesma
@@ -116,7 +120,7 @@ final class AdoMapper {
    * approved shows only the approval on the PR object, and reporting just that would erase the
    * review work that actually happened.
    */
-  static List<RawEvent> reviews(JsonNode pr, VoteHistory votes) {
+  static List<RawEvent> reviews(JsonNode pr, VoteHistory votes, Set<WorkType> workTypes) {
     List<RawEvent> out = new ArrayList<>();
     String author = identity(pr.path("createdBy"));
     Instant when =
@@ -135,6 +139,7 @@ final class AdoMapper {
       // A review has no standalone record in Azure DevOps — its link is the pull request's.
       detail.put("summary", pr.path("title").asText(""));
       detail.put("url", webLink(pr));
+      AdoWorkTypes.apply(detail, workTypes);
       out.add(
           new RawEvent(
               "review:" + prId + ":" + identity(r),
@@ -150,13 +155,18 @@ final class AdoMapper {
     return out;
   }
 
-  /** A commit → one COMMIT event; {@code isAi} decides the AI flag from the commit message. */
-  static RawEvent commit(JsonNode c, String repo, Predicate<String> isAi) {
+  /**
+   * A commit → one COMMIT event; {@code isAi} decides the AI flag from the commit message and
+   * {@code workTypes} are the categories of the work items its pull request is linked to — empty
+   * for a commit that reached no pull request we read, which then carries no work type at all.
+   */
+  static RawEvent commit(JsonNode c, String repo, Predicate<String> isAi, Set<WorkType> workTypes) {
     String message = c.path("comment").asText("");
     Map<String, String> detail = new HashMap<>();
     detail.put("repo", repo);
     detail.put("summary", firstLine(message));
     detail.put("url", c.path("remoteUrl").asText(""));
+    AdoWorkTypes.apply(detail, workTypes);
     return new RawEvent(
         "commit:" + c.path("commitId").asText(),
         EventType.COMMIT,
@@ -234,11 +244,17 @@ final class AdoMapper {
     String id = wi.path("id").asText();
     Map<String, String> detail = new HashMap<>();
     String adoType = f.path("System.WorkItemType").asText("");
-    detail.put("type", workType(adoType, parentAdoType));
+    detail.put("type", AdoWorkTypes.category(adoType, parentAdoType).key());
     // O tipo cru, além da categoria mapeada: sem ele ninguém consegue responder "quais tipos este
     // time usa?" a partir dos nossos dados, e toda revisão do mapeamento vira palpite. Também é o
     // que torna visível um tipo customizado novo, que hoje cairia calado no default.
     detail.put("ado_type", adoType);
+    // O tipo caiu no padrão por não estar na tabela? Então a categoria é um chute honesto, e dizer
+    // isso no próprio evento é o que impede "Docs/Outros" de virar o esconderijo de todo tipo novo
+    // que um time inventa.
+    if (!AdoWorkTypes.isMapped(adoType, parentAdoType)) {
+      detail.put("type_unmapped", "1");
+    }
     if (parentAdoType != null && !parentAdoType.isBlank()) {
       detail.put("ado_parent_type", parentAdoType);
     }
@@ -282,53 +298,6 @@ final class AdoMapper {
     }
     return stage.equalsIgnoreCase(rule)
         || stage.toLowerCase(Locale.ROOT).contains(rule.toLowerCase(Locale.ROOT));
-  }
-
-  /**
-   * The work type of an item, given its own Azure DevOps type and that of its parent.
-   *
-   * <p>A task carries no nature of its own — "write the test" is feature work under a user story
-   * and technical debt under a debt item — so it takes the parent's. Only one level is climbed: a
-   * task whose parent is also a task falls back, because following the chain would make the number
-   * of requests a function of how deep each team nests its board.
-   */
-  static String workType(String adoType, String parentAdoType) {
-    if (!"task".equals(adoType.toLowerCase(Locale.ROOT))) {
-      return baseWorkType(adoType);
-    }
-    if (parentAdoType == null
-        || parentAdoType.isBlank()
-        || "task".equals(parentAdoType.toLowerCase(Locale.ROOT))) {
-      return "docs";
-    }
-    return baseWorkType(parentAdoType);
-  }
-
-  /**
-   * Whether the mapping recognises this type at all — {@code false} means it landed on the default.
-   * Derivado da própria tabela, para o contador não virar uma segunda lista para manter em
-   * sincronia.
-   */
-  static boolean isMappedType(String adoType) {
-    if (adoType == null || adoType.isBlank()) {
-      return false;
-    }
-    String t = adoType.toLowerCase(Locale.ROOT);
-    return "task".equals(t)
-        || !"docs".equals(baseWorkType(t))
-        || "documentation or other".equals(t);
-  }
-
-  /** The mapping for a type that stands on its own — everything but a task. */
-  private static String baseWorkType(String adoType) {
-    return switch (adoType.toLowerCase(Locale.ROOT)) {
-      case "bug" -> "bug";
-      case "user story", "feature", "product backlog item", "epic" -> "feature";
-      case "tech debt" -> "tech_debt";
-      // Redundante com o default, mas explícito: é um tipo que o time criou, não um desconhecido.
-      case "documentation or other" -> "docs";
-      default -> "docs";
-    };
   }
 
   private static String identity(JsonNode person) {

@@ -8,6 +8,7 @@ import com.engperf.application.port.outbound.UserAccountRepositoryPort;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -15,7 +16,6 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -30,15 +30,6 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   private static final int ACTIVITY_LIMIT = 10;
   private static final List<String> DELIVERY_KEYS =
       List.of("throughput", "cycle_time", "ai_share", "commit_count", "pr_count");
-
-  /** Work-item types in the prototype's legend order, with their display labels. */
-  static final List<Map.Entry<String, String>> WORK_TYPES =
-      List.of(
-          Map.entry("feature", "Feature"),
-          Map.entry("bug", "Bug"),
-          Map.entry("tech_debt", "Tech Debt"),
-          Map.entry("maintenance", "Manutenção"),
-          Map.entry("docs", "Docs/Outros"));
 
   private final StructureRepositoryPort structure;
   private final EventStorePort events;
@@ -60,7 +51,8 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
   }
 
   @Override
-  public IndividualDashboard dashboard(String personNodeId, Period period) {
+  public IndividualDashboard dashboard(
+      String personNodeId, Period period, WorkTypeFilter workTypes) {
     String label = structure.findPerson(personNodeId).map(p -> p.name()).orElse(personNodeId);
     Set<String> identities = identitiesOf(personNodeId);
 
@@ -84,8 +76,12 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     List<RawEvent> reviewsGiven = mine(EventType.REVIEW, calFrom, fetchTo, identities);
     List<RawEvent> reviewsReceived = authoredReviews(calFrom, fetchTo, identities);
 
-    List<RawEvent> commitsP = within(commits, periodFrom, periodTo);
-    List<RawEvent> prsP = within(prs, periodFrom, periodTo);
+    // O filtro vale para o que o gestor abre sobre o período — entrega, assertividade, atividade.
+    // O calendário de 12 meses, a distribuição por tipo e o checklist de convenções ficam fora: o
+    // calendário mostra regularidade e a distribuição responde "como o período se dividiu", que
+    // filtrada seria sempre uma fatia só a 100%.
+    List<RawEvent> commitsP = ofTypes(within(commits, periodFrom, periodTo), workTypes);
+    List<RawEvent> prsP = ofTypes(within(prs, periodFrom, periodTo), workTypes);
     // Um índice só, do corpus inteiro: a pergunta "este item tem filhas?" não pode ter resposta
     // diferente por janela, senão a mesma User Story é contêiner para quem olha o trimestre e
     // trabalho folha para quem olha a semana.
@@ -100,25 +96,34 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
             periodTo,
             clock.instant());
 
+    Delivery delivery = delivery(personNodeId, period, workTypes);
+
     return new IndividualDashboard(
         personNodeId,
         label,
         assertiveness(prsP),
         ContributionCalendar.of(commits, reference),
-        delivery(personNodeId, period),
+        delivery.series(),
         reviewStats(
             within(reviewsGiven, periodFrom, periodTo),
             within(reviewsReceived, periodFrom, periodTo)),
         distribution,
         activity(commitsP, prsP),
         // Coaching flags use the trailing 12 months so a quiet day isn't read as "no activity".
-        conventions(
+        ConventionFlags.of(
             within(commits, calFrom, calTo),
             within(prs, calFrom, calTo),
             within(workItems, calFrom, calTo),
             within(reviewsReceived, calFrom, calTo),
             distribution),
-        PlatformAccessLookup.of(accounts, personNodeId));
+        PlatformAccessLookup.of(accounts, personNodeId),
+        !workTypes.isEmpty(),
+        delivery.untypedExcluded());
+  }
+
+  /** The person's events of the selected work; everything when nothing is selected. */
+  private static List<RawEvent> ofTypes(List<RawEvent> events, WorkTypeFilter workTypes) {
+    return workTypes.isEmpty() ? events : events.stream().filter(workTypes::matches).toList();
   }
 
   private static Instant startOf(LocalDate date) {
@@ -129,163 +134,6 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return all.stream()
         .filter(e -> !e.occurredAt().isBefore(from) && e.occurredAt().isBefore(to))
         .toList();
-  }
-
-  /**
-   * Coaching flags: which agreed conventions this person's own activity suggests may be broken (see
-   * docs/convencoes-adocao-times.xlsx). Heuristics over the person's events; only raised flags.
-   */
-  private static List<ConventionFlag> conventions(
-      List<RawEvent> commits,
-      List<RawEvent> prs,
-      List<RawEvent> workItems,
-      List<RawEvent> reviewsReceived,
-      WorkDistribution distribution) {
-    // No activity at all → the identity is likely unmapped or the commit email diverges (Grupo A).
-    if (commits.isEmpty() && prs.isEmpty() && workItems.isEmpty() && reviewsReceived.isEmpty()) {
-      return List.of(
-          new ConventionFlag(
-              "1",
-              "warn",
-              "Convenções 1–2 · Identidade e estrutura",
-              "Sem atividade atribuída no período",
-              "Nenhum commit, PR ou work item chegou a este contribuidor. A identidade de commit"
-                  + " pode não estar vinculada à Pessoa (Admin → Identidades) ou o e-mail de commit"
-                  + " diverge do cadastrado. Confirme o git user.email do dev.",
-              List.of("todas as métricas de pessoa", "cobertura")));
-    }
-    List<ConventionFlag> flags = new ArrayList<>();
-    addIfPresent(flags, aiFlag(commits));
-    addIfPresent(flags, prFlag(commits, prs));
-    ConventionFlag board = boardFlag(commits, workItems);
-    ConventionFlag shortItems = shortItemFlag(distribution);
-    // Os dois falam da mesma convenção 21, e a tela indexa os alertas por código: dois com o mesmo
-    // código fariam um apagar o outro na gaveta do catálogo. Quando há item de minutos, é ele que
-    // tem o que dizer — "board sem transição aproveitável" é contradito pelo próprio dado que
-    // permitiu medir os minutos.
-    addIfPresent(
-        flags, shortItems != null && board != null && "21".equals(board.code()) ? null : board);
-    addIfPresent(flags, shortItems);
-    addIfPresent(flags, reviewFlag(prs, reviewsReceived));
-    return flags;
-  }
-
-  private static void addIfPresent(List<ConventionFlag> flags, ConventionFlag flag) {
-    if (flag != null) {
-      flags.add(flag);
-    }
-  }
-
-  /** Grupo D · 16 — commits but none marked as AI-assisted, so the AI metrics read zero. */
-  private static ConventionFlag aiFlag(List<RawEvent> commits) {
-    if (commits.isEmpty() || commits.stream().anyMatch(RawEvent::ai)) {
-      return null;
-    }
-    return new ConventionFlag(
-        "16",
-        "warn",
-        "Convenção 16 · Assistência de IA",
-        "Nenhum commit marca uso de IA",
-        "Nenhum dos "
-            + commits.size()
-            + " commits do período carrega o trailer de IA. Verifique com o dev se ele usa um"
-            + " assistente e aplica o trailer padrão (ex.: Co-authored-by: Copilot); sem ele o"
-            + " % de commits com IA fica zerado.",
-        List.of("ai_share", "ai_adoption"));
-  }
-
-  /** Grupo C · 10 — commits but no PR, i.e. code may be reaching main without a pull request. */
-  private static ConventionFlag prFlag(List<RawEvent> commits, List<RawEvent> prs) {
-    if (commits.isEmpty() || !prs.isEmpty()) {
-      return null;
-    }
-    return new ConventionFlag(
-        "10",
-        "warn",
-        "Convenção 10 · Fluxo de código",
-        "Commits sem pull request",
-        commits.size()
-            + " commits e nenhum PR no período. O código pode estar entrando na main sem pull"
-            + " request, ou os PRs deste dev não estão sendo atribuídos à identidade dele.",
-        List.of("throughput", "cycle_time", "assertividade"));
-  }
-
-  /** Grupo E · 20/21 — commits without work items, or work items with no usable state history. */
-  private static ConventionFlag boardFlag(List<RawEvent> commits, List<RawEvent> workItems) {
-    if (!commits.isEmpty() && workItems.isEmpty()) {
-      return new ConventionFlag(
-          "20",
-          "warn",
-          "Convenção 20 · Boards",
-          "Commits sem work item",
-          "Atividade de código sem nenhum work item associado. Está commitando sem task"
-              + " aberta/tipada? Sem work item não há distribuição por tipo nem WIP para este dev.",
-          List.of("distribuição por tipo", "wip"));
-    }
-    if (!workItems.isEmpty()
-        && workItems.stream().noneMatch(w -> w.detail().containsKey("hours"))) {
-      return new ConventionFlag(
-          "21",
-          "info",
-          "Convenção 21 · Boards",
-          "Board sem transição de estado utilizável",
-          "Os "
-              + workItems.size()
-              + " work items não têm transição de estado aproveitável — o board pode não separar"
-              + " 'fazendo' de 'esperando', ou os cards são movidos em lote. WIP e tempo por tipo"
-              + " ficam sem dado.",
-          List.of("wip", "flow_efficiency", "cycle time de WI"));
-    }
-    return null;
-  }
-
-  /** Grupo C · 13 — the person authored PRs but none carries a registered review. */
-  private static ConventionFlag reviewFlag(List<RawEvent> prs, List<RawEvent> reviewsReceived) {
-    if (prs.isEmpty() || !reviewsReceived.isEmpty()) {
-      return null;
-    }
-    return new ConventionFlag(
-        "13",
-        "warn",
-        "Convenção 13 · Fluxo de código",
-        "PRs sem review registrada",
-        "Os PRs deste dev não têm nenhuma review registrada no período. A review pode estar"
-            + " acontecendo fora do PR (chat/call), o que zera o tempo de review e a assertividade.",
-        List.of("pr_review_time", "% PRs sem review", "assertividade"));
-  }
-
-  /**
-   * Grupo E · 21 — itens que ficaram em andamento poucos minutos: o card provavelmente foi movido
-   * depois do trabalho, não durante. Texto de pergunta e não de acusação: um hotfix real resolvido
-   * em dez minutos cai aqui também, e o alerta existe para o gestor conferir a convenção, não para
-   * afirmar o que a pessoa fez.
-   *
-   * <p>O item continua na distribuição — o alerta explica a fatia perto de zero em vez de
-   * escondê-la, que é a diferença entre um número estranho e um número enganoso.
-   */
-  private static ConventionFlag shortItemFlag(WorkDistribution distribution) {
-    List<WorkItemEntry> shortItems = distribution.shortItems();
-    if (shortItems.isEmpty()) {
-      return null;
-    }
-    String named =
-        shortItems.stream()
-            .limit(3)
-            .map(i -> i.title().isBlank() ? i.id() : i.title())
-            .collect(Collectors.joining("; "));
-    return new ConventionFlag(
-        "21",
-        "info",
-        "Convenção 21 · Boards",
-        shortItems.size() + " item(ns) em andamento por poucos minutos",
-        "Itens que ficaram menos de "
-            + WorkDistribution.SHORT_ITEM_MINUTES
-            + " minutos em andamento: "
-            + named
-            + ". O card pode ter sido movido depois do trabalho, e aí a hora do item não mede o"
-            + " esforço dele. Vale confirmar com o dev se foi isso ou se o trabalho mesmo levou"
-            + " esse tempo.",
-        List.of("distribuição por tipo", "cycle time de WI", "flow_efficiency"));
   }
 
   private Set<String> identitiesOf(String personNodeId) {
@@ -316,9 +164,17 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return (double) firstPass / prs.size() * 100.0;
   }
 
-  private List<MetricSeries> delivery(String personNodeId, Period period) {
-    return DELIVERY_KEYS.stream().map(k -> metrics.series(k, personNodeId, period)).toList();
+  private Delivery delivery(String personNodeId, Period period, WorkTypeFilter workTypes) {
+    List<MetricSeries> series =
+        DELIVERY_KEYS.stream()
+            .map(k -> metrics.series(k, personNodeId, period, workTypes))
+            .toList();
+    long untyped = series.stream().mapToLong(MetricSeries::untypedExcluded).max().orElse(0L);
+    return new Delivery(series, untyped);
   }
+
+  /** The delivery series plus how many of the person's events the selection left out. */
+  private record Delivery(List<MetricSeries> series, long untypedExcluded) {}
 
   private static ReviewStats reviewStats(List<RawEvent> given, List<RawEvent> received) {
     int comments = given.stream().mapToInt(e -> intDetail(e, "comments")).sum();

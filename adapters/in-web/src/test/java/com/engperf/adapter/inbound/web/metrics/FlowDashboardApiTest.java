@@ -109,11 +109,47 @@ class FlowDashboardApiTest {
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.startsWith("p:")))));
   }
 
+  @Test
+  void theWorkTypeSelectionReachesTheUseCaseAndTheCardDeclaresIt() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/flow?node=all&freq=Mensal&workType=bug&workType=tech_debt")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.cards[0].filtered").value(true))
+        .andExpect(jsonPath("$.cards[0].untypedExcluded").value(3));
+    org.assertj.core.api.Assertions.assertThat(FakeFlow.lastFilter.keys())
+        .containsExactly("bug", "tech_debt");
+  }
+
+  @Test
+  void anUnknownWorkTypeIsRejected() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/flow?node=all&freq=Mensal&workType=inventado")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void noSelectionReadsEverything() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/flow?node=all&freq=Mensal")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.cards[0].filtered").value(false));
+    org.assertj.core.api.Assertions.assertThat(FakeFlow.lastFilter.isEmpty()).isTrue();
+  }
+
   private static final class FakeFlow implements FlowDashboardUseCase {
+    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+
     @Override
-    public FlowDashboard dashboard(String nodeId, Period period) {
+    public FlowDashboard dashboard(
+        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       MetricValue v = MetricValue.of(9, 10.0, Direction.LOWER_BETTER);
-      FlowCard card = new FlowCard(CYCLE, v, new Coverage(9, 10));
+      FlowCard card =
+          new FlowCard(
+              CYCLE, v, new Coverage(9, 10), !workTypes.isEmpty(), workTypes.isEmpty() ? 0 : 3);
       List<PhaseSlice> phases =
           List.of(
               new PhaseSlice("coding_time", "Coding", 5),

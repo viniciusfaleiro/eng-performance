@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,7 +38,7 @@ class AdoMapperTest {
                 + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
                 + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
                 + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
-    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED, OptionalInt.of(7));
+    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED, OptionalInt.of(7), Set.of());
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -62,9 +63,13 @@ class AdoMapperTest {
   void aPullRequestCarriesTheAiFlagItWasGiven() {
     JsonNode commits = json("{\"value\":[]}");
 
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED, NO_FILES).ai())
+    assertThat(
+            AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED, NO_FILES, Set.of())
+                .ai())
         .isTrue();
-    assertThat(AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED, NO_FILES).ai())
+    assertThat(
+            AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED, NO_FILES, Set.of())
+                .ai())
         .isFalse();
   }
 
@@ -78,7 +83,12 @@ class AdoMapperTest {
 
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, rejectedThenApproved, NO_FILES);
+            fixture("pr.json"),
+            json("{\"value\":[]}"),
+            false,
+            rejectedThenApproved,
+            NO_FILES,
+            Set.of());
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -87,7 +97,12 @@ class AdoMapperTest {
   void anUnreadableHistoryIsNotCountedAsFirstPass() {
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, VoteHistory.UNKNOWN, NO_FILES);
+            fixture("pr.json"),
+            json("{\"value\":[]}"),
+            false,
+            VoteHistory.UNKNOWN,
+            NO_FILES,
+            Set.of());
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -95,7 +110,8 @@ class AdoMapperTest {
   /** Quem rejeitou e depois aprovou fez trabalho de review; emitir só a aprovação o apagaria. */
   @Test
   void aChangeRequestIsNotErasedByALaterApproval() {
-    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), new VoteHistory(true, true));
+    List<RawEvent> reviews =
+        AdoMapper.reviews(fixture("pr.json"), new VoteHistory(true, true), Set.of());
 
     assertThat(reviews)
         .singleElement()
@@ -106,7 +122,7 @@ class AdoMapperTest {
   void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED, NO_FILES);
+            fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED, NO_FILES, Set.of());
     assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
     assertThat(e.detail().get("den")).isEqualTo("0");
     assertThat(e.detail()).doesNotContainKey("files"); // size is "no data", not a fake zero
@@ -114,7 +130,7 @@ class AdoMapperTest {
 
   @Test
   void reviewsMapReviewerVotesAndSkipNoVote() {
-    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), APPROVED);
+    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), APPROVED, Set.of());
 
     assertThat(reviews).hasSize(1); // carla (vote 0) is skipped
     RawEvent r = reviews.get(0);
@@ -132,7 +148,8 @@ class AdoMapperTest {
         AdoMapper.commit(
             fixture("commit.json"),
             "checkout-service",
-            msg -> msg.toLowerCase(Locale.ROOT).contains("copilot"));
+            msg -> msg.toLowerCase(Locale.ROOT).contains("copilot"),
+            Set.of());
 
     assertThat(e.id()).isEqualTo("commit:abc123");
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
@@ -160,7 +177,7 @@ class AdoMapperTest {
     "'',false",
   })
   void isMappedTypeFollowsTheTable(String adoType, boolean mapped) {
-    assertThat(AdoMapper.isMappedType(adoType)).isEqualTo(mapped);
+    assertThat(AdoWorkTypes.isMapped(adoType)).isEqualTo(mapped);
   }
 
   @Test

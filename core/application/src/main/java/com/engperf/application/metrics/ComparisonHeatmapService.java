@@ -6,6 +6,7 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import com.engperf.domain.structure.Person;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -39,18 +40,23 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
   }
 
   @Override
-  public ComparisonHeatmap heatmap(String nodeId, Period period, String scope) {
+  public ComparisonHeatmap heatmap(
+      String nodeId, Period period, String scope, WorkTypeFilter workTypes) {
     List<MetricDefinition> columns = columns();
+    // A coluna diz se o filtro a alcança. Sem isso, um heatmap com filtro ativo mistura duas
+    // populações — as de deploy lidas por inteiro, o resto recortado — sem nada na tela dizendo.
     List<HeatmapMetric> metricColumns =
-        columns.stream().map(d -> new HeatmapMetric(d.key(), d.label(), d.unit())).toList();
+        columns.stream()
+            .map(d -> new HeatmapMetric(d.key(), d.label(), d.unit(), d.filterableByWorkType()))
+            .toList();
 
     List<HeatmapRow> rows = new ArrayList<>();
     for (Row child : childRows(nodeId, scope)) {
-      Map<String, MetricCard> cards = cardsByKey(child.id(), period);
+      Map<String, MetricCard> cards = cardsByKey(child.id(), period, workTypes);
       List<Double> values = new ArrayList<>();
       for (MetricDefinition def : columns) {
         if (def.key().equals(MetricCatalog.AI_IMPACT.key())) {
-          values.add(ai.impact(child.id(), period).value().value());
+          values.add(ai.impact(child.id(), period, workTypes).value().value());
         } else {
           MetricCard card = cards.get(def.key());
           values.add(card == null ? 0.0 : card.current().value());
@@ -71,9 +77,10 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
     return cols;
   }
 
-  private Map<String, MetricCard> cardsByKey(String nodeId, Period period) {
+  private Map<String, MetricCard> cardsByKey(
+      String nodeId, Period period, WorkTypeFilter workTypes) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, period)) {
+    for (MetricCard card : metrics.cards(nodeId, period, workTypes)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

@@ -23,7 +23,9 @@ public final class FlowDtos {
       double value,
       Double changePct,
       String sentiment,
-      double coveragePct) {
+      double coveragePct,
+      boolean filtered,
+      long untypedExcluded) {
 
     public static FlowCardDto from(FlowCard c) {
       MetricDefinition d = c.definition();
@@ -36,7 +38,9 @@ public final class FlowDtos {
           v.value(),
           v.changePct(),
           v.sentiment().name().toLowerCase(Locale.ROOT),
-          c.coverage().percent());
+          c.coverage().percent(),
+          c.filtered(),
+          c.untypedExcluded());
     }
   }
 
