@@ -6,9 +6,7 @@ node's children (rows) against every catalog metric across the DORA, Fluxo and I
 (columns), each cell the real engine value, with coaching-safe/scope-enforced row selection
 (people rows only for the managing/own account) and the served Comparativo screen. Created
 by archiving change comparativo-heatmap.
-
 ## Requirements
-
 ### Requirement: The heatmap compares a node's children across all metrics
 The system SHALL provide a comparison heatmap for a node and frequency whose rows are the
 node's children and whose columns are every catalog metric across the DORA, Fluxo and IA
@@ -61,3 +59,22 @@ numbers reflect the engine.
 #### Scenario: Comparativo chrome matches the prototype
 - **WHEN** the Comparativo view is rendered for an admin
 - **THEN** its heat table, column groups, scope toggle and legend match the prototype pixel-for-pixel while the numbers reflect the engine
+
+### Requirement: The heatmap applies the filter only where it is meaningful, and says so
+The comparison heatmap SHALL apply the active work-type selection to its filterable columns (Fluxo
+and IA) and SHALL leave the deploy-based DORA columns computed over their whole population. The
+columns that ignore the filter SHALL be **visually marked** as not filtered, with the reason
+available on the screen, so a reader never compares two populations believing they are one.
+
+#### Scenario: Fluxo and IA columns are filtered
+- **WHEN** the heatmap is shown with the bug type selected
+- **THEN** each Fluxo and IA cell is computed over the row's bug work
+
+#### Scenario: DORA columns are marked as unfiltered
+- **WHEN** the same heatmap is shown
+- **THEN** the DORA columns are computed over everything and are marked as not filtered
+
+#### Scenario: Nothing is silently mixed
+- **WHEN** a work type is selected and the heatmap is read
+- **THEN** the screen states that the marked columns are not affected by the filter
+
