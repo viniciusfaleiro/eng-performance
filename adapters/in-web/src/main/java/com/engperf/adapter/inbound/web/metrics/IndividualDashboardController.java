@@ -33,11 +33,13 @@ public class IndividualDashboardController {
   public IndividualDashboardDto dashboard(
       @PathVariable String node,
       PeriodQuery selection,
+      WorkTypeQuery workTypes,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!node.startsWith("p:") || !user.scope().canViewIndividual(node)) {
       throw new ForbiddenException("individual outside coaching scope: " + node);
     }
-    IndividualDashboard dash = individual.dashboard(node, periods.resolve(selection.toRequest()));
+    IndividualDashboard dash =
+        individual.dashboard(node, periods.resolve(selection.toRequest()), workTypes.filter());
     return IndividualDashboardDto.from(dash);
   }
 

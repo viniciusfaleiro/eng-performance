@@ -145,7 +145,10 @@ public final class MetricsDtos {
       double value,
       Double changePct,
       String sentiment,
-      double coveragePct) {
+      double coveragePct,
+      boolean filterableByWorkType,
+      boolean filtered,
+      long untypedExcluded) {
 
     public static CardDto from(MetricCard c) {
       MetricDefinition d = c.definition();
@@ -159,7 +162,10 @@ public final class MetricsDtos {
           v.value(),
           v.changePct(),
           v.sentiment().name().toLowerCase(Locale.ROOT),
-          c.coverage().percent());
+          c.coverage().percent(),
+          d.filterableByWorkType(),
+          c.filtered(),
+          c.untypedExcluded());
     }
   }
 
@@ -180,6 +186,9 @@ public final class MetricsDtos {
       String unit,
       String direction,
       double coveragePct,
+      boolean filterableByWorkType,
+      boolean filtered,
+      long untypedExcluded,
       List<PointDto> points) {
 
     public static SeriesDto from(MetricSeries s) {
@@ -191,6 +200,9 @@ public final class MetricsDtos {
           d.unit(),
           d.direction().name().toLowerCase(Locale.ROOT),
           cov.percent(),
+          d.filterableByWorkType(),
+          s.filtered(),
+          s.untypedExcluded(),
           s.points().stream().map(PointDto::from).toList());
     }
   }

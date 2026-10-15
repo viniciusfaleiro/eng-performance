@@ -7,6 +7,7 @@ import com.engperf.application.port.outbound.AdoEventSourcePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkType;
 import com.engperf.domain.structure.Repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URLEncoder;
@@ -39,7 +40,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
   private static final Logger LOG = LoggerFactory.getLogger(AdoEventSource.class);
   private static final String API = "api-version=7.1";
   // ADO's workitems batch GET accepts at most 200 ids per request.
-  private static final int WORKITEM_ID_BATCH = 200;
+  static final int WORKITEM_ID_BATCH = 200;
 
   private final AdoRestClient client;
   private final PlatformConfigUseCase config;
@@ -106,32 +107,10 @@ public final class AdoEventSource implements AdoEventSourcePort {
               + "/_apis/git/repositories/"
               + enc(repo.key());
       try {
-        for (JsonNode pr :
-            arr(
-                client.get(
-                    base + "/pullrequests?searchCriteria.status=completed&$top=200&" + API,
-                    token))) {
-          if (before(pr.path("closedDate").asText(""), since)) {
-            continue;
-          }
-          // Duas chamadas por PR (não há endpoint em lote): commits, para tempo e tamanho, e o
-          // histórico de votos, porque o objeto do PR guarda só o voto atual de cada revisor.
-          long prId = pr.path("pullRequestId").asLong();
-          JsonNode prCommits =
-              client.get(base + "/pullrequests/" + prId + "/commits?" + API, token);
-          VoteHistory votes = VoteHistory.fetch(client, base, prId, token);
-          events.add(
-              AdoMapper.pullRequest(
-                  pr,
-                  prCommits,
-                  comments.anyAi(base, prCommits, token),
-                  votes,
-                  // Memoizado por commit: a varredura de IA acima e esta contagem leem a mesma
-                  // resposta, então o commit é buscado uma vez e não duas.
-                  comments.changedFiles(base, prCommits, token)));
-          events.addAll(AdoMapper.reviews(pr, votes));
-          prs++;
-        }
+        Map<String, Set<WorkType>> typesByCommit = new HashMap<>();
+        prs +=
+            PullRequestSync.fetch(
+                client, repo, base, since, token, comments, events, typesByCommit);
         progress.update("prs", "prs", prs);
         for (JsonNode c :
             arr(
@@ -142,7 +121,12 @@ public final class AdoEventSource implements AdoEventSourcePort {
                         + "&$top=1000&"
                         + API,
                     token))) {
-          events.add(AdoMapper.commit(comments.full(base, c, token), repo.key(), isAi));
+          events.add(
+              AdoMapper.commit(
+                  comments.full(base, c, token),
+                  repo.key(),
+                  isAi,
+                  typesByCommit.getOrDefault(c.path("commitId").asText(""), Set.of())));
           commits++;
         }
         progress.update("commits", "commits", commits);
@@ -295,7 +279,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
     Instant now = Instant.now();
     for (JsonNode wi : collected) {
       String type = wi.path("fields").path("System.WorkItemType").asText("");
-      if (!AdoMapper.isMappedType(type)) {
+      if (!AdoWorkTypes.isMapped(type)) {
         unmapped.record(type);
       }
       Function<String, Segment> classify =
@@ -350,16 +334,16 @@ public final class AdoEventSource implements AdoEventSourcePort {
   }
 
   /** Accepts a full org URL ({@code https://dev.azure.com/org}) or a short org name. */
-  private static String normOrg(String organization) {
+  static String normOrg(String organization) {
     String o = organization.trim().replaceAll("/+$", "");
     return o.startsWith("http") ? o : "https://dev.azure.com/" + o;
   }
 
-  private static boolean before(String isoDate, Instant since) {
+  static boolean before(String isoDate, Instant since) {
     return isoDate.isBlank() || Instant.parse(isoDate).isBefore(since);
   }
 
-  private static Iterable<JsonNode> arr(JsonNode listResponse) {
+  static Iterable<JsonNode> arr(JsonNode listResponse) {
     return listResponse.path("value");
   }
 

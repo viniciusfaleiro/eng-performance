@@ -2,17 +2,14 @@ package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.ComparisonHeatmap;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 
-/**
- * Inbound port for the composed Comparativo heatmap. Node-scope and coaching enforcement (403
- * outside scope; people rows only for the managing/own account) lives in the web adapter; this port
- * composes the full children × all-metrics matrix for an already-authorized node.
- */
 public interface ComparisonHeatmapUseCase {
 
-  /**
-   * @param scope at the overview node, {@code "verticais"} compares verticals, otherwise teams; it
-   *     is ignored at every other node, whose child type is structurally determined.
-   */
-  ComparisonHeatmap heatmap(String nodeId, Period period, String scope);
+  default ComparisonHeatmap heatmap(String nodeId, Period period, String scope) {
+    return heatmap(nodeId, period, scope, WorkTypeFilter.none());
+  }
+
+  /** The heatmap under a work-type selection — filterable columns only; the rest say so. */
+  ComparisonHeatmap heatmap(String nodeId, Period period, String scope, WorkTypeFilter workTypes);
 }

@@ -152,6 +152,19 @@ public record MetricDefinition(
   }
 
   /** Whether this metric's events occupy an interval rather than an instant. */
+  /**
+   * Whether this metric can be read by work type.
+   *
+   * <p>Derived from the event it is computed from instead of declared per metric: a deploy belongs
+   * to a repository and a pipeline and carries work of several types at once, so a per-type deploy
+   * figure would answer a question the data cannot answer. The four DORA metrics are the only
+   * deploy-based ones, so the product rule "DORA does not filter" falls out of this instead of
+   * becoming a list to keep in sync with the catalog.
+   */
+  public boolean filterableByWorkType() {
+    return eventType != EventType.DEPLOY;
+  }
+
   public boolean readsIntervals() {
     return occupation == Occupation.INTERVAL;
   }

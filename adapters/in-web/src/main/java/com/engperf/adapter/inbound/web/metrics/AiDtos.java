@@ -22,7 +22,9 @@ public final class AiDtos {
       double value,
       Double changePct,
       String sentiment,
-      double coveragePct) {
+      double coveragePct,
+      boolean filtered,
+      long untypedExcluded) {
 
     public static AiCardDto from(AiCard c) {
       MetricDefinition d = c.definition();
@@ -35,7 +37,9 @@ public final class AiDtos {
           v.value(),
           v.changePct(),
           v.sentiment().name().toLowerCase(Locale.ROOT),
-          c.coverage().percent());
+          c.coverage().percent(),
+          c.filtered(),
+          c.untypedExcluded());
     }
   }
 

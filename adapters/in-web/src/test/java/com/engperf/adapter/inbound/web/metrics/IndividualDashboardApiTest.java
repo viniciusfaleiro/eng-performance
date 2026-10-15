@@ -128,8 +128,12 @@ class IndividualDashboardApiTest {
   private static final String WI_URL = "https://dev.azure.com/org/proj/_workitems/edit/69271";
 
   private static final class FakeIndividual implements IndividualDashboardUseCase {
+    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+
     @Override
-    public IndividualDashboard dashboard(String personNodeId, Period period) {
+    public IndividualDashboard dashboard(
+        String personNodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      lastFilter = workTypes;
       return new IndividualDashboard(
           personNodeId,
           "Ana",
@@ -169,7 +173,9 @@ class IndividualDashboardApiTest {
           List.of(),
           List.of(),
           new IndividualDashboard.PlatformAccess(
-              true, java.time.Instant.parse("2026-06-28T09:00:00Z")));
+              true, java.time.Instant.parse("2026-06-28T09:00:00Z")),
+          !workTypes.isEmpty(),
+          workTypes.isEmpty() ? 0L : 2L);
     }
   }
 }

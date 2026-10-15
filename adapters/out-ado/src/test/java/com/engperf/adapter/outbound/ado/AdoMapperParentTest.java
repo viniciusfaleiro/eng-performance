@@ -44,13 +44,54 @@ class AdoMapperParentTest {
     "Task,Coisa Estranha,docs",
   })
   void workTypeMapping(String adoType, String parentType, String expected) {
-    assertThat(AdoMapper.workType(adoType, parentType)).isEqualTo(expected);
+    assertThat(AdoWorkTypes.category(adoType, parentType).key()).isEqualTo(expected);
   }
 
   @Test
   void aTaskWithABlankParentTypeFallsBack() {
-    assertThat(AdoMapper.workType("Task", null)).isEqualTo("docs");
-    assertThat(AdoMapper.workType("Task", "  ")).isEqualTo("docs");
+    assertThat(AdoWorkTypes.category("Task", null).key()).isEqualTo("docs");
+    assertThat(AdoWorkTypes.category("Task", "  ").key()).isEqualTo("docs");
+  }
+
+  /**
+   * Tipo fora da tabela continua caindo em docs — a distribuição não muda de forma —, mas o evento
+   * diz que a categoria é o padrão e não uma declaração, que é o que impede "Docs/Outros" de virar
+   * o esconderijo de todo tipo novo que um time inventa.
+   */
+  @Test
+  void anUnmappedTypeIsMarkedOnTheEvent() {
+    RawEvent unknown = workItem("Spike", null, null);
+    assertThat(unknown.detail().get("type")).isEqualTo("docs");
+    assertThat(unknown.detail().get("type_unmapped")).isEqualTo("1");
+
+    RawEvent declared = workItem("Documentation or Other", null, null);
+    assertThat(declared.detail().get("type")).isEqualTo("docs");
+    assertThat(declared.detail()).doesNotContainKey("type_unmapped");
+
+    RawEvent taskUnderStory = workItem("Task", "User Story", "4711");
+    assertThat(taskUnderStory.detail()).doesNotContainKey("type_unmapped");
+
+    RawEvent orphanTask = workItem("Task", null, null);
+    assertThat(orphanTask.detail().get("type_unmapped")).isEqualTo("1");
+  }
+
+  private static RawEvent workItem(String adoType, String parentType, String parentId) {
+    JsonNode wi =
+        json(
+            "{\"id\":1,\"fields\":{\"System.WorkItemType\":\""
+                + adoType
+                + "\",\"System.Title\":\"t\","
+                + "\"System.CreatedDate\":\"2026-06-01T10:00:00Z\","
+                + "\"System.ChangedDate\":\"2026-06-02T10:00:00Z\"}}");
+    return AdoMapper.workItem(
+        wi,
+        json("{\"value\":[]}"),
+        state -> Segment.ACTIVE,
+        Instant.parse("2026-06-30T12:00:00Z"),
+        "org",
+        "Proj",
+        parentType,
+        parentId);
   }
 
   /** Fiação: o tipo do pai chega ao detalhe do evento, que é o que o painel consome. */

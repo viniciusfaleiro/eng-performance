@@ -3,19 +3,19 @@ package com.engperf.application.port.inbound;
 import com.engperf.application.metrics.AiCard;
 import com.engperf.application.metrics.AiDashboard;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 
-/**
- * Inbound port for the composed IA dashboard. Node-scope enforcement (403 outside scope,
- * coaching-only) lives in the web adapter; this port composes values for an already-authorized
- * node.
- */
 public interface AiDashboardUseCase {
 
-  AiDashboard dashboard(String nodeId, Period period);
+  default AiDashboard dashboard(String nodeId, Period period) {
+    return dashboard(nodeId, period, WorkTypeFilter.none());
+  }
 
-  /**
-   * The composed AI-impact card for a node (cycle time of AI vs non-AI PRs), reused by the
-   * comparison heatmap so the value matches the IA dashboard's {@code ai_impact} card.
-   */
-  AiCard impact(String nodeId, Period period);
+  AiDashboard dashboard(String nodeId, Period period, WorkTypeFilter workTypes);
+
+  default AiCard impact(String nodeId, Period period) {
+    return impact(nodeId, period, WorkTypeFilter.none());
+  }
+
+  AiCard impact(String nodeId, Period period, WorkTypeFilter workTypes);
 }

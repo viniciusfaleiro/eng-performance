@@ -2,6 +2,8 @@ package com.engperf.application.metrics;
 
 import com.engperf.domain.metrics.InProgressSpans;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkType;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -82,11 +84,11 @@ public record WorkDistribution(
 
   private static final class Item {
     private final RawEvent event;
-    private final String type;
+    private final WorkType type;
     private double elapsed;
     private double counted;
 
-    private Item(RawEvent event, String type) {
+    private Item(RawEvent event, WorkType type) {
       this.event = event;
       this.type = type;
     }
@@ -167,9 +169,9 @@ public record WorkDistribution(
    * figure it opens from.
    */
   private static List<WorkTypeSlice> slices(Tally tally) {
-    Map<String, List<Item>> byType = new LinkedHashMap<>();
-    for (Map.Entry<String, String> t : IndividualDashboardService.WORK_TYPES) {
-      byType.put(t.getKey(), new ArrayList<>());
+    Map<WorkType, List<Item>> byType = new LinkedHashMap<>();
+    for (WorkType t : WorkType.all()) {
+      byType.put(t, new ArrayList<>());
     }
     for (Item item : tally.byId().values()) {
       byType.get(item.type).add(item);
@@ -177,14 +179,14 @@ public record WorkDistribution(
     double total =
         tally.byId().values().stream().mapToDouble(i -> i.counted).filter(h -> h > 0).sum();
     List<WorkTypeSlice> slices = new ArrayList<>();
-    for (Map.Entry<String, String> t : IndividualDashboardService.WORK_TYPES) {
-      List<Item> mine = byType.get(t.getKey());
+    for (WorkType t : WorkType.all()) {
+      List<Item> mine = byType.get(t);
       mine.sort(Comparator.comparingDouble((Item i) -> i.counted).reversed());
       double hours = mine.stream().mapToDouble(i -> i.counted).sum();
       slices.add(
           new WorkTypeSlice(
-              t.getKey(),
-              t.getValue(),
+              t.key(),
+              t.label(),
               hours,
               total == 0.0 ? 0.0 : hours / total * 100.0,
               mine.size(),
@@ -205,11 +207,8 @@ public record WorkDistribution(
         .toList();
   }
 
-  private static String typeOf(RawEvent w) {
-    String t = w.detail().getOrDefault("type", "docs");
-    boolean known =
-        IndividualDashboardService.WORK_TYPES.stream().anyMatch(e -> e.getKey().equals(t));
-    return known ? t : "docs";
+  private static WorkType typeOf(RawEvent w) {
+    return WorkType.byKey(w.detail().get(WorkTypeFilter.TYPE_KEY)).orElse(WorkType.FALLBACK);
   }
 
   private static double doubleDetail(RawEvent e, String key) {

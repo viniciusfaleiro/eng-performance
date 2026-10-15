@@ -5,6 +5,7 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,8 +33,8 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
   }
 
   @Override
-  public FlowDashboard dashboard(String nodeId, Period period) {
-    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period);
+  public FlowDashboard dashboard(String nodeId, Period period, WorkTypeFilter workTypes) {
+    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period, workTypes);
 
     List<FlowCard> cards = new ArrayList<>();
     // Fluxo first, then the volume metrics — volume is context, it must not compete with the
@@ -41,7 +42,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     for (MetricDefinition def : concat(catalog.fluxo(), catalog.volume())) {
       MetricCard c = nodeCards.get(def.key());
       if (c != null) {
-        cards.add(new FlowCard(def, c.current(), c.coverage()));
+        cards.add(FlowCard.of(def, c));
       }
     }
 
@@ -56,7 +57,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     List<Child> children = children(nodeId);
     List<ScatterPoint> scatter = new ArrayList<>();
     for (Child ch : children) {
-      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period);
+      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period, workTypes);
       scatter.add(
           new ScatterPoint(
               ch.id(),
@@ -75,9 +76,10 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     return out;
   }
 
-  private Map<String, MetricCard> cardsByKey(String nodeId, Period period) {
+  private Map<String, MetricCard> cardsByKey(
+      String nodeId, Period period, WorkTypeFilter workTypes) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, period)) {
+    for (MetricCard card : metrics.cards(nodeId, period, workTypes)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

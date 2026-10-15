@@ -132,7 +132,9 @@ public final class IndividualDtos {
       int containersExcluded,
       List<ActivityDto> activity,
       List<ConventionFlagDto> conventions,
-      PlatformAccessDto access) {
+      PlatformAccessDto access,
+      boolean filtered,
+      long untypedExcluded) {
 
     public static IndividualDashboardDto from(IndividualDashboard d) {
       return new IndividualDashboardDto(
@@ -146,7 +148,9 @@ public final class IndividualDtos {
           d.distribution().containersExcluded(),
           d.activity().stream().map(ActivityDto::from).toList(),
           d.conventions().stream().map(ConventionFlagDto::from).toList(),
-          PlatformAccessDto.from(d.access()));
+          PlatformAccessDto.from(d.access()),
+          d.filtered(),
+          d.untypedExcluded());
     }
   }
 }

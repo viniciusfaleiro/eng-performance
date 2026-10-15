@@ -83,6 +83,13 @@ h1,h2,h3{margin:0;}
 .period-label{all:unset;cursor:pointer;font-size:12.5px;font-family:var(--mono);padding:6px 10px;border:1px solid var(--outline-var);border-radius:8px;background:var(--surface-2);min-width:130px;text-align:center;white-space:nowrap;}
 .period-label:hover,.period-label:focus-visible{border-color:var(--primary);}
 #periodField.past .period-label{border-color:var(--warn);color:var(--warn);}
+/* Tipo de trabalho: ativo é destaque, inaplicável é apagado mas visível — some sem explicação
+   seria lido como defeito. */
+#workTypeBtn.on{border-color:var(--primary);color:var(--primary);}
+#workTypeBtn.off{opacity:.45;cursor:default;}
+.unfiltered-col{opacity:.72;}
+.filter-note{font-size:11.5px;color:var(--on-surface-var);margin-top:6px;}
+.filter-warn{color:var(--warn);}
 .icon-btn.sm{width:28px;height:28px;font-size:14px;}
 .icon-btn.sm:disabled{opacity:.35;cursor:default;}
 .period-list{display:grid;gap:4px;max-height:50vh;overflow-y:auto;margin-top:6px;}
@@ -544,6 +551,10 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           <button class="read-opt" id="readRoll" data-read="roll"></button>
         </div>
       </div>
+      <div class="field" id="workTypeField">
+        <label>Tipo de trabalho</label>
+        <button class="period-label" id="workTypeBtn" aria-haspopup="listbox">Todos</button>
+      </div>
       <button class="btn ghost sm" id="exportBtn" title="Exportar a visão atual em PDF" style="align-self:flex-end">⭳ PDF</button>
       <button class="icon-btn" id="themeBtn" aria-label="Alternar tema" style="align-self:flex-end">◐</button>
       <button class="icon-btn" id="logoutBtn" aria-label="Sair" title="Sair" style="align-self:flex-end">⏻</button>
@@ -646,10 +657,27 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   // A chave de cache precisa distinguir as três leituras: sem isso, trocar de intervalo mostraria
   // os números do anterior — o cache serve para não repetir a chamada, não para responder outra
   // pergunta.
+  /* ---------- Tipo de trabalho ----------
+     A quinta dimensão da leitura, ao lado de nó, frequência e período: "o cycle time piorou" vira
+     "o cycle time de bug piorou", que é uma conversa sobre o sistema em vez de um número solto.
+     Seleção vazia = tudo, exatamente o que a tela fazia antes de o filtro existir. */
+  const WORK_TYPES=[["feature","Feature"],["bug","Bug"],["tech_debt","Tech Debt"],
+                    ["maintenance","Manutenção"],["docs","Docs/Outros"]];
+  const WT_LABEL=Object.fromEntries(WORK_TYPES);
+  const wtActive=()=>state.workTypes.length>0;
+  function wtQ(){return state.workTypes.map(t=>"&workType="+encodeURIComponent(t)).join("");}
+  // Deploy pertence ao repositório e ao pipeline, e carrega trabalho de vários tipos ao mesmo
+  // tempo: na aba DORA o controle aparece desabilitado, com a razão, em vez de sumir — um controle
+  // que some sem explicação é lido como defeito.
+  const wtApplies=()=>!(state.view==="dashboard"&&state.dashTab==="dora");
+
   function selKey(){
-    if(state.range)return "r"+state.range.from+".."+state.range.to;
+    // O tipo de trabalho entra na chave: sem isso, ligar o filtro mostraria os números da leitura
+    // anterior — o cache existe para não repetir a chamada, não para responder outra pergunta.
+    const wt=wtActive()?("|wt:"+state.workTypes.join(",")):"";
+    if(state.range)return "r"+state.range.from+".."+state.range.to+wt;
     const anchor=state.period||"";
-    return rollingActive()?(anchor+"w"+state.rolling):anchor;
+    return (rollingActive()?(anchor+"w"+state.rolling):anchor)+wt;
   }
   const D=(iso)=>{const [y,m,d]=iso.split("-").map(Number);return new Date(Date.UTC(y,m-1,d));};
   const iso=(dt)=>dt.toISOString().slice(0,10);
@@ -879,13 +907,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
-        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
+        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),
+          filtered:!!e.filtered,untyped:e.untyped||0,trend:snapSyn(id,m,freq).trend};
       }
     }else if(IA_KEYS.has(m.key)){
       const c=IA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
-        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),trend:snapSyn(id,m,freq).trend};
+        return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),
+          filtered:!!e.filtered,untyped:e.untyped||0,trend:snapSyn(id,m,freq).trend};
       }
     }
     // Nada real para esta métrica/nó. "Carregando" e "não existe" são coisas diferentes: anunciar
@@ -906,7 +936,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const k=trendKey(mk);
     if(TREND[k]||TREND_LOADING.has(k))return;
     TREND_LOADING.add(k);
-    jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/metrics/"+mk+"/series?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(d=>{const pts=d.points.map(p=>p.value);const lp=d.points[d.points.length-1]||{};
         TREND[k]={pts,labels:d.points.map(p=>p.bucket),cur:pts[pts.length-1],prev:pts[pts.length-2],
           pct:(lp.changePct==null?0:Math.round(lp.changePct*10)/10),
@@ -933,7 +963,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const days=periodDays();
     if(days==null)return; // o divisor por dia vem do servidor; render() volta quando chegar
     DORA_LOADING.add(k);
-    jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/dashboards/dora?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(d=>{DORA_CACHE[k]=indexDora(d,days);})
       .catch(()=>{DORA_CACHE[k]={error:true,byNode:{},ranking:[]};})
       .finally(()=>{DORA_LOADING.delete(k);render();});
@@ -961,7 +991,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const k=state.node+"|"+state.freq+"|"+selKey();
     if(FLOW_CACHE[k]||FLOW_LOADING.has(k))return;
     FLOW_LOADING.add(k);
-    jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/dashboards/flow?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(d=>{FLOW_CACHE[k]=indexFlow(d);})
       .catch(()=>{FLOW_CACHE[k]={error:true,byNode:{},phases:[],children:[]};})
       .finally(()=>{FLOW_LOADING.delete(k);render();});
@@ -971,7 +1001,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const m={};(d.cards||[]).forEach(c=>{const pk=FLOW_API2PROTO[c.key]||c.key;
       let cur=c.value;if(pk==="fe")cur=c.value*100;
       m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
-        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat")};});
+        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat"),
+        filtered:!!c.filtered,untyped:c.untypedExcluded||0};});
     byNode[d.nodeId]=m;
     // Children carry only throughput (tp) + cycle time (ct) — enough for the rank/scatter panels.
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
@@ -987,7 +1018,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const k=state.node+"|"+state.freq+"|"+selKey();
     if(IA_CACHE[k]||IA_LOADING.has(k))return;
     IA_LOADING.add(k);
-    jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/dashboards/ai?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(d=>{IA_CACHE[k]=indexIA(d);})
       .catch(()=>{IA_CACHE[k]={error:true,byNode:{},adoption:[],withAi:[],withoutAi:[]};})
       .finally(()=>{IA_LOADING.delete(k);render();});
@@ -997,7 +1028,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const m={};(d.cards||[]).forEach(c=>{const pk=IA_API2PROTO[c.key]||c.key;
       let cur=c.value;if(pk==="aic"||pk==="aad")cur=c.value*100;
       m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
-        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat")};});
+        dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat"),
+        filtered:!!c.filtered,untyped:c.untypedExcluded||0};});
     byNode[d.nodeId]=m;
     // Children carry only adoption (aad) — enough for the adoption ranking panel.
     (d.adoption||[]).forEach(a=>{byNode[a.nodeId]={aad:{cur:a.adoption*100}};});
@@ -1017,7 +1049,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     if(days==null)return; // idem: o heatmap normaliza deploys por dia
     CMP_LOADING.add(k);
     const scope=state.cmpScope==="verticais"?"verticais":"times";
-    jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+"&scope="+scope)
+    jget("/api/comparison/heatmap?node="+encodeURIComponent(state.node)+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ()+"&scope="+scope)
       .then(d=>{CMP_CACHE[k]=indexCmp(d,days);})
       .catch(()=>{CMP_CACHE[k]={error:true,byNode:{},rows:[]};})
       .finally(()=>{CMP_LOADING.delete(k);render();});
@@ -1028,13 +1060,16 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     // publica métricas de volume (ranquear time por commit é proxy manipulável), e uma lista local
     // acabava desenhando colunas que a resposta nunca preenche.
     const cols=(d.metrics||[]).map(mc=>CMP_API2PROTO[mc.key]||mc.key);
+    // Quais colunas o filtro não alcança — quem decide é o servidor, não uma regra repetida aqui.
+    const unfiltered=new Set(
+      (d.metrics||[]).filter(mc=>mc.filterable===false).map(mc=>CMP_API2PROTO[mc.key]||mc.key));
     (d.rows||[]).forEach(r=>{
       const m={};
       (d.metrics||[]).forEach((mc,ci)=>{const pk=CMP_API2PROTO[mc.key]||mc.key;let v=r.values[ci];
         if(pk==="df")v=v/days;else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
       byNode[r.nodeId]=m;rows.push({id:r.nodeId,label:r.label,rowType:r.rowType});
     });
-    return {byNode,rows,cols};
+    return {byNode,rows,cols,unfiltered};
   }
   /* Individual panel wired to the real engine: /api/individuals/{p:…} gives the person's commit
      calendar, PR assertiveness, delivery series (throughput/cycle/%IA), code-review stats,
@@ -1047,7 +1082,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const k=indKey();
     if(IND_CACHE[k]||IND_LOADING.has(k))return;
     IND_LOADING.add(k);
-    jget("/api/individuals/"+state.node+"?freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/individuals/"+state.node+"?freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(d=>{IND_CACHE[k]=d;})
       .catch(()=>{IND_CACHE[k]={error:true};})
       .finally(()=>{IND_LOADING.delete(k);render();});
@@ -1074,7 +1109,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   /* ---------- Personas ---------- */
 
   /* ---------- State ---------- */
-  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",openDrawerKey:null,drawerNode:null,period:null,range:null,rolling:null};
+  const state={mode:"structure",view:"dashboard",dashTab:"dora",node:"all",freq:"Semanal",expanded:new Set(["v:pagamentos"]),trendMetric:"ct",trendAI:false,cmpScope:"times",adminTab:"users",indMetric:"tp",adoStatsNode:"all",workTypes:[],openDrawerKey:null,drawerNode:null,period:null,range:null,rolling:null};
 
   /* ---------- Shared renderers ---------- */
   // Arrow follows the numeric change (▲ up / ▼ down); colour follows good/bad (s.dir).
@@ -1106,7 +1141,18 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div class="card-top"><div class="card-label">'+m.label+infoBtn("metric",m.key,m.label)+'</div>'+tier+'</div>'+
       '<div class="card-value"><span class="v num">'+fmt(s.cur,m.unit)+'</span><span class="u">'+m.unit+'</span></div>'+
       sparkline(s.trend)+
-      '<div class="card-foot">'+evoChip(s)+'<span class="card-note">vs. período anterior</span></div></div>';
+      '<div class="card-foot">'+evoChip(s)+'<span class="card-note">vs. período anterior</span></div>'+
+      filterNote(m,s)+'</div>';
+  }
+  /* O que o filtro fez com este card. Card que não filtra diz que não filtra; card filtrado que
+     perdeu eventos por falta de vínculo diz quantos — é a diferença entre "não houve bug neste
+     período" e "não dá para saber, porque os PRs não estão ligados ao board". */
+  function filterNote(m,s){
+    if(!wtActive())return "";
+    if(m.dora)return '<div class="filter-note">não filtra por tipo — o deploy é do repositório</div>';
+    if(!s||!s.untyped)return "";
+    return '<div class="filter-note filter-warn">'+s.untyped+
+      ' evento(s) sem vínculo com o board ficaram de fora</div>';
   }
   function sectionHead(t,viewKey){
     const i=viewKey?infoBtn("view",viewKey,t):"";
@@ -1532,7 +1578,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       {n:"18",t:"A IA é co-autora, nunca a autora do commit",need:"Author/committer é sempre a pessoa; a IA só aparece no trailer.",m:["ai_share","ai_adoption","throughput","cobertura"]},
       {n:"19",t:"Convenção de IA única, publicada no Admin",need:"Sem variação local ([copilot], #ai, emoji). Novo assistente ⇒ Admin atualiza o regex antes.",m:["ai_share","ai_adoption","ai_impact"]}]},
     {g:"E · Boards",items:[
-      {n:"20",t:"Work item tipado e ligado ao PR",need:"PR referencia o work item (AB#1234); tipo preenchido de verdade. Não planejado também vira work item.",m:["distribuição por tipo","cycle time de WI","wip"]},
+      {n:"20",t:"Work item tipado e ligado ao PR",need:"PR referencia o work item (AB#1234); tipo preenchido de verdade. Não planejado também vira work item. Sem o vínculo, o PR fica de fora de qualquer leitura por tipo de trabalho — e as métricas de IA vivem no PR.",m:["distribuição por tipo","cycle time de WI","wip","filtro por tipo de trabalho","ai_share","ai_impact"]},
       {n:"21",t:"Estados do board separam ativo de espera",need:"Board distingue fazendo de esperando; card movido no dia, não em lote na véspera da review.",m:["flow_efficiency","wip","cycle time de WI"]}]},
     {g:"F · Operação",items:[
       {n:"22",t:"Conexão ADO válida e com escopo suficiente",need:"Leitura de Code, Work Items, Build e Release; renovação agendada; repos novos no escopo.",m:["todas"]},
@@ -1595,7 +1641,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         '<div class="bar-track"><div class="bar-fill" style="width:'+Math.max(4,t.hours/maxH*100).toFixed(0)+'%;background:'+colors[i%colors.length]+'"></div></div>'+
         '<span class="hbar-val">'+hrs+' h</span>'+(open?'<span class="row-go" aria-hidden="true">›</span>':'<span class="row-go" aria-hidden="true"> </span>')+'</div>';
     });
-    return out+bars+HOURS_NOTE+'</div>';
+    // A distribuição nunca é filtrada — ela responde "como o período se dividiu", e filtrada
+    // seria sempre uma fatia só a 100%. Ela é o atalho que LIGA o filtro para o resto da tela.
+    let chips='<div class="chiprow" style="margin-top:10px"><span class="card-note">Ver o restante do painel só deste tipo:</span>'+
+      types.map(t2=>'<button class="toggle-chip'+(state.workTypes.includes(t2.type)?" on":"")+
+        '" data-wtfilter="'+escHtml(t2.type)+'">'+escHtml(t2.label)+'</button>').join("")+
+      (wtActive()?'<button class="toggle-chip" data-wtfilter="__all">Todos</button>':'')+'</div>';
+    return out+bars+chips+HOURS_NOTE+'</div>';
   }
   // Os itens por trás de uma fatia, com as duas horas. A corrida é o que o board diz; a
   // contabilizada é o que a métrica usou, e é ela que soma na fatia. A diferença entre as duas é o
@@ -1698,16 +1750,24 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const span=(list)=>metrics.filter(m=>list.some(x=>x.key===m.key)).length;
     h+='<tr><th class="rowh"></th><th class="grp" colspan="'+span(DORA)+'">DORA</th><th class="grp" colspan="'+
        span(FLUXO)+'">Fluxo</th><th class="grp" colspan="'+span(IA)+'">IA</th></tr>';
+    // Com filtro ativo, a coluna que o filtro não alcança fica marcada: um heatmap meio filtrado
+    // compara duas populações, e sem a marca nada na tela revela isso.
+    const unfilteredCols=(real&&c.unfiltered)?c.unfiltered:new Set(DORA.map(m=>m.key));
+    const colOff=(m)=>wtActive()&&unfilteredCols.has(m.key);
     h+='<tr><th class="rowh">'+rowType+infoBtn("view","heatmap","o heatmap comparativo")+'</th>'+
-       metrics.map(m=>'<th title="'+m.label+'">'+SHORT[m.key]+infoBtn("metric",m.key,m.label)+'</th>').join("")+
+       metrics.map(m=>'<th'+(colOff(m)?' class="unfiltered-col"':'')+' title="'+m.label+
+         (colOff(m)?' — não filtra por tipo de trabalho (mede o deploy)':'')+'">'+SHORT[m.key]+
+         (colOff(m)?' *':'')+infoBtn("metric",m.key,m.label)+'</th>').join("")+
        '</tr></thead><tbody>';
     matrix.forEach(row=>{
       h+='<tr><td class="rowh">'+row.label+(row.sub?'<small>'+row.sub+'</small>':'')+'</td>';
-      row.vals.forEach((v,ci)=>{const m=metrics[ci];const s=statusRel(ci,v,m);h+='<td><div class="heat-cell '+s.cls+'" title="'+row.label+' · '+m.label+': '+fmt(v,m.unit)+' '+m.unit+' — '+s.label+' do grupo">'+fmt(v,m.unit)+'<small>'+m.unit+'</small></div></td>';});
+      row.vals.forEach((v,ci)=>{const m=metrics[ci];const s=statusRel(ci,v,m);h+='<td'+(colOff(m)?' class="unfiltered-col"':'')+'><div class="heat-cell '+s.cls+'" title="'+row.label+' · '+m.label+': '+fmt(v,m.unit)+' '+m.unit+' — '+s.label+' do grupo">'+fmt(v,m.unit)+'<small>'+m.unit+'</small></div></td>';});
       h+='</tr>';
     });
     h+='</tbody></table></div>';
     h+='<div class="baseline-note" style="margin-top:14px"><span class="pill" style="color:var(--good)">■ melhor do grupo</span><span class="pill" style="color:var(--warn)">■ intermediário</span><span class="pill" style="color:var(--crit)">■ pior do grupo</span></div>';
+    if(wtActive())h+='<p class="filter-note">* colunas marcadas não respondem ao filtro de tipo de '+
+      'trabalho: medem o deploy, que pertence ao repositório e carrega vários tipos ao mesmo tempo.</p>';
     return h;
   }
 
@@ -1805,7 +1865,29 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         '<div class="chart-title" style="margin:0">O que está carregado na base'+infoBtn("view","ado_stats","o que está carregado na base")+'</div>'+
         '<label class="mf" style="margin:0;min-width:240px">Filtrar por estrutura<select id="ado_stats_node">'+statsNodeOptions(state.adoStatsNode)+'</select></label>'+
       '</div>'+
-      '<div id="ado_stats_box"><div class="card-note">Carregando…</div></div>';
+      '<div id="ado_stats_box"><div class="card-note">Carregando…</div></div>'+
+      '<div class="chart-title" style="margin:26px 0 0">Tipos de work item'+
+        '</div><p class="card-note">Como cada tipo do Azure DevOps é lido nas cinco categorias do '+
+        'produto. Leitura: a tabela é regra de produto, não configuração.</p>'+
+      '<div id="ado_worktypes_box"><div class="card-note">Carregando…</div></div>';
+  }
+  /* O de-para e os tipos que ninguém declarou. Os não declarados saem dos próprios eventos — um
+     tipo que o time inventou ontem cai em "Docs/Outros" e, sem esta lista, a distribuição mudaria
+     de forma sem nada na tela dizer por quê. */
+  function loadWorkTypeCatalog(){
+    const box=$("ado_worktypes_box");if(!box)return;
+    jget("/api/admin/work-types").then(d=>{
+      const rows=(d.mapping||[]).map(e=>'<tr><td>'+escHtml(e.adoType)+'</td><td>'+
+        escHtml(e.categoryLabel)+'</td></tr>').join("");
+      let h='<div style="overflow-x:auto"><table class="heat"><thead><tr><th class="rowh">Tipo no Azure DevOps</th><th>Categoria</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      const un=d.unmapped||[];
+      h+=un.length
+        ? '<p class="filter-note filter-warn" style="margin-top:12px">Tipos encontrados na '+
+          'ingestão que a tabela não conhece (lidos como Docs/Outros): '+
+          un.map(u=>escHtml(u.adoType)+' ('+u.count+')').join(", ")+'.</p>'
+        : '<p class="filter-note" style="margin-top:12px">Todo tipo encontrado na ingestão está na tabela.</p>';
+      box.innerHTML=h;
+    }).catch(()=>{box.innerHTML='<div class="card-note">Não foi possível ler o de-para de tipos.</div>';});
   }
   const EV_COLS=[["COMMIT","Commits"],["PR","PRs"],["DEPLOY","Deploys"],["WORKITEM","Work items"],["REVIEW","Reviews"]];
   function statsNodeOptions(sel){
@@ -2192,7 +2274,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function loadDrawerPeople(mk){
     const box=$("drawerItems");if(!box)return;
-    jget("/api/metrics/"+mk+"/people?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/metrics/"+mk+"/people?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(rows=>{
         const box2=$("drawerItems");if(!box2)return;
         if(!rows.length){
@@ -2215,7 +2297,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
   function loadDrawerItems(mk,unit){
     const box=$("drawerItems");if(!box)return;
-    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ())
+    jget("/api/metrics/"+mk+"/items?node="+encodeURIComponent(drawerNode())+"&freq="+encodeURIComponent(state.freq)+periodQ()+wtQ())
       .then(items=>{
         const box2=$("drawerItems");if(!box2)return; // drawer may have been closed/reopened meanwhile
         if(!items.length){box2.innerHTML='<div class="card-note">Nenhum item no período atual.</div>';return;}
@@ -2295,10 +2377,57 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const person=state.node.startsWith("p:");
     $("viewSwitch").style.display=(admin||person)?"none":"";
     $("freqField").style.display=admin?"none":"";
+    updateWorkTypeControl(admin);
     if(admin){$("crumbLevel").textContent="Configuração";$("crumbName").textContent="Admin";}
     else{const n=NODES[state.node];$("crumbLevel").textContent=n.level;$("crumbName").textContent=n.label;}
     document.querySelectorAll("#viewSwitch button").forEach(b=>b.classList.toggle("active",b.dataset.view===state.view));
   }
+  /* O controle de tipo de trabalho: rótulo do que está selecionado e, onde o filtro não se
+     aplica, desabilitado com a razão à mostra. A seleção é preservada — voltar da aba DORA
+     reencontra o que estava escolhido. */
+  function updateWorkTypeControl(admin){
+    const field=$("workTypeField"),btn=$("workTypeBtn");
+    field.style.display=admin?"none":"";
+    const applies=wtApplies();
+    btn.disabled=!applies;
+    btn.classList.toggle("off",!applies);
+    btn.title=applies
+      ? "Filtrar as métricas por tipo de trabalho"
+      : "O DORA mede o deploy, que pertence ao repositório e carrega trabalho de vários tipos ao mesmo tempo — por isso não filtra por tipo.";
+    const sel=state.workTypes;
+    btn.textContent=sel.length===0?"Todos"
+      :sel.length===1?WT_LABEL[sel[0]]
+      :sel.length===WORK_TYPES.length?"Todos"
+      :WT_LABEL[sel[0]]+" +"+(sel.length-1);
+    btn.classList.toggle("on",wtActive());
+  }
+  function openWorkTypeList(){
+    const sel=new Set(state.workTypes);
+    const opts=WORK_TYPES.map(([k,l])=>
+      '<button class="period-opt'+(sel.has(k)?" on":"")+'" data-wt="'+k+'">'+l+
+      (sel.has(k)?' <span class="card-note">selecionado</span>':'')+'</button>').join("");
+    $("modalBody").innerHTML='<div class="modal-title">Tipo de trabalho</div>'+
+      '<p class="range-hint">Vale para Fluxo, IA e o painel individual. As métricas DORA medem o '+
+      'deploy, que carrega trabalho de vários tipos ao mesmo tempo, e por isso não filtram.</p>'+
+      '<div class="period-list" role="listbox">'+opts+'</div>'+
+      '<div class="modal-actions"><button class="btn ghost" id="wtAll">Todos</button>'+
+      '<button class="btn ghost" id="wtClose">Fechar</button></div>';
+    $("modal").classList.add("open");
+    $("wtClose").onclick=closeModal;
+    $("wtAll").onclick=()=>{setWorkTypes([]);closeModal();};
+    document.querySelectorAll("[data-wt]").forEach(b=>b.addEventListener("click",()=>{
+      const k=b.dataset.wt;
+      const next=sel.has(k)?state.workTypes.filter(x=>x!==k):state.workTypes.concat([k]);
+      setWorkTypes(next);
+      openWorkTypeList();
+    }));
+  }
+  function setWorkTypes(list){
+    // Ordem fixa pela legenda: a mesma seleção sempre produz a mesma chave de cache e o mesmo link.
+    state.workTypes=WORK_TYPES.map(([k])=>k).filter(k=>list.includes(k));
+    syncUrl();render();
+  }
+
   function render(){
     if(state.node.startsWith("p:")&&state.mode==="structure")state.view="dashboard";
     renderRail();renderNav();updateTopbar();renderPeriod();
@@ -2314,6 +2443,10 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     document.querySelectorAll("[data-metric]").forEach(el=>{const open=()=>openDrawer(el.dataset.metric);el.addEventListener("click",open);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});});
     document.querySelectorAll("[data-im]").forEach(el=>{const go=()=>{state.indMetric=el.dataset.im;render();};el.addEventListener("click",go);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}});});
     document.querySelectorAll("[data-activity]").forEach(el=>{const go=()=>openActivityDrawer(el.dataset.activity);el.addEventListener("click",go);el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}});});
+    document.querySelectorAll("[data-wtfilter]").forEach(b=>b.addEventListener("click",()=>{
+      const k=b.dataset.wtfilter;
+      setWorkTypes(k==="__all"?[]:(state.workTypes.includes(k)?state.workTypes.filter(x=>x!==k):[k]));
+    }));
     document.querySelectorAll("[data-conventions]").forEach(el=>el.addEventListener("click",()=>openConventionsDrawer(el.dataset.conventions)));
     document.querySelectorAll("[data-tm]").forEach(b=>b.addEventListener("click",()=>{state.trendMetric=b.dataset.tm;render();}));
     const ai=$("aiToggle");if(ai)ai.addEventListener("click",()=>{state.trendAI=!state.trendAI;render();});
@@ -2324,6 +2457,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     document.querySelectorAll("[data-aset]").forEach(s=>s.addEventListener("change",()=>adminSet(s.dataset.aset,s.dataset,s.value)));
     const statsSel=$("ado_stats_node");
     if(statsSel){statsSel.addEventListener("change",()=>{state.adoStatsNode=statsSel.value;loadAdoStats(statsSel.value);});loadAdoStats(state.adoStatsNode);}
+    if($("ado_worktypes_box"))loadWorkTypeCatalog();
   }
 
   /* ---------- Global controls ---------- */
@@ -2353,6 +2487,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   $("periodNow").addEventListener("click",resetPeriod);
   $("readCtl").addEventListener("click",e=>{const b=e.target.closest("button");if(b)setReading(b.dataset.read);});
   $("periodLabel").addEventListener("click",openPeriodList);
+  $("workTypeBtn").addEventListener("click",()=>{if(wtApplies())openWorkTypeList();});
   $("themeBtn").addEventListener("click",()=>{const cur=document.documentElement.getAttribute("data-theme");const dark=cur?cur==="dark":matchMedia("(prefers-color-scheme: dark)").matches;const next=dark?"light":"dark";document.documentElement.setAttribute("data-theme",next);try{localStorage.setItem("ep_theme",next);}catch(e){}});
   $("exportBtn").addEventListener("click",()=>window.print());
   const sb=$("sidebar"),ns=$("navscrim");function closeNav(){sb.classList.remove("open");ns.classList.remove("open");}
@@ -2368,7 +2503,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     u.searchParams.set("freq",state.freq);
     // Um endereço carrega exatamente uma leitura: deixar parâmetros de outra para trás faria o
     // link reabrir num período diferente do que estava na tela quando foi copiado.
-    ["period","from","to","window"].forEach(k=>u.searchParams.delete(k));
+    ["period","from","to","window","workType"].forEach(k=>u.searchParams.delete(k));
+    state.workTypes.forEach(w=>u.searchParams.append("workType",w));
     if(state.range){u.searchParams.set("from",state.range.from);u.searchParams.set("to",state.range.to);}
     else{
       if(state.period)u.searchParams.set("period",state.period);
@@ -2380,6 +2516,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const q=new URL(location.href).searchParams;
     const f=q.get("freq");if(f&&["Diário","Semanal","Mensal"].includes(f))state.freq=f;
     const n=q.get("node");if(n)state.node=n;
+    const wt=q.getAll("workType").filter(w=>WT_LABEL[w]);
+    if(wt.length)state.workTypes=[...new Set(wt)];
     const from=q.get("from"),to=q.get("to");
     if(ISO_DAY.test(from||"")&&ISO_DAY.test(to||"")&&from<=to){
       // O intervalo vem inteiro ou não vem: metade dele não é uma pergunta mais estreita, é uma

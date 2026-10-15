@@ -9,6 +9,7 @@ import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import com.engperf.domain.structure.Person;
 import java.time.Clock;
 import java.time.Instant;
@@ -60,7 +61,7 @@ public final class MetricsService implements MetricsQueryUseCase {
   }
 
   @Override
-  public List<MetricCard> cards(String nodeId, Period period) {
+  public List<MetricCard> cards(String nodeId, Period period, WorkTypeFilter workTypes) {
     Instant readNow = clock.instant();
     StructureIndex index = buildIndex();
     List<MetricCard> cards = new ArrayList<>();
@@ -68,13 +69,21 @@ public final class MetricsService implements MetricsQueryUseCase {
       List<RawEvent> window = fetch(def, period);
       cards.add(
           MetricsEngine.card(
-              index, window, def, nodeId, period, readNow, BUCKETS, catalog.population(def.key())));
+              index,
+              window,
+              def,
+              nodeId,
+              period,
+              readNow,
+              BUCKETS,
+              new MetricPopulation(catalog.population(def.key()), workTypes)));
     }
     return cards;
   }
 
   @Override
-  public MetricSeries series(String metricKey, String nodeId, Period period) {
+  public MetricSeries series(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
     return MetricsEngine.series(
@@ -85,12 +94,16 @@ public final class MetricsService implements MetricsQueryUseCase {
         period,
         clock.instant(),
         BUCKETS,
-        catalog.population(metricKey));
+        new MetricPopulation(catalog.population(metricKey), workTypes));
   }
 
   @Override
   public MetricSeries cohortSeries(
-      String metricKey, String nodeId, Period period, boolean aiAssisted) {
+      String metricKey,
+      String nodeId,
+      Period period,
+      boolean aiAssisted,
+      WorkTypeFilter workTypes) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
     return MetricsEngine.series(
@@ -101,19 +114,28 @@ public final class MetricsService implements MetricsQueryUseCase {
         period,
         clock.instant(),
         BUCKETS,
-        catalog.population(metricKey).and(e -> e.ai() == aiAssisted));
+        new MetricPopulation(
+            catalog.population(metricKey).and(e -> e.ai() == aiAssisted), workTypes));
   }
 
   @Override
-  public List<MetricDrilldownItem> items(String metricKey, String nodeId, Period period) {
+  public List<MetricDrilldownItem> items(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
     return MetricsDrilldown.items(
-        buildIndex(), window, def, nodeId, period, clock.instant(), catalog.population(metricKey));
+        buildIndex(),
+        window,
+        def,
+        nodeId,
+        period,
+        clock.instant(),
+        MetricsEngine.restrict(catalog.population(metricKey), def, workTypes));
   }
 
   @Override
-  public List<EntityShare> entityShares(String metricKey, String nodeId, Period period) {
+  public List<EntityShare> entityShares(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
     MetricDefinition def = definition(metricKey);
     if (def.aggregation() != Aggregation.DISTINCT_RATIO) {
       throw new IllegalArgumentException(
@@ -126,7 +148,7 @@ public final class MetricsService implements MetricsQueryUseCase {
             nodeId,
             period,
             clock.instant(),
-            catalog.population(metricKey))
+            MetricsEngine.restrict(catalog.population(metricKey), def, workTypes))
         .stream()
         .map(
             s ->

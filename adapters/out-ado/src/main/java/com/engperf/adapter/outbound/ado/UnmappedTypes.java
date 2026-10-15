@@ -33,7 +33,7 @@ final class UnmappedTypes {
     }
     LOG.info(
         "ADO sync: {}/{} — tipo(s) de work item sem mapeamento, classificados como docs/outros: {}."
-            + " Se algum deveria ter categoria própria, ajuste AdoMapper.workType.",
+            + " Se algum deveria ter categoria própria, declare-o em WorkTypeMapping.",
         org,
         proj,
         counts);

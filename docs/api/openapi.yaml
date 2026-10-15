@@ -304,6 +304,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - name: group
           in: query
           required: true
@@ -332,6 +333,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - $ref: "#/components/parameters/Periods"
         - name: split
           in: query
@@ -361,6 +363,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - name: bucket
           in: query
           schema: { type: string, format: date }
@@ -396,6 +399,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
       responses:
         "200":
           description: Painel do grupo.
@@ -420,6 +424,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - name: metricKey
           in: query
           required: true
@@ -451,6 +456,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - name: scope
           in: query
           description: |
@@ -481,6 +487,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
       responses:
         "200":
           description: Resumo individual.
@@ -519,6 +526,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
         - $ref: "#/components/parameters/Periods"
         - name: metric
           in: query
@@ -542,6 +550,7 @@ paths:
         - $ref: "#/components/parameters/RangeFrom"
         - $ref: "#/components/parameters/RangeTo"
         - $ref: "#/components/parameters/Window"
+        - $ref: "#/components/parameters/WorkType"
       responses:
         "200":
           description: Métricas de review.
@@ -1031,6 +1040,45 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
 
+  /admin/work-types:
+    get:
+      tags: [Admin]
+      summary: De-para de tipos do Azure DevOps para as cinco categorias, e os tipos não declarados.
+      description: >
+        Leitura: a tabela é regra de produto, não configuração. `unmapped` lista os tipos crus que a
+        ingestão encontrou e a tabela não conhece, com a contagem de work items — é o que impede
+        "Docs/Outros" de virar o esconderijo de todo tipo novo que um time inventa.
+      responses:
+        "200":
+          description: Categorias, de-para e tipos não declarados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        label: { type: string }
+                  mapping:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        adoType: { type: string }
+                        category: { type: string }
+                        categoryLabel: { type: string }
+                  unmapped:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        adoType: { type: string }
+                        count: { type: integer, format: int64 }
+        "403": { $ref: "#/components/responses/Forbidden" }
   /admin/coverage:
     get:
       tags: [Admin]
@@ -1070,6 +1118,21 @@ components:
       bearerFormat: JWT
 
   parameters:
+    WorkType:
+      name: workType
+      in: query
+      required: false
+      description: >
+        Tipo de trabalho a ler, repetível (`?workType=bug&workType=tech_debt`). Omitido, lê tudo.
+        Um valor fora das cinco categorias é recusado com 400 — filtro ignorado devolveria números
+        certos para uma pergunta que ninguém fez. Métrica de deploy (as quatro do DORA) ignora o
+        filtro e devolve `filtered: false`, porque o deploy é do repositório e carrega trabalho de
+        vários tipos ao mesmo tempo.
+      schema:
+        type: array
+        items: { type: string, enum: [feature, bug, tech_debt, maintenance, docs] }
+      style: form
+      explode: true
     NodeId:
       name: nodeId
       in: query
@@ -1332,6 +1395,19 @@ components:
         value: { type: number, nullable: true }
         unit: { type: string }
         delta: { $ref: "#/components/schemas/Delta" }
+        filterableByWorkType:
+          type: boolean
+          description: Falso para métrica de deploy — o filtro por tipo de trabalho nunca a alcança.
+        filtered:
+          type: boolean
+          description: Se a seleção de tipo de trabalho ativa foi aplicada a este card.
+        untypedExcluded:
+          type: integer
+          format: int64
+          description: >
+            Quantos eventos do nó ficaram de fora por não carregarem tipo de trabalho — tipicamente
+            PRs sem vínculo com o board. Separado da cobertura de propósito: cobertura responde
+            atribuição, e juntar os dois faria dois problemas diferentes parecerem um só.
         tier:
           allOf: [{ $ref: "#/components/schemas/BenchmarkTier" }]
         sparkline:

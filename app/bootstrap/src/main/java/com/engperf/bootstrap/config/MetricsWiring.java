@@ -8,6 +8,7 @@ import com.engperf.application.metrics.IndividualDashboardService;
 import com.engperf.application.metrics.MetricCatalog;
 import com.engperf.application.metrics.MetricsService;
 import com.engperf.application.metrics.PeriodResolver;
+import com.engperf.application.metrics.WorkTypeCatalogService;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.DoraDashboardUseCase;
@@ -15,6 +16,7 @@ import com.engperf.application.port.inbound.FlowDashboardUseCase;
 import com.engperf.application.port.inbound.IndividualDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.inbound.PeriodResolverUseCase;
+import com.engperf.application.port.inbound.WorkTypeCatalogUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
@@ -53,6 +55,12 @@ public class MetricsWiring {
       MetricCatalog catalog,
       Clock metricsClock) {
     return new MetricsService(structure, events, catalog, metricsClock);
+  }
+
+  /** O de-para de tipos e os tipos que ninguém declarou — leitura, para o Admin. */
+  @Bean
+  WorkTypeCatalogUseCase workTypeCatalogUseCase(EventStorePort events) {
+    return new WorkTypeCatalogService(events);
   }
 
   /** One resolver for every screen: the period a request is about is decided in a single place. */

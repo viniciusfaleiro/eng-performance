@@ -18,7 +18,9 @@ public record IndividualDashboard(
     WorkDistribution distribution,
     List<ActivityItem> activity,
     List<ConventionFlag> conventions,
-    PlatformAccess access) {
+    PlatformAccess access,
+    boolean filtered,
+    long untypedExcluded) {
 
   /**
    * Acesso da pessoa à plataforma. Fica fora da lista de métricas de propósito: mede adesão a uma
