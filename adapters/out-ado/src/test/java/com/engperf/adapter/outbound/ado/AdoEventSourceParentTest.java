@@ -155,4 +155,20 @@ class AdoEventSourceParentTest {
       throw new RuntimeException(e);
     }
   }
+
+  /**
+   * O projeto do item tem de vir do próprio item, e o campo que o traz viaja no lote que já é
+   * feito: pedir item a item multiplicaria o custo da sync por um dado que vem de graça aqui.
+   */
+  @Test
+  void theBatchAsksForTheItemsOwnProjectWithoutAnyExtraCall() {
+    WorkItemClient client = new WorkItemClient("1", wi("1", "Bug", ""));
+
+    workItems(client);
+
+    assertThat(client.urls)
+        .filteredOn(u -> u.contains("/_apis/wit/workitems?ids="))
+        .allMatch(u -> u.contains("System.TeamProject"));
+    assertThat(client.batchLookups).as("nenhuma chamada a mais pelo projeto").isZero();
+  }
 }

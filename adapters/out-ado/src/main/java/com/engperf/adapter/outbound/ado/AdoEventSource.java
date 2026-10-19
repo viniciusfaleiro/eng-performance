@@ -254,7 +254,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
     }
     String fields =
         "System.WorkItemType,System.Title,System.ChangedDate,System.CreatedDate,"
-            + "System.AssignedTo,System.Parent";
+            + "System.AssignedTo,System.Parent,System.TeamProject";
     // Três fases. Coletar tudo antes de mapear é o que permite resolver os pais em lote: uma Task é
     // classificada pelo pai, e perguntar item a item multiplicaria o custo pelo tipo mais numeroso
     // do board.
@@ -294,7 +294,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
               token);
       events.add(
           AdoMapper.workItem(
-              wi, updates, classify, now, org, proj, ParentRef.of(wi, typeById), impediment));
+              wi, updates, classify, now, org, ParentRef.of(wi, typeById), impediment));
     }
     unmapped.report(org, proj);
     return collected.size();

@@ -247,13 +247,16 @@ class AdoMapperTest {
 
     RawEvent e =
         AdoMapper.workItem(
-            fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj", ParentRef.none(), OFF);
+            fixture("workitem.json"), updates, CLASSIFY, now, "org", ParentRef.none(), OFF);
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
     assertThat(e.occurredAt().toString()).isEqualTo("2026-06-10T14:00:00Z"); // dated at completion
     assertThat(e.detail().get("summary")).isEqualTo("Checkout falha com CPF inválido");
-    assertThat(e.detail().get("url")).isEqualTo("org/Proj/_workitems/edit/555");
+    // Sem System.TeamProject no payload, a forma por id — que abre o item certo em qualquer
+    // projeto da organização. O projeto do laço nunca entra no endereço.
+    assertThat(e.detail().get("url")).isEqualTo("org/_workitems/edit/555");
+    assertThat(e.detail()).doesNotContainKey("ado_project");
     assertThat(e.detail().get("active_h")).isEqualTo("1.0"); // 11:00 → 12:00
     assertThat(e.detail().get("wait_h")).isEqualTo("1.0"); // Blocked 12:00 → 13:00
     assertThat(e.detail().get("review_h")).isEqualTo("1.0"); // Code Review 13:00 → 14:00
@@ -274,7 +277,6 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-11T00:00:00Z"),
             "org",
-            "Proj",
             ParentRef.none(),
             OFF);
     assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
@@ -294,7 +296,6 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-10T13:00:00Z"),
             "org",
-            "Proj",
             ParentRef.none(),
             OFF);
     assertThat(e.detail().get("in_progress")).isEqualTo("1");
@@ -344,7 +345,6 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-11T00:00:00Z"),
             "org",
-            "Proj",
             ParentRef.none(),
             new ImpedimentConvention("Impediment", "Impedimento:"));
 
@@ -367,7 +367,6 @@ class AdoMapperTest {
             CLASSIFY,
             Instant.parse("2026-06-11T00:00:00Z"),
             "org",
-            "Proj",
             ParentRef.none(),
             OFF);
 
