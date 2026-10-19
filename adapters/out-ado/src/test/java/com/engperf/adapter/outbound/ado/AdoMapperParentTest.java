@@ -91,7 +91,6 @@ class AdoMapperParentTest {
         state -> Segment.ACTIVE,
         Instant.parse("2026-06-30T12:00:00Z"),
         "org",
-        "Proj",
         new ParentRef(parentType, parentId),
         OFF);
   }
@@ -106,7 +105,6 @@ class AdoMapperParentTest {
             state -> Segment.ACTIVE,
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
-            "Proj",
             new ParentRef("Tech Debt", "4711"),
             OFF);
 
@@ -126,7 +124,6 @@ class AdoMapperParentTest {
             state -> Segment.ACTIVE,
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
-            "Proj",
             new ParentRef("Tech Debt", "4711"),
             OFF);
 
@@ -152,7 +149,6 @@ class AdoMapperParentTest {
             state -> Segment.ACTIVE,
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
-            "Proj",
             new ParentRef(null, "4711"),
             OFF);
 
@@ -171,7 +167,6 @@ class AdoMapperParentTest {
             state -> Segment.ACTIVE,
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
-            "Proj",
             ParentRef.none(),
             OFF);
 

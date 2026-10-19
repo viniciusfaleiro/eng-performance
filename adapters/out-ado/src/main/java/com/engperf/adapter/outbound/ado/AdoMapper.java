@@ -5,6 +5,8 @@ import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkType;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -228,9 +230,9 @@ final class AdoMapper {
 
   /**
    * A work item → one WORKITEM event, its flow measures reconstructed from the state history and
-   * corrected by the impediment overlay {@code impediment} describes. {@code org}/{@code project}
-   * (already URL-path-encoded by the caller) build the item's deep-link — the workitems batch GET
-   * carries no {@code _links.web.href} to reuse.
+   * corrected by the impediment overlay {@code impediment} describes. The deep-link is built from
+   * {@code org} (already URL-path-encoded by the caller) and the item's <em>own</em> project — the
+   * workitems batch GET carries no {@code _links.web.href} to reuse.
    */
   static RawEvent workItem(
       JsonNode wi,
@@ -238,7 +240,6 @@ final class AdoMapper {
       Function<String, Segment> classify,
       Instant now,
       String org,
-      String project,
       ParentRef parent,
       ImpedimentConvention impediment) {
     JsonNode f = wi.path("fields");
@@ -273,7 +274,21 @@ final class AdoMapper {
       detail.put("parent_event_id", "wi:" + parentAdoId);
     }
     detail.put("summary", f.path("System.Title").asText(""));
-    detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
+    // O projeto do item, e não o que estava sendo sincronizado. A leitura em lote dos work items é
+    // da organização inteira: ela devolve qualquer id que receba, de qualquer projeto, sem
+    // reclamar. Carimbar esses itens com o projeto da vez produzia link que abria o item certo sob
+    // o nome errado — e o drill-down existe justamente para o time conferir se acredita no número.
+    String itemProject = f.path("System.TeamProject").asText("");
+    if (!itemProject.isBlank()) {
+      detail.put("ado_project", itemProject);
+    }
+    // Sem o projeto do item, a forma por id: o Azure DevOps resolve work item na organização
+    // inteira, então ela abre o item certo sempre. O projeto na URL é enfeite que só serve a errar.
+    detail.put(
+        "url",
+        (itemProject.isBlank() ? org : org + "/" + encodePath(itemProject))
+            + "/_workitems/edit/"
+            + id);
     Instant changed = f.hasNonNull("System.ChangedDate") ? instant(f, "System.ChangedDate") : null;
     WorkItemFlow flow = WorkItemFlow.of(id, updates, classify, created, changed, now, impediment);
     Instant occurred =
@@ -302,6 +317,11 @@ final class AdoMapper {
     }
     return stage.equalsIgnoreCase(rule)
         || stage.toLowerCase(Locale.ROOT).contains(rule.toLowerCase(Locale.ROOT));
+  }
+
+  /** Path-encodes one segment; a project name may carry spaces ("Core Cards"). */
+  private static String encodePath(String segment) {
+    return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
   }
 
   private static String identity(JsonNode person) {
