@@ -276,6 +276,17 @@ class PasswordResetApiTest {
     }
 
     @Override
+    public com.engperf.domain.config.ImpedimentConvention getImpedimentConvention() {
+      return com.engperf.domain.config.ImpedimentConvention.off();
+    }
+
+    @Override
+    public com.engperf.domain.config.ImpedimentConvention saveImpedimentConvention(
+        com.engperf.domain.config.ImpedimentConvention convention) {
+      return convention;
+    }
+
+    @Override
     public SmtpSettings getSmtpSettings() {
       return new SmtpSettings(
           false, null, null, MailTransport.NONE, null, null, null, null, "https://app.example.com");

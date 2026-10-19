@@ -103,9 +103,14 @@ view into a comparison between people.
 The system SHALL report the person's work distribution by task type — the share and the time per type
 (feature, bug, tech debt, maintenance, docs) — from the person's work-item events, where the time per
 type is the item's **in-progress time-in-state derived from its change history** (per the
-ado-integration mapping), not the manual `CompletedWork` field. Work items with **no usable state
-transition** SHALL be excluded from the distribution and reflected as "no data" in the panel's
-coverage — never counted as zero.
+ado-integration mapping), **less the time the item was impeded** (per the impediment-signal
+capability), not the manual `CompletedWork` field. Work items with **no usable state transition**
+SHALL be excluded from the distribution and reflected as "no data" in the panel's coverage — never
+counted as zero.
+
+Impeded time is excluded because the distribution answers where the person's work went, and an item
+standing still is not work going anywhere. The intervals that report an item as **in progress**
+SHALL NOT change for this reason, so work-in-progress keeps counting an impeded item.
 
 The system SHALL count only **leaf work**: a work item that has ingested children is a container of
 work rather than work itself, and SHALL NOT contribute time to the distribution. An Epic SHALL NOT
@@ -162,6 +167,10 @@ the list, since the list has to add up to the figure it opens from.
 #### Scenario: A person with only containers
 - **WHEN** every work item attributed to the person in the period is a container
 - **THEN** the panel says there is no leaf work in the period rather than presenting an empty distribution as zero
+
+#### Scenario: Impeded time does not count as the person's work
+- **WHEN** one of the person's items was impeded during part of its in-progress time in the period
+- **THEN** only the time that was not impeded contributes to the distribution
 
 ### Requirement: The activity feed deep-links to Azure DevOps
 The system SHALL include the person's most recent commits and PRs, each with its Azure DevOps
@@ -222,7 +231,9 @@ time. When the person has no account, the panel SHALL omit it rather than assert
 The individual panel SHALL state that the hours reported in the work distribution are **elapsed**
 hours during which an item was in progress, not hours a person worked, and that the hours of a single
 item are **divided among the items in progress at the same time**. Without both statements a total is
-read as effort spent and a per-item figure is read as wrong.
+read as effort spent and a per-item figure is read as wrong. It SHALL also state that **time the item
+was impeded does not count**, since that is what makes the same item report fewer hours here than the
+window it was open.
 
 For an item that has not reached a terminal state, the elapsed hours SHALL run to the **clock of the
 reading**, not the clock of the ingestion that recorded the item. Ending at the ingestion clock made
@@ -240,6 +251,10 @@ lengths depending on which figure of the panel was being read.
 #### Scenario: An open item's hours reach the moment of reading
 - **WHEN** an item is still in progress and the last ingestion ran earlier
 - **THEN** its elapsed hours run to the moment of the reading, not to the last ingestion
+
+#### Scenario: The exclusion of impeded time is stated
+- **WHEN** the work distribution is shown
+- **THEN** the panel states that time the item was impeded is not counted as work
 
 ### Requirement: An item in progress for only minutes is flagged as a convention break
 The system SHALL flag, through the panel's existing convention mechanism, work items whose total

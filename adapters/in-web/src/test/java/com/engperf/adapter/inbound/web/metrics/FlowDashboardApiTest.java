@@ -9,6 +9,7 @@ import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
 import com.engperf.application.metrics.FlowCard;
 import com.engperf.application.metrics.FlowDashboard;
+import com.engperf.application.metrics.ImpedimentReasons;
 import com.engperf.application.metrics.PeriodResolver;
 import com.engperf.application.metrics.PhaseSlice;
 import com.engperf.application.metrics.ScatterPoint;
@@ -158,7 +159,8 @@ class FlowDashboardApiTest {
           List.of(
               new ScatterPoint("v:pag", "Pagamentos", 12, 9),
               new ScatterPoint("v:plat", "Plataforma", 7, 11));
-      return new FlowDashboard(nodeId, "vertical", List.of(card), phases, scatter);
+      return new FlowDashboard(
+          nodeId, "vertical", List.of(card), phases, ImpedimentReasons.none(), scatter);
     }
   }
 }

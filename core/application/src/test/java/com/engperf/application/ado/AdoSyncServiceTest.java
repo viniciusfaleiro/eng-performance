@@ -220,6 +220,18 @@ class AdoSyncServiceTest {
   }
 
   private static final class FakeConfig implements PlatformConfigUseCase {
+
+    @Override
+    public com.engperf.domain.config.ImpedimentConvention impedimentConvention() {
+      return com.engperf.domain.config.ImpedimentConvention.off();
+    }
+
+    @Override
+    public com.engperf.domain.config.ImpedimentConvention saveImpedimentConvention(
+        String fieldName, String tagPrefix) {
+      return impedimentConvention();
+    }
+
     @Override
     public AdoIntegration adoIntegration() {
       return new AdoIntegration(true, null);

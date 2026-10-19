@@ -222,4 +222,133 @@ class FlowDashboardServiceTest {
         false,
         Map.of("files", Double.toString(files)));
   }
+
+  // ---- quebra da Espera por motivo de impedimento ----
+
+  /**
+   * A quebra descreve a composição das horas de espera da mesma população do card — e não uma
+   * decomposição do card, que é mediana. O que tem de fechar é esse total.
+   */
+  @Test
+  void theBreakdownComposesThePopulationWaitingHours() {
+    baseStructure();
+    events.add(impededItem("id-ana", 10, 0, 6, Map.of("infra", 4.0)));
+    events.add(impededItem("id-bruno", 10, 0, 2, Map.of("infra", 1.0, "aprovação", 1.0)));
+
+    var breakdown = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+
+    assertThat(breakdown.waitingHours()).isEqualTo(8.0);
+    assertThat(breakdown.slices())
+        .extracting(ImpedimentSlice::key)
+        .containsExactly("infra", "aprovação", "queue");
+    assertThat(breakdown.slices())
+        .extracting(ImpedimentSlice::hours)
+        .containsExactly(5.0, 1.0, 2.0);
+    assertThat(breakdown.slices().stream().mapToDouble(ImpedimentSlice::hours).sum())
+        .isEqualTo(breakdown.waitingHours());
+    assertThat(breakdown.slices().stream().mapToDouble(ImpedimentSlice::share).sum())
+        .isCloseTo(100.0, Offset.offset(0.001));
+  }
+
+  /** Time que não marca impedimento: toda a espera é fila, e a cobertura diz que ninguém marcou. */
+  @Test
+  void aTeamThatNeverMarksImpedimentsIsAllQueueAndNoCoverage() {
+    baseStructure();
+    events.add(doneItem("id-ana", 10, 0, 5));
+
+    var breakdown = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+
+    assertThat(breakdown.slices()).extracting(ImpedimentSlice::key).containsExactly("queue");
+    assertThat(breakdown.items()).isEqualTo(1);
+    assertThat(breakdown.itemsWithSignal()).isZero();
+  }
+
+  @Test
+  void theCoverageCountsTheItemsCarryingASignal() {
+    baseStructure();
+    events.add(impededItem("id-ana", 10, 0, 4, Map.of("infra", 4.0)));
+    events.add(doneItem("id-bruno", 10, 0, 1));
+
+    var breakdown = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+
+    assertThat(breakdown.items()).isEqualTo(2);
+    assertThat(breakdown.itemsWithSignal()).isEqualTo(1);
+  }
+
+  /** Impedimento sem motivo vai para o bucket reservado, com rótulo próprio e antes da fila. */
+  @Test
+  void impedimentWithoutAReasonGetsItsOwnBucket() {
+    baseStructure();
+    events.add(impededItem("id-ana", 10, 0, 5, Map.of("?", 3.0)));
+
+    var breakdown = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+
+    assertThat(breakdown.slices())
+        .extracting(ImpedimentSlice::label)
+        .containsExactly("Sem motivo", "Fila do board");
+  }
+
+  /** A quebra segue o filtro de tipo de trabalho, como a fase que ela explica. */
+  @Test
+  void theBreakdownFollowsTheWorkTypeFilter() {
+    baseStructure();
+    events.add(impededItem("id-ana", 10, 0, 6, Map.of("infra", 4.0)));
+    events.add(bugItem("id-bruno", 10, 4, Map.of("aprovação", 4.0)));
+
+    var all = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+    var bugsOnly =
+        flow.dashboard(
+                "t:checkout",
+                period(Frequency.MONTHLY),
+                com.engperf.domain.metrics.WorkTypeFilter.of(
+                    com.engperf.domain.metrics.WorkType.BUG))
+            .impediments();
+
+    assertThat(all.waitingHours()).isEqualTo(10.0);
+    assertThat(bugsOnly.waitingHours()).isEqualTo(4.0);
+    assertThat(bugsOnly.slices()).extracting(ImpedimentSlice::key).containsExactly("aprovação");
+  }
+
+  private RawEvent impededItem(
+      String identity, double active, double review, double wait, Map<String, Double> byReason) {
+    return impededItem(identity, "feature", active, review, wait, byReason);
+  }
+
+  private RawEvent bugItem(
+      String identity, double active, double wait, Map<String, Double> byReason) {
+    return impededItem(identity, "bug", active, 0, wait, byReason);
+  }
+
+  /** Um item concluído cuja espera traz as horas impedidas por motivo, como a ingestão grava. */
+  private RawEvent impededItem(
+      String identity,
+      String type,
+      double active,
+      double review,
+      double wait,
+      Map<String, Double> byReason) {
+    double cycle = active + review + wait;
+    double working = active + review;
+    Map<String, String> detail = new java.util.HashMap<>();
+    detail.put("completed", "1");
+    detail.put("type", type);
+    detail.put("active_h", Double.toString(active));
+    detail.put("review_h", Double.toString(review));
+    detail.put("wait_h", Double.toString(wait));
+    detail.put("cycle_h", Double.toString(cycle));
+    detail.put("lead_h", Double.toString(cycle));
+    detail.put("num", Double.toString(working));
+    detail.put("den", Double.toString(cycle));
+    byReason.forEach((reason, hours) -> detail.put("impeded:" + reason, Double.toString(hours)));
+    return new RawEvent(
+        "w" + (seq++),
+        EventType.WORKITEM,
+        Instant.parse("2026-06-10T10:00:00Z"),
+        null,
+        identity,
+        null,
+        null,
+        false,
+        detail);
+  }
 }

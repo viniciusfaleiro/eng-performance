@@ -1,6 +1,8 @@
 package com.engperf.application.metrics;
 
 import com.engperf.domain.metrics.InProgressSpans;
+import com.engperf.domain.metrics.Interval;
+import com.engperf.domain.metrics.Intervals;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkType;
 import com.engperf.domain.metrics.WorkTypeFilter;
@@ -105,12 +107,27 @@ public record WorkDistribution(
 
   private record Span(long start, long end, String itemId) {}
 
+  /**
+   * The stretches of {@code [from, to)} the item was in progress <strong>and not impeded</strong>.
+   *
+   * <p>Impeded time is taken out here, on read, instead of being cut out of the item's intervals at
+   * ingestion: the same intervals answer "what was in progress?" for work-in-progress, and an
+   * impeded item is still in progress — it is being worked towards, just blocked. Punching holes in
+   * them would quietly answer a different question there. What this distribution answers is where
+   * the person's work went, and an item standing still is not work going anywhere.
+   */
+  private static List<Interval> working(RawEvent item, Instant readNow, Instant from, Instant to) {
+    List<Interval> inProgress = InProgressSpans.of(item, readNow).within(from, to);
+    List<Interval> impeded = Intervals.parse(item.detail().get("impeded_spans"));
+    return impeded.isEmpty() ? inProgress : Intervals.subtract(inProgress, impeded);
+  }
+
   private static Tally tally(List<RawEvent> leaves, Instant from, Instant to, Instant readNow) {
     Map<String, Item> byId = new LinkedHashMap<>();
     List<Span> spans = new ArrayList<>();
     for (RawEvent w : leaves) {
       Item item = new Item(w, typeOf(w));
-      List<InProgressSpans.Interval> mine = InProgressSpans.of(w, readNow).within(from, to);
+      List<Interval> mine = working(w, readNow, from, to);
       if (mine.isEmpty()) {
         // Eventos antigos, sem histórico de intervalos: a hora total é o que existe. Não é
         // prorrateada nem recortada — é o comportamento que já havia, e mudá-lo aqui misturaria
@@ -122,7 +139,7 @@ public record WorkDistribution(
         }
         continue;
       }
-      for (InProgressSpans.Interval i : mine) {
+      for (Interval i : mine) {
         spans.add(new Span(i.start(), i.end(), w.id()));
         item.elapsed += i.hours();
       }

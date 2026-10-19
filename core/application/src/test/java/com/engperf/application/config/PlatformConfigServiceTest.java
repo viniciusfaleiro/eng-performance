@@ -7,6 +7,7 @@ import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.config.MailTransport;
 import com.engperf.domain.config.SmtpSettings;
 import org.junit.jupiter.api.Test;
@@ -58,12 +59,32 @@ class PlatformConfigServiceTest {
     assertThat(email.to).isEqualTo("dest@empresa.com");
   }
 
+  @Test
+  void savesAndReadsBackTheImpedimentConvention() {
+    assertThat(service.impedimentConvention().enabled()).isFalse();
+
+    service.saveImpedimentConvention("Custom.Impediment", "Impedimento:");
+
+    assertThat(service.impedimentConvention().fieldName()).isEqualTo("Custom.Impediment");
+    assertThat(service.impedimentConvention().tagPrefix()).isEqualTo("Impedimento:");
+  }
+
+  @Test
+  void clearingBothValuesSwitchesTheImpedimentSignalOff() {
+    service.saveImpedimentConvention("Impediment", "Impedimento:");
+
+    service.saveImpedimentConvention(" ", null);
+
+    assertThat(service.impedimentConvention().enabled()).isFalse();
+  }
+
   private static final class FakeConfig implements PlatformConfigPort {
     private AdoIntegration ado = new AdoIntegration(false, null);
     private AiConvention ai =
         new AiConvention(AiStrategy.TRAILER, "Co-authored-by:", null, null, false);
     private SmtpSettings smtp =
         new SmtpSettings(false, null, null, MailTransport.NONE, null, null, null, null, null);
+    private ImpedimentConvention impediment = ImpedimentConvention.off();
 
     @Override
     public AdoIntegration getAdoIntegration() {
@@ -84,6 +105,17 @@ class PlatformConfigServiceTest {
     @Override
     public AiConvention saveAiConvention(AiConvention convention) {
       this.ai = convention;
+      return convention;
+    }
+
+    @Override
+    public ImpedimentConvention getImpedimentConvention() {
+      return impediment;
+    }
+
+    @Override
+    public ImpedimentConvention saveImpedimentConvention(ImpedimentConvention convention) {
+      this.impediment = convention;
       return convention;
     }
 

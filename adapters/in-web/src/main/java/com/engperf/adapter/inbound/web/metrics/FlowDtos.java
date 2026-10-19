@@ -2,6 +2,8 @@ package com.engperf.adapter.inbound.web.metrics;
 
 import com.engperf.application.metrics.FlowCard;
 import com.engperf.application.metrics.FlowDashboard;
+import com.engperf.application.metrics.ImpedimentReasons;
+import com.engperf.application.metrics.ImpedimentSlice;
 import com.engperf.application.metrics.PhaseSlice;
 import com.engperf.application.metrics.ScatterPoint;
 import com.engperf.domain.metrics.MetricDefinition;
@@ -51,6 +53,34 @@ public final class FlowDtos {
     }
   }
 
+  /**
+   * One part of the waiting time: a reason, the reserved bucket for impeded time nobody named, or
+   * the residual of waiting that carried no signal. {@code share} is of {@code totalHours} in
+   * {@link ImpedimentsDto} — never of the waiting card, which is a median.
+   */
+  public record ImpedimentSliceDto(String key, String label, double hours, double share) {
+
+    public static ImpedimentSliceDto from(ImpedimentSlice s) {
+      return new ImpedimentSliceDto(s.key(), s.label(), s.hours(), s.share());
+    }
+  }
+
+  /**
+   * {@code items}/{@code itemsWithSignal} is the signal's coverage. Without it a team that never
+   * marks impediments reads exactly like a team that is never blocked.
+   */
+  public record ImpedimentsDto(
+      List<ImpedimentSliceDto> slices, double totalHours, int items, int itemsWithSignal) {
+
+    public static ImpedimentsDto from(ImpedimentReasons r) {
+      return new ImpedimentsDto(
+          r.slices().stream().map(ImpedimentSliceDto::from).toList(),
+          r.waitingHours(),
+          r.items(),
+          r.itemsWithSignal());
+    }
+  }
+
   public record ScatterDto(String nodeId, String label, double throughput, double cycleTime) {
 
     public static ScatterDto from(ScatterPoint s) {
@@ -63,6 +93,7 @@ public final class FlowDtos {
       String childType,
       List<FlowCardDto> cards,
       List<PhaseDto> phases,
+      ImpedimentsDto impediments,
       List<ScatterDto> scatter) {
 
     /** Builds the payload, dropping any scatter point the caller may not view. */
@@ -72,6 +103,7 @@ public final class FlowDtos {
           dash.childType(),
           dash.cards().stream().map(FlowCardDto::from).toList(),
           dash.phases().stream().map(PhaseDto::from).toList(),
+          ImpedimentsDto.from(dash.impediments()),
           dash.scatter().stream()
               .filter(s -> canView.test(s.nodeId()))
               .map(ScatterDto::from)

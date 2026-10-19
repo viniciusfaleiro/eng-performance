@@ -8,6 +8,7 @@ import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.config.ImpedimentConvention;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -53,5 +54,19 @@ class AdminPersistenceTest {
 
     assertThat(config.getAdoIntegration()).extracting(AdoIntegration::connected).isEqualTo(true);
     assertThat(config.getAiConvention()).extracting(AiConvention::tag).isEqualTo("[ai]");
+  }
+
+  @Test
+  void persistsTheImpedimentConventionAndDefaultsToOffWithoutARow() {
+    assertThat(config.getImpedimentConvention().enabled()).isFalse();
+
+    config.saveImpedimentConvention(new ImpedimentConvention("Custom.Impediment", "Impedimento:"));
+
+    assertThat(config.getImpedimentConvention())
+        .isEqualTo(new ImpedimentConvention("Custom.Impediment", "Impedimento:"));
+
+    config.saveImpedimentConvention(ImpedimentConvention.off());
+
+    assertThat(config.getImpedimentConvention().enabled()).isFalse();
   }
 }

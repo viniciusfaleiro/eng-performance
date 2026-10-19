@@ -2,6 +2,7 @@ package com.engperf.adapter.inbound.web.admin;
 
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.config.MailTransport;
 import com.engperf.domain.config.SmtpSettings;
 import java.time.Instant;
@@ -36,6 +37,15 @@ final class ConfigDtos {
 
   record AiRequest(
       String strategy, String trailer, String tag, String regex, boolean caseSensitive) {}
+
+  record ImpedimentView(String fieldName, String tagPrefix) {
+
+    static ImpedimentView from(ImpedimentConvention c) {
+      return new ImpedimentView(c.fieldName(), c.tagPrefix());
+    }
+  }
+
+  record ImpedimentRequest(String fieldName, String tagPrefix) {}
 
   /**
    * {@code passwordSet} tells the UI whether a password is stored — the password itself never is.

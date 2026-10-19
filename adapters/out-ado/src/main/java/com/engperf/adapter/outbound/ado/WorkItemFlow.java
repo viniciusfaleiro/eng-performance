@@ -1,9 +1,12 @@
 package com.engperf.adapter.outbound.ado;
 
+import com.engperf.domain.config.ImpedimentConvention;
+import com.engperf.domain.metrics.Interval;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -18,6 +21,13 @@ import org.slf4j.LoggerFactory;
  * before the first working state is ignored; wait counts only idle time between the first working
  * and terminal.
  *
+ * <p>On top of that classification sits the impediment overlay ({@link ImpedimentTimeline}): the
+ * part of an active or review stretch during which the item was impeded is reported as wait, since
+ * a board with no blocked column otherwise reports an item parked for days inside an active column
+ * as pure work. The overlay only moves hours between buckets — the three still sum to the same
+ * total — and a stretch already classified as wait is left alone, because counting the overlay on
+ * top of it would report more hours than the item lived.
+ *
  * <p>Every step is traced at DEBUG, keyed by the work item id: the reconstruction depends on the
  * item's own state names and on revision dates the API sometimes reports oddly, so when a number
  * looks wrong the only useful answer is the sequence that produced it. Raising the level for this
@@ -31,7 +41,10 @@ record WorkItemFlow(
     Double leadH,
     Instant completion,
     boolean started,
-    String spans) {
+    String spans,
+    Map<String, Double> impededByReason,
+    Map<String, String> impededLabels,
+    String impededSpans) {
 
   private static final Logger LOG = LoggerFactory.getLogger(WorkItemFlow.class);
 
@@ -41,13 +54,15 @@ record WorkItemFlow(
       Function<String, Segment> classify,
       Instant created,
       Instant changed,
-      Instant now) {
+      Instant now,
+      ImpedimentConvention impediment) {
     List<StateAt> states = collectStates(wiId, updates, classify, changed, now);
     if (states.size() < 2) {
       LOG.debug(
           "WI {}: {} transição(ões) utilizável(is) — sem flow (mínimo 2)", wiId, states.size());
-      return new WorkItemFlow(0, 0, 0, null, null, null, false, "");
+      return new WorkItemFlow(0, 0, 0, null, null, null, false, "", Map.of(), Map.of(), "");
     }
+    ImpedimentTimeline blocked = ImpedimentTimeline.of(wiId, updates, impediment, changed, now);
     states.sort(Comparator.comparing(StateAt::at));
     double activeMs = 0;
     double reviewMs = 0;
@@ -55,6 +70,7 @@ record WorkItemFlow(
     Instant firstWork = null;
     Instant completion = null;
     StringJoiner spans = new StringJoiner(",");
+    List<Interval> counted = new ArrayList<>();
     for (int i = 0; i < states.size(); i++) {
       Segment seg = states.get(i).segment();
       Instant from = states.get(i).at();
@@ -73,10 +89,17 @@ record WorkItemFlow(
           firstWork = from;
         }
         spans.add(from.toEpochMilli() + ":" + to.toEpochMilli());
-        activeMs += seg == Segment.ACTIVE ? ms : 0;
-        reviewMs += seg == Segment.REVIEW ? ms : 0;
+        double impededMs = blocked.overlapMs(from, to);
+        double workMs = ms - impededMs;
+        activeMs += seg == Segment.ACTIVE ? workMs : 0;
+        reviewMs += seg == Segment.REVIEW ? workMs : 0;
+        waitMs += impededMs; // o item estava em coluna de trabalho, mas o trabalho estava parado
+        counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
       } else if (firstWork != null) {
         waitMs += ms; // idle during the flow; backlog before the first work is ignored
+        // Sem overlapMs: já é 100% espera. O intervalo entra na janela só para que o impedimento
+        // que ocorreu aqui ganhe motivo na quebra — sem ser somado a waitMs uma segunda vez.
+        counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
       }
     }
     LOG.debug(
@@ -86,6 +109,9 @@ record WorkItemFlow(
         reviewMs / 3_600_000.0,
         waitMs / 3_600_000.0,
         completion);
+    Map<String, Double> byReason = blocked.hoursByReason(counted);
+    Map<String, String> labels = new LinkedHashMap<>();
+    byReason.keySet().forEach(r -> labels.put(r, blocked.label(r)));
     return new WorkItemFlow(
         activeMs / 3_600_000.0,
         reviewMs / 3_600_000.0,
@@ -94,7 +120,18 @@ record WorkItemFlow(
         span(created, completion),
         completion,
         firstWork != null,
-        spans.toString());
+        spans.toString(),
+        byReason,
+        labels,
+        joinSpans(blocked.blocked()));
+  }
+
+  private static String joinSpans(List<Interval> intervals) {
+    StringJoiner out = new StringJoiner(",");
+    for (Interval i : intervals) {
+      out.add(i.start() + ":" + i.end());
+    }
+    return out.toString();
   }
 
   void fill(Map<String, String> detail) {
@@ -109,6 +146,7 @@ record WorkItemFlow(
     detail.put("den", AdoMapper.num(active + waitH)); //          denominator = working + wait
     detail.put("hours", AdoMapper.num(active)); // individual distribution total (active work)
     detail.put("spans", spans);
+    fillImpediment(detail);
     if (completion == null) {
       detail.put("in_progress", "1");
       return;
@@ -119,6 +157,32 @@ record WorkItemFlow(
     }
     if (cycleH != null) {
       detail.put("cycle_h", AdoMapper.num(cycleH));
+    }
+  }
+
+  /**
+   * The impeded hours, one key per reason, plus the impeded stretches themselves.
+   *
+   * <p>No aggregate total is written on purpose: the sum of the reasons <em>is</em> the total, and
+   * a second accumulator for it is the second truth that lets a breakdown disagree with the figure
+   * it explains. The residual of the waiting figure — waiting time with no signal at all — is
+   * derived on read for the same reason.
+   *
+   * <p>{@code impeded_spans} sits beside {@code spans} instead of being cut out of it: an impeded
+   * item is still in progress, and punching holes in the intervals that answer "what was in
+   * progress?" would quietly answer a different question.
+   */
+  private void fillImpediment(Map<String, String> detail) {
+    impededByReason.forEach(
+        (reason, hours) -> {
+          detail.put("impeded:" + reason, AdoMapper.num(hours));
+          String label = impededLabels.get(reason);
+          if (label != null && !label.equals(reason)) {
+            detail.put("impeded_label:" + reason, label);
+          }
+        });
+    if (!impededSpans.isEmpty()) {
+      detail.put("impeded_spans", impededSpans);
     }
   }
 
@@ -157,21 +221,15 @@ record WorkItemFlow(
         continue;
       }
       String raw = u.path("revisedDate").asText();
-      Instant at = AdoMapper.parseInstant(raw);
+      Instant at = RevisionDates.of(u, changed, now);
       if (at == null) {
-        LOG.debug("WI {}: revisedDate ilegível ({}) — transição descartada", wiId, raw);
-        continue; // sem data e sem substituto: não dá para situar a transição no tempo
+        // Ilegível, ou vigente sem ChangedDate utilizável: nos dois casos não dá para situar a
+        // transição no tempo, e o raw na mensagem é o que permite distinguir um do outro.
+        LOG.debug("WI {}: revisão sem data utilizável ({}) — transição descartada", wiId, raw);
+        continue;
       }
-      if (at.isAfter(now)) {
-        if (changed == null || changed.isAfter(now)) {
-          LOG.debug(
-              "WI {}: revisão vigente ({}) sem ChangedDate utilizável — transição descartada",
-              wiId,
-              raw);
-          continue;
-        }
-        LOG.debug("WI {}: revisão vigente ({}) datada pelo ChangedDate {}", wiId, raw, changed);
-        at = changed;
+      if (!at.equals(AdoMapper.parseInstant(raw))) {
+        LOG.debug("WI {}: revisão vigente ({}) datada pelo ChangedDate {}", wiId, raw, at);
       }
       String state = sv.path("newValue").asText("");
       Segment seg = classify.apply(state);

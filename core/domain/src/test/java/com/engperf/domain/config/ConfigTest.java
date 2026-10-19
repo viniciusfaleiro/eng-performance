@@ -80,4 +80,18 @@ class ConfigTest {
     assertThat(s.password()).isEqualTo("new-secret");
     assertThat(s.host()).isEqualTo("smtp.empresa.com");
   }
+
+  @Test
+  void impedimentConventionTrimsAndTreatsBlankAsAbsent() {
+    ImpedimentConvention c = new ImpedimentConvention("  Custom.Impediment ", "   ");
+    assertThat(c.fieldName()).isEqualTo("Custom.Impediment");
+    assertThat(c.tagPrefix()).isNull();
+    assertThat(c.enabled()).isTrue();
+  }
+
+  @Test
+  void anEmptyImpedimentConventionRecognisesNothing() {
+    assertThat(ImpedimentConvention.off().enabled()).isFalse();
+    assertThat(new ImpedimentConvention(null, "Impedimento:").enabled()).isTrue();
+  }
 }

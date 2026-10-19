@@ -56,8 +56,7 @@ class InProgressSpansTest {
   void aClosedItemIsNotExtended() {
     RawEvent closed = item("10:20", false);
 
-    assertThat(InProgressSpans.of(closed, READ).intervals())
-        .containsExactly(new InProgressSpans.Interval(10, 20));
+    assertThat(InProgressSpans.of(closed, READ).intervals()).containsExactly(new Interval(10, 20));
   }
 
   /** Um item já esticado além da leitura (relógio fixado para trás) não encurta. */
@@ -67,7 +66,7 @@ class InProgressSpansTest {
     RawEvent open = item((after - 3600_000) + ":" + after, true);
 
     assertThat(InProgressSpans.of(open, READ).intervals())
-        .containsExactly(new InProgressSpans.Interval(after - 3600_000, after));
+        .containsExactly(new Interval(after - 3600_000, after));
   }
 
   /**
@@ -85,15 +84,13 @@ class InProgressSpansTest {
   void anUnreadablePartIsSkippedWithoutLosingTheRest() {
     InProgressSpans s = spans(item("10:20,lixo,30:xx,,40:50", false));
 
-    assertThat(s.intervals())
-        .containsExactly(
-            new InProgressSpans.Interval(10, 20), new InProgressSpans.Interval(40, 50));
+    assertThat(s.intervals()).containsExactly(new Interval(10, 20), new Interval(40, 50));
   }
 
   @Test
   void invertedAndEmptyIntervalsAreDropped() {
     assertThat(spans(item("20:10,30:30,40:50", false)).intervals())
-        .containsExactly(new InProgressSpans.Interval(40, 50));
+        .containsExactly(new Interval(40, 50));
   }
 
   @Test
@@ -102,8 +99,7 @@ class InProgressSpansTest {
 
     assertThat(s.hoursWithin(day(10), day(12))).isCloseTo(48.0, Offset.offset(1e-9));
     assertThat(s.within(day(10), day(12)))
-        .containsExactly(
-            new InProgressSpans.Interval(day(10).toEpochMilli(), day(12).toEpochMilli()));
+        .containsExactly(new Interval(day(10).toEpochMilli(), day(12).toEpochMilli()));
   }
 
   private static InProgressSpans spans(RawEvent e) {

@@ -6,6 +6,7 @@ import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.application.port.outbound.AdoEventSourcePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.config.AiConvention;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkType;
 import com.engperf.domain.structure.Repository;
@@ -277,6 +278,8 @@ public final class AdoEventSource implements AdoEventSourcePort {
     Map<String, Function<String, Segment>> classifierByType = new HashMap<>();
     UnmappedTypes unmapped = new UnmappedTypes();
     Instant now = Instant.now();
+    // Uma leitura por lote, não por item: a convenção é configuração, não dado do work item.
+    ImpedimentConvention impediment = config.impedimentConvention();
     for (JsonNode wi : collected) {
       String type = wi.path("fields").path("System.WorkItemType").asText("");
       if (!AdoWorkTypes.isMapped(type)) {
@@ -289,9 +292,9 @@ public final class AdoEventSource implements AdoEventSourcePort {
           client.get(
               org + "/_apis/wit/workitems/" + enc(wi.path("id").asText()) + "/updates?" + API,
               token);
-      String parentId = wi.path("fields").path("System.Parent").asText("");
-      String parentType = typeById.get(parentId);
-      events.add(AdoMapper.workItem(wi, updates, classify, now, org, proj, parentType, parentId));
+      events.add(
+          AdoMapper.workItem(
+              wi, updates, classify, now, org, proj, ParentRef.of(wi, typeById), impediment));
     }
     unmapped.report(org, proj);
     return collected.size();

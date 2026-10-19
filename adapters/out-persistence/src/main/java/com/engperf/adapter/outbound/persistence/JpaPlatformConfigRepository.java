@@ -4,6 +4,7 @@ import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.config.MailTransport;
 import com.engperf.domain.config.SmtpSettings;
 import org.springframework.stereotype.Component;
@@ -22,16 +23,19 @@ public class JpaPlatformConfigRepository implements PlatformConfigPort {
 
   private final AdoIntegrationJpaRepository ado;
   private final AiConventionJpaRepository ai;
+  private final ImpedimentConventionJpaRepository impediment;
   private final SmtpSettingsJpaRepository smtp;
   private final SecretCipher cipher;
 
   public JpaPlatformConfigRepository(
       AdoIntegrationJpaRepository ado,
       AiConventionJpaRepository ai,
+      ImpedimentConventionJpaRepository impediment,
       SmtpSettingsJpaRepository smtp,
       SecretCipher cipher) {
     this.ado = ado;
     this.ai = ai;
+    this.impediment = impediment;
     this.smtp = smtp;
     this.cipher = cipher;
   }
@@ -56,6 +60,27 @@ public class JpaPlatformConfigRepository implements PlatformConfigPort {
     return ai.findById(ID)
         .map(JpaPlatformConfigRepository::toAi)
         .orElseGet(() -> new AiConvention(AiStrategy.TRAILER, null, null, null, false));
+  }
+
+  /**
+   * The stored convention, or the one that recognises nothing when no row exists — a board with no
+   * impediment signal is a valid board, and guessing a field name for it would reinterpret its flow
+   * figures without anyone asking.
+   */
+  @Override
+  @Transactional(readOnly = true)
+  public ImpedimentConvention getImpedimentConvention() {
+    return impediment
+        .findById(ID)
+        .map(e -> new ImpedimentConvention(e.getFieldName(), e.getTagPrefix()))
+        .orElseGet(ImpedimentConvention::off);
+  }
+
+  @Override
+  public ImpedimentConvention saveImpedimentConvention(ImpedimentConvention convention) {
+    impediment.save(
+        new ImpedimentConventionEntity(ID, convention.fieldName(), convention.tagPrefix()));
+    return convention;
   }
 
   @Override

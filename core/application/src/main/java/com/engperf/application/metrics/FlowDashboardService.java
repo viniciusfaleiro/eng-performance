@@ -15,9 +15,9 @@ import java.util.Objects;
 /**
  * Composes the Fluxo dashboard: the node's Fluxo cards followed by the volume cards (value +
  * evolution + coverage, no tier), the four-phase cycle-time breakdown (median of each phase over
- * the node's PR population), and a throughput×cycle scatter of the node's children — verticals at
- * the overview, teams within a vertical, nothing for a team or person (coaching-only: people are
- * never compared publicly).
+ * the node's PR population) with what the waiting phase was spent blocked by, and a
+ * throughput×cycle scatter of the node's children — verticals at the overview, teams within a
+ * vertical, nothing for a team or person (coaching-only: people are never compared publicly).
  */
 public final class FlowDashboardService implements FlowDashboardUseCase {
 
@@ -66,7 +66,13 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
               value(childCards, "cycle_time")));
     }
 
-    return new FlowDashboard(nodeId, childType(nodeId), cards, phases, scatter);
+    return new FlowDashboard(
+        nodeId,
+        childType(nodeId),
+        cards,
+        phases,
+        metrics.impediments(nodeId, period, workTypes),
+        scatter);
   }
 
   private static List<MetricDefinition> concat(

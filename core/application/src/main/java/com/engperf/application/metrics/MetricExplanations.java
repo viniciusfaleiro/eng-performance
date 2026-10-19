@@ -136,11 +136,18 @@ final class MetricExplanations {
                   "Do tempo total que um item levou, a porcentagem em que ele esteve efetivamente"
                       + " sendo trabalhado — o resto é espera.",
                   "Work items do Azure Boards, comparando tempo ativo com tempo total.",
-                  "Numerador: horas em estado ativo. Denominador: horas entre início e conclusão.",
+                  "Numerador: horas em estado ativo, menos as horas em que o item estava marcado"
+                      + " como impedido. Denominador: horas entre início e conclusão. O tempo"
+                      + " impedido conta do lado da espera mesmo quando o item estava numa coluna"
+                      + " de trabalho — num board sem coluna de bloqueio, é a única forma de o"
+                      + " número não ler trabalho onde havia item parado.",
                   "Itens sem histórico de estado suficiente para separar ativo de espera.",
                   "Pelo instante em que o item foi concluído.",
                   "Um item levou 40h no total, das quais 10h de trabalho ativo →"
-                      + " 10 ÷ 40 = 25%. Os outros 75% foram fila, revisão parada ou bloqueio.")),
+                      + " 10 ÷ 40 = 25%. Os outros 75% foram fila, revisão parada ou bloqueio."
+                      + "\n\nSe 4 dessas 10h estavam com impedimento marcado, o ativo é 6h e o"
+                      + " número cai para 15%. Períodos sincronizados antes desta regra não mudam"
+                      + " sozinhos: só reprocessando os eventos.")),
           Map.entry(
               "pr_review_time",
               new MetricExplanation(
@@ -196,22 +203,32 @@ final class MetricExplanations {
           Map.entry(
               "waiting_time",
               new MetricExplanation(
-                  "A mediana do tempo que os itens passaram parados na fila, antes de alguém"
-                      + " começar a trabalhar neles.",
-                  "Work items do Azure Boards, pelo tempo em estados de espera.",
-                  "Itens concluídos que passaram por estado de espera.",
-                  "O tempo depois que o trabalho começou — isso é Ativo ou Review.",
+                  "A mediana do tempo que os itens passaram parados: na fila do board, antes de"
+                      + " alguém começar, e também travados por impedimento depois disso.",
+                  "Work items do Azure Boards, pelo tempo em estados de espera e pelo tempo em que"
+                      + " o item estava marcado como impedido — campo de impedimento e/ou tag,"
+                      + " conforme a convenção configurada em Admin.",
+                  "Itens concluídos que passaram por estado de espera ou por impedimento. O tempo"
+                      + " impedido dentro de uma coluna de trabalho entra aqui e sai do Ativo ou"
+                      + " do Review; o que já era espera por estado não é contado duas vezes.",
+                  "O tempo depois que o trabalho começou e sem impedimento — isso é Ativo ou"
+                      + " Review.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"
                       + " que tenham acontecido antes dele.",
                   "Um item criado segunda e iniciado quinta tem 3 dias de espera. É a fase que"
-                      + " normalmente domina o cycle time e a que menos depende de quem executa.")),
+                      + " normalmente domina o cycle time e a que menos depende de quem executa."
+                      + "\n\nUm item que ficou 10h em 'Active', 4 delas com a tag"
+                      + " 'Impedimento:infra', tem 4h de espera e 6h de ativo — mesmo sem o board"
+                      + " ter coluna de bloqueio. Abrir a Espera mostra a quebra por motivo.")),
           Map.entry(
               "active_time",
               new MetricExplanation(
                   "A mediana do tempo em que os itens estiveram efetivamente em desenvolvimento.",
-                  "Work items do Azure Boards, pelo tempo em estados de trabalho ativo.",
+                  "Work items do Azure Boards, pelo tempo em estados de trabalho ativo, descontado"
+                      + " o tempo em que o item estava marcado como impedido.",
                   "Itens concluídos que passaram por estado ativo.",
-                  "Fila e revisão — elas têm suas próprias fases.",
+                  "Fila e revisão — elas têm suas próprias fases — e o tempo impedido, que vai"
+                      + " para a Espera ainda que o item estivesse numa coluna de trabalho.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"
                       + " que tenham acontecido antes dele.",
                   "Se o cycle time é 40h e o ativo é 10h, as outras 30h foram espera e revisão.")),
@@ -219,9 +236,11 @@ final class MetricExplanations {
               "review_time",
               new MetricExplanation(
                   "A mediana do tempo que os itens passaram aguardando ou recebendo revisão.",
-                  "Work items do Azure Boards, pelo tempo em estados de revisão.",
+                  "Work items do Azure Boards, pelo tempo em estados de revisão, descontado o"
+                      + " tempo em que o item estava marcado como impedido.",
                   "Itens concluídos que passaram por estado de revisão.",
-                  "Tempo de fila inicial e de desenvolvimento.",
+                  "Tempo de fila inicial, de desenvolvimento, e o tempo impedido, que vai para a"
+                      + " Espera.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"
                       + " que tenham acontecido antes dele.",
                   "6h em revisão num item de 40h é 15% do ciclo. Compare com o PR Review Time, que"

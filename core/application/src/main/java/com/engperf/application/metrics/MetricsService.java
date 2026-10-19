@@ -157,6 +157,25 @@ public final class MetricsService implements MetricsQueryUseCase {
         .toList();
   }
 
+  @Override
+  public ImpedimentReasons impediments(String nodeId, Period period, WorkTypeFilter workTypes) {
+    // A mesma definição, população e janela do card de Espera ao lado: a composição tem de falar
+    // dos itens que aquele número contou, não de uma coorte parecida.
+    return catalog
+        .find("waiting_time")
+        .map(
+            def ->
+                ImpedimentBreakdown.of(
+                    buildIndex(),
+                    fetch(def, period),
+                    def,
+                    nodeId,
+                    period,
+                    clock.instant(),
+                    MetricsEngine.restrict(catalog.population(def.key()), def, workTypes)))
+        .orElseGet(ImpedimentReasons::none);
+  }
+
   private MetricDefinition definition(String metricKey) {
     return catalog
         .find(metricKey)

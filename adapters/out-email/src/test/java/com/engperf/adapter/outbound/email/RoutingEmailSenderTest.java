@@ -55,6 +55,18 @@ class RoutingEmailSenderTest {
   }
 
   private static final class FakeConfig implements PlatformConfigPort {
+
+    @Override
+    public com.engperf.domain.config.ImpedimentConvention getImpedimentConvention() {
+      return com.engperf.domain.config.ImpedimentConvention.off();
+    }
+
+    @Override
+    public com.engperf.domain.config.ImpedimentConvention saveImpedimentConvention(
+        com.engperf.domain.config.ImpedimentConvention convention) {
+      return convention;
+    }
+
     private final SmtpSettings smtp;
 
     FakeConfig(SmtpSettings smtp) {
