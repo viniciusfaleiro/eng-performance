@@ -37,6 +37,9 @@ class AdminFixtures implements CommandLineRunner {
     if (config.aiConvention().trailer() == null && config.aiConvention().regex() == null) {
       seedConfig();
     }
+    if (!config.impedimentConvention().enabled()) {
+      seedImpediment();
+    }
   }
 
   private void seedUsers() {
@@ -66,5 +69,14 @@ class AdminFixtures implements CommandLineRunner {
   private void seedConfig() {
     // No ADO org/PAT to seed — ingestion is per-repository (device-code). Only the AI convention.
     config.saveAiConvention(AiStrategy.TRAILER, "Co-authored-by: Copilot", null, AI_REGEX, false);
+  }
+
+  /**
+   * The common spelling, so a board that already uses it is read correctly before anyone opens
+   * Admin. Both values are editable there — the field has to match the <em>reference name</em> of
+   * the board's own field, which no default can know.
+   */
+  private void seedImpediment() {
+    config.saveImpedimentConvention("Impediment", "Impedimento:");
   }
 }

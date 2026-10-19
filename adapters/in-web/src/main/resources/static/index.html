@@ -215,6 +215,15 @@ select.sel{font-family:inherit;font-size:13px;color:var(--on-surface);background
 .phase-item{display:flex;align-items:center;gap:8px;font-size:12px;}
 .phase-item i{width:10px;height:10px;border-radius:2px;}
 .phase-item b{margin-left:auto;font-family:var(--mono);}
+/* A fase que abre detalhe mostra que abre — a seta na legenda e o cursor no segmento. Sem isso a
+   Espera é clicável e ninguém descobre. */
+.phaseseg.click{cursor:pointer;}
+.phaseseg.click:hover{filter:brightness(1.12);}
+.phaseseg.click:focus-visible,.phase-item.click:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
+.phase-item.click{cursor:pointer;border-radius:8px;}
+.phase-item.click b{margin-left:auto;}
+.phase-item.click .row-go{margin-left:4px;}
+.phase-item.click:hover{color:var(--primary);}
 .hbar-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:12px;padding:6px 0;}
 .hbar-row+.hbar-row{border-top:1px solid var(--outline-var);}
 .hbar-name{display:flex;align-items:center;gap:8px;font-size:12.5px;}
@@ -623,7 +632,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   rebuildStructure();
 
   /* ---------- API wiring (S1: structure/admin) ---------- */
-  let NAME2ID={},VNAME2ID={},TNAME2ID={},ADO_CFG={},AI_CFG={},EMAIL_CFG={enabled:false,transport:"none",passwordSet:false};
+  let NAME2ID={},VNAME2ID={},TNAME2ID={},ADO_CFG={},AI_CFG={},IMP_CFG={},EMAIL_CFG={enabled:false,transport:"none",passwordSet:false};
   const ROLE_PT={admin:"Admin",exec:"Exec",manager:"Gestor",contributor:"Colaborador"};
   const STATUS_PT={active:"Ativo",invited:"Convidado",disabled:"Desativado"};
   const ROLE_API={Admin:"admin",Exec:"exec",Gestor:"manager",Colaborador:"contributor"};
@@ -769,11 +778,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       COMMITTERS.length=0;REPOS.length=0;USERS.length=0;
       if(CURRENT_USER.admin){
         // Config/admin data is admin-only on the backend (403 otherwise); fetch it only for admins.
-        const [verts,teams,coms,repos,accts,ado,ai,people,email]=await Promise.all([
+        const [verts,teams,coms,repos,accts,ado,ai,people,email,impediment]=await Promise.all([
           jget("/api/admin/verticals"),jget("/api/admin/teams"),
           jget("/api/admin/ado/committers"),jget("/api/admin/repositories"),
           jget("/api/admin/users"),jget("/api/admin/integrations/azure-devops"),jget("/api/admin/ai-convention"),
-          jget("/api/admin/people"),jget("/api/admin/email")]);
+          jget("/api/admin/people"),jget("/api/admin/email"),
+          jget("/api/admin/impediment-convention")]);
         // The structure tree only lists people who are on a team; a vertical manager may have none.
         // Merge the full people list so name resolution and the dropdown options cover everyone.
         peopleFull=people||[];
@@ -783,7 +793,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         coms.forEach(c=>COMMITTERS.push({identity:c.identity,name:c.displayName||c.identity,person:c.personId?(nameById[c.personId]||c.personId):null,commits:c.commitCount||0}));
         repos.forEach(r=>REPOS.push({repo:r.key,org:r.organization,project:r.project,team:r.teamId?(teamNameById[r.teamId]||r.teamId):null,stage:r.productionStage}));
         accts.forEach(u=>USERS.push({id:u.id,name:u.name,email:u.email,role:ROLE_PT[u.role]||u.role,status:STATUS_PT[u.status]||u.status,person:u.personId?(nameById[u.personId]||u.personId):null,lastLoginAt:u.lastLoginAt}));
-        ADO_CFG=ado;AI_CFG=ai;EMAIL_CFG=email;
+        ADO_CFG=ado;AI_CFG=ai;EMAIL_CFG=email;IMP_CFG=impediment;
       }else if(state.mode==="admin"){state.mode="structure";}
       rebuildStructure();
       // Add team-less people (rebuildStructure only sees the tree) so dropdown options include them.
@@ -1006,9 +1016,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     byNode[d.nodeId]=m;
     // Children carry only throughput (tp) + cycle time (ct) — enough for the rank/scatter panels.
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
-    return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),children:(d.scatter||[]).map(s=>s.nodeId)};
+    // As keys das fases vêm junto: é por elas que o segmento clicado sabe qual métrica abrir.
+    return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),
+      phaseKeys:(d.phases||[]).map(p=>p.key),impediments:d.impediments||null,
+      children:(d.scatter||[]).map(s=>s.nodeId)};
   }
-  function flowPhases(){const c=FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
+  const flowCache=()=>FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];
+  function flowPhases(){const c=flowCache();return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
+  function flowPhaseKeys(){const c=flowCache();return (c&&c.phaseKeys&&c.phaseKeys.length===3)?c.phaseKeys:null;}
+  function flowImpediments(){const c=flowCache();return c?c.impediments:null;}
   /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
      (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
      with/without-AI cycle-time series. ai_share/ai_adoption arrive as 0..1 ratios, shown as %. */
@@ -1385,8 +1401,12 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
 
   function phaseBlock(id,m){
     const total=snap(id,m,state.freq).cur;const parts=flowPhases()||phaseSplit(id,state.freq,total);const sum=parts.reduce((a,b)=>a+b,0)||1;
-    let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div class="phaseseg" style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h"></div>';});bar+='</div>';
-    let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div class="phase-item"><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b></div>';});leg+='</div>';
+    // A Espera é a única fase que abre: é a que tem de que ser feita (os motivos de impedimento).
+    // Só é acionável com dado real atrás — no mock não há o que abrir.
+    const keys=flowPhaseKeys();
+    const openable=(i)=>keys&&keys[i]==="waiting_time";
+    let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div'+(openable(i)?' class="phaseseg click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phaseseg"')+' style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h'+(openable(i)?" · ver motivos":"")+'"></div>';});bar+='</div>';
+    let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div'+(openable(i)?' class="phase-item click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phase-item"')+'><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b>'+(openable(i)?'<span class="row-go">›</span>':'')+'</div>';});leg+='</div>';
     // A leitura das fases depende de saber como o board é interpretado — sem isso o time não sabe
     // por que um estado caiu em Ativo e não em Review.
     return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">'+
@@ -1617,7 +1637,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   // total é lido como esforço gasto, e sem a segunda um item de 40 h aberto que aparece com 2 h
   // parece bug em vez de paralelismo.
   const HOURS_NOTE='<div class="hours-note">Horas <b>corridas</b> em que o item ficou em andamento — não horas trabalhadas. '+
-    'Cada hora corrida é <b>dividida entre os itens simultâneos</b>, então a hora de um item é menor que o tempo que ele ficou aberto.</div>';
+    'Cada hora corrida é <b>dividida entre os itens simultâneos</b>, então a hora de um item é menor que o tempo que ele ficou aberto. '+
+    'O tempo em que o item estava <b>impedido não conta</b>: item parado não é trabalho indo a lugar nenhum — ele aparece como Espera no dashboard de Fluxo.</div>';
   // Real work-type distribution (% stacked bar + hours per type), matching taskEffortBlock's chrome.
   function workTypeBlock(types,containersExcluded){
     const colors=WT_COLORS;
@@ -1772,9 +1793,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   }
 
   function viewAdmin(){
-    const tabs=[["users","Usuários"],["structure","Estrutura"],["identities","Identidades"],["repos","Repositórios"],["ado","Integração ADO"],["ia","Convenção de IA"],["email","E-mail"]];
+    const tabs=[["users","Usuários"],["structure","Estrutura"],["identities","Identidades"],["repos","Repositórios"],["ado","Integração ADO"],["ia","Convenção de IA"],["impedimento","Impedimento"],["email","E-mail"]];
     let h='<div class="tabs">'+tabs.map(t=>'<button class="tab'+(state.adminTab===t[0]?" active":"")+'" data-atab="'+t[0]+'">'+t[1]+'</button>').join("")+'</div>';
-    const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA,email:adminEmail}[state.adminTab]||adminUsers;
+    const fn={users:adminUsers,structure:adminStructure,identities:adminIdentities,repos:adminRepos,ado:adminAdo,ia:adminIA,impedimento:adminImpediment,email:adminEmail}[state.adminTab]||adminUsers;
     return h+fn();
   }
   // Nulo aqui significa "nunca acessou" — é o caso que mais importa numa implantação, então a tela
@@ -1930,6 +1951,29 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       '<div class="panel" style="margin-bottom:14px"><div class="chart-title" style="margin-bottom:10px">Trailers reconhecidos</div>'+
       '<div style="display:flex;flex-direction:column;gap:8px"><span class="code">Co-authored-by: Copilot &lt;...&gt;</span><span class="code">Co-authored-by: Claude &lt;...&gt;</span><span class="code">Assisted-by: Cursor</span><span class="code">[ai] no início da mensagem</span></div></div>'+
       '<div class="form-grid"><label>Regex de detecção<input id="ia_regex" value="'+(AI_CFG.regex||"")+'" /></label><label>Janela de backfill (meses)<input id="ia_backfill" value="6" /></label></div>'+
+      '<button class="btn" data-aact="save">Salvar convenção</button>';
+  }
+  /* Convenção de impedimento: o campo e a tag que dizem que um item parou. Nomear o campo pelo
+     reference name é o detalhe que mais erra — o label exibido no board não funciona —, e deixar
+     os dois vazios é o jeito de desligar o overlay sem deploy. */
+  function adminImpediment(){
+    const c=IMP_CFG||{};
+    const on=c.fieldName||c.tagPrefix;
+    const badge=on?'<span class="status-dot"><i style="background:var(--good)"></i>Sinal ativo</span>'
+      :'<span class="status-dot"><i style="background:var(--muted)"></i>Desligado — a Espera vem só dos estados do board</span>';
+    return '<div class="callout">O tempo em que um work item esteve <b>impedido</b> conta como <b>Espera</b>, '+
+      'mesmo que ele estivesse numa coluna de trabalho — é o que corrige o Flow Efficiency num board sem coluna de bloqueio. '+
+      'O sinal são dois: o <b>campo</b> de impedimento (valor diferente de vazio e de "None") e a <b>tag</b> com um prefixo. '+
+      'O texto depois do prefixo é o <b>motivo</b>: <span class="code">Impedimento:infra</span> aparece como <b>infra</b> na quebra da Espera.</div>'+
+      '<div style="display:flex;align-items:center;gap:14px;margin:14px 0">'+badge+'</div>'+
+      '<div class="form-grid">'+
+        '<label>Campo (reference name)<input id="imp_field" value="'+escHtml(c.fieldName||"")+'" placeholder="Impediment" /></label>'+
+        '<label>Prefixo da tag<input id="imp_prefix" value="'+escHtml(c.tagPrefix||"")+'" placeholder="Impedimento:" /></label>'+
+      '</div>'+
+      '<div class="card-note" style="margin:10px 0 14px">O campo é o <b>reference name</b> da API '+
+      '(<span class="code">Impediment</span>, <span class="code">Custom.Impediment</span>) — não o rótulo que o board mostra. '+
+      'Deixar os dois em branco desliga o sinal: nenhum item é lido como impedido e as fases voltam a sair só dos estados. '+
+      'A regra vale para o que for sincronizado a partir de agora; períodos já ingeridos só mudam reprocessando.</div>'+
       '<button class="btn" data-aact="save">Salvar convenção</button>';
   }
   function adminEmail(){
@@ -2112,6 +2156,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
   ["click","keydown"].forEach(t=>{
     bindRowAffordance(t,"data-wtype",openWorkItemsDrawer);
     bindRowAffordance(t,"data-reviews",openReviewsDrawer);
+    bindRowAffordance(t,"data-phase",openWaitingDrawer);
   });
   // Label lookup that tolerates view keys (which have no metric definition).
   function M0(key){try{return M(key);}catch(e){return null;}}
@@ -2207,6 +2252,9 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       if(state.adminTab==="ia"){
         jput("/api/admin/ai-convention",{strategy:"trailer",trailer:AI_CFG.trailer,tag:AI_CFG.tag,regex:mval("ia_regex"),caseSensitive:!!AI_CFG.caseSensitive})
           .then(loadFromApi).then(()=>toast("Convenção salva")).catch(apiErr);
+      } else if(state.adminTab==="impedimento"){
+        jput("/api/admin/impediment-convention",{fieldName:mval("imp_field")||null,tagPrefix:mval("imp_prefix")||null})
+          .then(loadFromApi).then(()=>toast("Convenção de impedimento salva")).catch(apiErr);
       } else if(state.adminTab==="email"){
         jput("/api/admin/email",{
           enabled:$("em_enabled").value==="true",host:mval("em_host")||null,
@@ -2294,6 +2342,65 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           block("Menor uso de IA","oportunidade de conversa, não de cobrança",low);
       })
       .catch(()=>{const b=$("drawerItems");if(b)b.innerHTML='<div class="card-note">Não foi possível carregar.</div>';});
+  }
+  /* A Espera aberta pelo card de fases: de que ela foi feita (motivos de impedimento que o time
+     escreveu, impedimento sem motivo, e o resto como fila do board) e os itens considerados. As
+     fatias compõem a SOMA das horas de espera da população — o card ao lado é mediana, e mediana
+     não se decompõe; por isso o total vem escrito ao lado do título. */
+  const IMP_COLORS=["var(--cat-5)","var(--cat-4)","var(--cat-1)","var(--cat-3)","var(--cat-6)","var(--cat-7)"];
+  const IMP_MAX_SLICES=8;
+  function openWaitingDrawer(){
+    state.openDrawerKey="waiting_time";
+    state.drawerNode=state.node;
+    const imp=flowImpediments();
+    const xp=explanationOf("metric","waiting_time");
+    let h='<div class="drawer-head"><div><div class="crumb-level">'+NODES[state.node].label+' · '+state.freq+
+      '</div><h2 style="font-size:20px;margin-top:2px">Espera — por que o item parou</h2></div>'+
+      '<button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
+    h+='<div class="drawer-body"><div class="def">'+(xp?escHtml(xp.rule)+' '+escHtml(xp.source):"")+
+      ' '+infoBtn("metric","waiting_time","Espera")+'</div>';
+    h+=impedimentBlock(imp);
+    h+='<div class="chart-wrap"><div class="chart-title" style="margin-bottom:8px">Itens considerados no cálculo</div>'+
+      '<div id="drawerItems"><div class="card-note">Carregando…</div></div></div></div>';
+    $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
+    $("drawerClose").addEventListener("click",closeDrawer);
+    loadDrawerItems("waiting_time","h");
+  }
+  // Uma fatia de verdade que arredonda para 0% desapareceria do texto enquanto segue na barra.
+  const pctLabel=(p)=>p>0&&p<1?"<1%":Math.round(p)+"%";
+  function impedimentBlock(imp){
+    const title='Espera por motivo'+infoBtn("view","impediment_reasons","a quebra da Espera por motivo");
+    if(!imp||!imp.slices||!imp.slices.length){
+      return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:8px">'+title+
+        '</div><div class="card-note">Nenhuma hora de espera no período para detalhar.</div></div>';
+    }
+    // Tag é texto livre: sem teto, um motivo por item estoura a legenda. Os maiores aparecem e o
+    // resto vira "Outros" — a soma continua sendo o total da Espera.
+    const slices=imp.slices.slice();
+    let shown=slices;
+    if(slices.length>IMP_MAX_SLICES){
+      const rest=slices.slice(IMP_MAX_SLICES-1);
+      shown=slices.slice(0,IMP_MAX_SLICES-1).concat([{key:"outros",label:"Outros",
+        hours:rest.reduce((a,b)=>a+b.hours,0),share:rest.reduce((a,b)=>a+b.share,0)}]);
+    }
+    const color=(sl,i)=>sl.key==="queue"?"var(--cat-2)":(sl.key==="?"?"var(--outline)":IMP_COLORS[i%IMP_COLORS.length]);
+    const items=shown.map((sl,i)=>({n:escHtml(sl.label),c:color(sl,i),val:sl.hours}));
+    const maxH=Math.max.apply(null,shown.map(sl=>sl.hours))||1;
+    let out=stackBlock(title+' <span class="card-note" style="font-weight:400">· '+fmt(imp.totalHours,"h")+
+      ' h de espera no período</span>',items,"h");
+    let bars='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Horas por motivo</div>';
+    shown.forEach((sl,i)=>{bars+='<div class="hbar-row"><span class="hbar-name"><i style="background:'+color(sl,i)+
+      '"></i>'+escHtml(sl.label)+'</span><div class="bar-track"><div class="bar-fill" style="width:'+
+      Math.max(4,sl.hours/maxH*100).toFixed(0)+'%;background:'+color(sl,i)+'"></div></div><span class="hbar-val">'+
+      fmt(sl.hours,"h")+' h · '+pctLabel(sl.share)+'</span></div>';});
+    // Cobertura do sinal, no mesmo lugar onde o número é lido: um time que não marca impedimento
+    // produz a mesma quebra de um time que nunca travou, e só uma dessas leituras é boa notícia.
+    bars+='<div class="card-note" style="margin-top:10px">'+
+      (imp.itemsWithSignal?'<span class="num">'+imp.itemsWithSignal+'</span> de <span class="num">'+imp.items+
+        '</span> itens do período têm sinal de impedimento.'
+       :'Nenhum dos <span class="num">'+imp.items+'</span> itens do período tem sinal de impedimento — '+
+        'a Espera é toda fila do board, ou o time não marca impedimento.')+'</div>';
+    return out+bars+'</div>';
   }
   function loadDrawerItems(mk,unit){
     const box=$("drawerItems");if(!box)return;

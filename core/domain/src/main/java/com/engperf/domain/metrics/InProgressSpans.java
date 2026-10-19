@@ -23,20 +23,6 @@ import java.util.Objects;
  */
 public record InProgressSpans(List<Interval> intervals) {
 
-  /** Half-open {@code [start, end)} in epoch milliseconds. */
-  public record Interval(long start, long end) {
-
-    public Interval {
-      if (start >= end) {
-        throw new IllegalArgumentException("intervalo vazio ou invertido: " + start + ".." + end);
-      }
-    }
-
-    public double hours() {
-      return (end - start) / 3_600_000.0;
-    }
-  }
-
   private static final InProgressSpans NONE = new InProgressSpans(List.of());
 
   public InProgressSpans {
@@ -68,31 +54,17 @@ public record InProgressSpans(List<Interval> intervals) {
       return NONE;
     }
     boolean open = "1".equals(item.detail().get("in_progress"));
-    List<Interval> parsed = new ArrayList<>();
-    long lastEnd = Long.MIN_VALUE;
-    int lastIndex = -1;
-    for (String part : raw.split(",")) {
-      int colon = part.indexOf(':');
-      if (colon < 0) {
-        continue; // formato inesperado: ignora a parte em vez de derrubar a leitura inteira
-      }
-      try {
-        long start = Long.parseLong(part.substring(0, colon).strip());
-        long end = Long.parseLong(part.substring(colon + 1).strip());
-        if (start >= end) {
-          continue;
-        }
-        parsed.add(new Interval(start, end));
-        if (end > lastEnd) {
-          lastEnd = end;
-          lastIndex = parsed.size() - 1;
-        }
-      } catch (NumberFormatException ignored) {
-        // idem: uma parte ilegível não invalida as outras
-      }
-    }
+    List<Interval> parsed = new ArrayList<>(Intervals.parse(raw));
     if (parsed.isEmpty()) {
       return NONE;
+    }
+    long lastEnd = Long.MIN_VALUE;
+    int lastIndex = -1;
+    for (int i = 0; i < parsed.size(); i++) {
+      if (parsed.get(i).end() > lastEnd) {
+        lastEnd = parsed.get(i).end();
+        lastIndex = i;
+      }
     }
     if (open) {
       long now = readNow.toEpochMilli();
@@ -124,17 +96,7 @@ public record InProgressSpans(List<Interval> intervals) {
 
   /** The intervals clipped to {@code [from, to)}; empty when none of them reaches into it. */
   public List<Interval> within(Instant from, Instant to) {
-    long lo = from.toEpochMilli();
-    long hi = to.toEpochMilli();
-    List<Interval> out = new ArrayList<>();
-    for (Interval i : intervals) {
-      long start = Math.max(i.start(), lo);
-      long end = Math.min(i.end(), hi);
-      if (end > start) {
-        out.add(new Interval(start, end));
-      }
-    }
-    return out;
+    return Intervals.clip(intervals, from.toEpochMilli(), to.toEpochMilli());
   }
 
   /** Total elapsed hours in progress inside {@code [from, to)}. */

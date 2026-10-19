@@ -1,5 +1,6 @@
 package com.engperf.adapter.outbound.ado;
 
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkType;
@@ -226,9 +227,10 @@ final class AdoMapper {
   }
 
   /**
-   * A work item → one WORKITEM event, its flow measures reconstructed from the state history.
-   * {@code org}/{@code project} (already URL-path-encoded by the caller) build the item's deep-link
-   * — the workitems batch GET carries no {@code _links.web.href} to reuse.
+   * A work item → one WORKITEM event, its flow measures reconstructed from the state history and
+   * corrected by the impediment overlay {@code impediment} describes. {@code org}/{@code project}
+   * (already URL-path-encoded by the caller) build the item's deep-link — the workitems batch GET
+   * carries no {@code _links.web.href} to reuse.
    */
   static RawEvent workItem(
       JsonNode wi,
@@ -237,9 +239,11 @@ final class AdoMapper {
       Instant now,
       String org,
       String project,
-      String parentAdoType,
-      String parentAdoId) {
+      ParentRef parent,
+      ImpedimentConvention impediment) {
     JsonNode f = wi.path("fields");
+    String parentAdoType = parent.adoType();
+    String parentAdoId = parent.adoId();
     Instant created = f.hasNonNull("System.CreatedDate") ? instant(f, "System.CreatedDate") : null;
     String id = wi.path("id").asText();
     Map<String, String> detail = new HashMap<>();
@@ -271,7 +275,7 @@ final class AdoMapper {
     detail.put("summary", f.path("System.Title").asText(""));
     detail.put("url", org + "/" + project + "/_workitems/edit/" + id);
     Instant changed = f.hasNonNull("System.ChangedDate") ? instant(f, "System.ChangedDate") : null;
-    WorkItemFlow flow = WorkItemFlow.of(id, updates, classify, created, changed, now);
+    WorkItemFlow flow = WorkItemFlow.of(id, updates, classify, created, changed, now, impediment);
     Instant occurred =
         flow.completion() != null ? flow.completion() : instant(f, "System.ChangedDate");
     flow.fill(detail);

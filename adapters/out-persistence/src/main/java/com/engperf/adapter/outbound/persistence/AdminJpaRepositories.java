@@ -14,6 +14,9 @@ interface AdoIntegrationJpaRepository extends JpaRepository<AdoIntegrationEntity
 
 interface AiConventionJpaRepository extends JpaRepository<AiConventionEntity, String> {}
 
+interface ImpedimentConventionJpaRepository
+    extends JpaRepository<ImpedimentConventionEntity, String> {}
+
 interface SmtpSettingsJpaRepository extends JpaRepository<SmtpSettingsEntity, String> {}
 
 interface PasswordResetTokenJpaRepository extends JpaRepository<PasswordResetTokenEntity, String> {

@@ -2,6 +2,7 @@ package com.engperf.adapter.outbound.ado;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.RawEvent;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 class AdoMapperTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
+  private static final ImpedimentConvention OFF = ImpedimentConvention.off();
 
   /** PR sem contagem de arquivos — o caso em que o tamanho é "sem dado". */
   private static final OptionalInt NO_FILES = OptionalInt.empty();
@@ -245,7 +247,7 @@ class AdoMapperTest {
 
     RawEvent e =
         AdoMapper.workItem(
-            fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj", null, null);
+            fixture("workitem.json"), updates, CLASSIFY, now, "org", "Proj", ParentRef.none(), OFF);
     assertThat(e.id()).isEqualTo("wi:555");
     assertThat(e.type()).isEqualTo(EventType.WORKITEM);
     assertThat(e.committerIdentity()).isEqualTo("ana@empresa.com");
@@ -273,8 +275,8 @@ class AdoMapperTest {
             Instant.parse("2026-06-11T00:00:00Z"),
             "org",
             "Proj",
-            null,
-            null);
+            ParentRef.none(),
+            OFF);
     assertThat(e.numericValue()).isNull(); // no usable history → excluded from the metric value
     assertThat(e.detail()).doesNotContainKey("active_h").doesNotContainKey("completed");
   }
@@ -293,8 +295,8 @@ class AdoMapperTest {
             Instant.parse("2026-06-10T13:00:00Z"),
             "org",
             "Proj",
-            null,
-            null);
+            ParentRef.none(),
+            OFF);
     assertThat(e.detail().get("in_progress")).isEqualTo("1");
     assertThat(e.detail()).doesNotContainKey("completed").doesNotContainKey("cycle_h");
     assertThat(e.detail().get("active_h")).isEqualTo("2.0"); // 11:00 → now 13:00
@@ -326,5 +328,51 @@ class AdoMapperTest {
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  /**
+   * Ponta a ponta com a convenção real: o payload cru do ADO (campo e tag mudando no mesmo
+   * histórico que as transições) chega ao {@code detail} com a espera corrigida e o motivo nomeado.
+   * O item passa as quatro horas em "Active", duas delas travadas.
+   */
+  @Test
+  void workItemAppliesTheImpedimentOverlayFromTheRealPayload() {
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem.json"),
+            fixture("workitem-updates-impediment.json"),
+            CLASSIFY,
+            Instant.parse("2026-06-11T00:00:00Z"),
+            "org",
+            "Proj",
+            ParentRef.none(),
+            new ImpedimentConvention("Impediment", "Impedimento:"));
+
+    assertThat(e.detail().get("active_h")).isEqualTo("2.0"); // 11:00→15:00 menos as 2h travadas
+    assertThat(e.detail().get("wait_h")).isEqualTo("2.0"); // 12:00→14:00
+    assertThat(e.detail().get("cycle_h")).isEqualTo("4.0"); // o total não muda
+    assertThat(e.detail().get("num")).isEqualTo("2.0"); // flow efficiency = 2/4
+    assertThat(e.detail().get("den")).isEqualTo("4.0");
+    assertThat(e.detail().get("impeded:infra")).isEqualTo("2.0");
+    assertThat(e.detail().get("impeded_label:infra")).isEqualTo("Infra");
+  }
+
+  /** O mesmo payload com a convenção desligada: nada de impedimento, Espera zero. */
+  @Test
+  void theSamePayloadWithoutAConventionIsReadAsPureWork() {
+    RawEvent e =
+        AdoMapper.workItem(
+            fixture("workitem.json"),
+            fixture("workitem-updates-impediment.json"),
+            CLASSIFY,
+            Instant.parse("2026-06-11T00:00:00Z"),
+            "org",
+            "Proj",
+            ParentRef.none(),
+            OFF);
+
+    assertThat(e.detail().get("active_h")).isEqualTo("4.0");
+    assertThat(e.detail().get("wait_h")).isEqualTo("0.0");
+    assertThat(e.detail().keySet()).noneMatch(k -> k.startsWith("impeded"));
   }
 }

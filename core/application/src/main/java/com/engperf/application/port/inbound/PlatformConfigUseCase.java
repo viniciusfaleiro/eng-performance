@@ -3,11 +3,12 @@ package com.engperf.application.port.inbound;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.config.SmtpSettings;
 
 /**
- * Inbound port: read the ADO integration marker, read/save the AI convention, and read/save/test
- * the outgoing email server configuration.
+ * Inbound port: read the ADO integration marker, read/save the AI and impediment conventions, and
+ * read/save/test the outgoing email server configuration.
  */
 public interface PlatformConfigUseCase {
 
@@ -20,6 +21,14 @@ public interface PlatformConfigUseCase {
 
   AiConvention saveAiConvention(
       AiStrategy strategy, String trailer, String tag, String regex, boolean caseSensitive);
+
+  /**
+   * The convention that marks a work item as impeded. Read by the ingestion on every sync, so a
+   * change takes effect on the next one without a restart.
+   */
+  ImpedimentConvention impedimentConvention();
+
+  ImpedimentConvention saveImpedimentConvention(String fieldName, String tagPrefix);
 
   SmtpSettings smtpSettings();
 

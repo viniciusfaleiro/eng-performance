@@ -6,13 +6,14 @@ import com.engperf.application.port.outbound.PlatformConfigPort;
 import com.engperf.domain.config.AdoIntegration;
 import com.engperf.domain.config.AiConvention;
 import com.engperf.domain.config.AiStrategy;
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.config.SmtpSettings;
 import java.time.Instant;
 import java.util.Objects;
 
 /**
- * Application service for the singleton platform configuration (ADO connection, AI convention,
- * outgoing email server).
+ * Application service for the singleton platform configuration (ADO connection, AI and impediment
+ * conventions, outgoing email server).
  */
 public final class PlatformConfigService implements PlatformConfigUseCase {
 
@@ -43,6 +44,16 @@ public final class PlatformConfigService implements PlatformConfigUseCase {
   public AiConvention saveAiConvention(
       AiStrategy strategy, String trailer, String tag, String regex, boolean caseSensitive) {
     return port.saveAiConvention(new AiConvention(strategy, trailer, tag, regex, caseSensitive));
+  }
+
+  @Override
+  public ImpedimentConvention impedimentConvention() {
+    return port.getImpedimentConvention();
+  }
+
+  @Override
+  public ImpedimentConvention saveImpedimentConvention(String fieldName, String tagPrefix) {
+    return port.saveImpedimentConvention(new ImpedimentConvention(fieldName, tagPrefix));
   }
 
   @Override

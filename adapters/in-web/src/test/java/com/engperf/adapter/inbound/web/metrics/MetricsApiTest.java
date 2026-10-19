@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
+import com.engperf.application.metrics.ImpedimentReasons;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
@@ -303,6 +304,13 @@ class MetricsApiTest {
   }
 
   private static final class FakeMetrics implements MetricsQueryUseCase {
+
+    @Override
+    public ImpedimentReasons impediments(
+        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+      return ImpedimentReasons.none();
+    }
+
     /** The last work-type selection this fake was asked for — what the API test checks. */
     static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
 

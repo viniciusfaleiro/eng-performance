@@ -1,0 +1,36 @@
+{
+  "count": 5,
+  "value": [
+    {
+      "id": 1,
+      "revisedDate": "2026-06-10T10:00:00Z",
+      "fields": { "System.State": { "newValue": "New" } }
+    },
+    {
+      "id": 2,
+      "revisedDate": "2026-06-10T11:00:00Z",
+      "fields": { "System.State": { "oldValue": "New", "newValue": "Active" } }
+    },
+    {
+      "id": 3,
+      "revisedDate": "2026-06-10T12:00:00Z",
+      "fields": {
+        "Impediment": { "oldValue": "None", "newValue": "Yes" },
+        "System.Tags": { "oldValue": "urgente", "newValue": "urgente; Impedimento:Infra" }
+      }
+    },
+    {
+      "id": 4,
+      "revisedDate": "2026-06-10T14:00:00Z",
+      "fields": {
+        "Impediment": { "oldValue": "Yes", "newValue": "None" },
+        "System.Tags": { "oldValue": "urgente; Impedimento:Infra", "newValue": "urgente" }
+      }
+    },
+    {
+      "id": 5,
+      "revisedDate": "2026-06-10T15:00:00Z",
+      "fields": { "System.State": { "oldValue": "Active", "newValue": "Closed" } }
+    }
+  ]
+}

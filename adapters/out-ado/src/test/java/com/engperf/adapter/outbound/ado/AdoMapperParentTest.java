@@ -2,6 +2,7 @@ package com.engperf.adapter.outbound.ado;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.metrics.RawEvent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -20,6 +21,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 class AdoMapperParentTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
+  private static final ImpedimentConvention OFF = ImpedimentConvention.off();
 
   @ParameterizedTest(name = "{0} (pai {1}) → {2}")
   @CsvSource({
@@ -90,8 +92,8 @@ class AdoMapperParentTest {
         Instant.parse("2026-06-30T12:00:00Z"),
         "org",
         "Proj",
-        parentType,
-        parentId);
+        new ParentRef(parentType, parentId),
+        OFF);
   }
 
   /** Fiação: o tipo do pai chega ao detalhe do evento, que é o que o painel consome. */
@@ -105,8 +107,8 @@ class AdoMapperParentTest {
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
             "Proj",
-            "Tech Debt",
-            "4711");
+            new ParentRef("Tech Debt", "4711"),
+            OFF);
 
     assertThat(e.detail().get("type")).isEqualTo("tech_debt");
   }
@@ -125,8 +127,8 @@ class AdoMapperParentTest {
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
             "Proj",
-            "Tech Debt",
-            "4711");
+            new ParentRef("Tech Debt", "4711"),
+            OFF);
 
     assertThat(e.detail())
         .containsEntry("type", "tech_debt")
@@ -151,8 +153,8 @@ class AdoMapperParentTest {
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
             "Proj",
-            null,
-            "4711");
+            new ParentRef(null, "4711"),
+            OFF);
 
     assertThat(e.detail())
         .containsEntry("parent_event_id", "wi:4711")
@@ -170,8 +172,8 @@ class AdoMapperParentTest {
             Instant.parse("2026-06-30T12:00:00Z"),
             "org",
             "Proj",
-            null,
-            null);
+            ParentRef.none(),
+            OFF);
 
     assertThat(e.detail())
         .containsEntry("ado_type", "Bug")

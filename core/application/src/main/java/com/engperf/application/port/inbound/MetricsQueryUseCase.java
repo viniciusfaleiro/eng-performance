@@ -1,6 +1,7 @@
 package com.engperf.application.port.inbound;
 
 import com.engperf.application.metrics.EntityShare;
+import com.engperf.application.metrics.ImpedimentReasons;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
@@ -82,4 +83,11 @@ public interface MetricsQueryUseCase {
   /** As {@link #entityShares}, under the active work-type selection. */
   List<EntityShare> entityShares(
       String metricKey, String nodeId, Period period, WorkTypeFilter workTypes);
+
+  /**
+   * What the waiting time of {@code nodeId}'s population in {@code period} was spent being blocked
+   * by, over the very items the waiting phase was computed from. The slices compose that
+   * population's waiting hours — they do not decompose the waiting card, which is a median.
+   */
+  ImpedimentReasons impediments(String nodeId, Period period, WorkTypeFilter workTypes);
 }

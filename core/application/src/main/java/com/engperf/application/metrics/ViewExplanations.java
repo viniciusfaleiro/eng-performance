@@ -44,7 +44,9 @@ final class ViewExplanations {
           "cycle_time_phases",
           new MetricExplanation(
               "O tempo de cada item é fatiado entre Espera, Ativo e Review conforme o estado em que"
-                  + " ele esteve no board, momento a momento. As três fases somam o cycle time.",
+                  + " ele esteve no board, momento a momento — e, por cima disso, o tempo em que o"
+                  + " item estava marcado como impedido conta como Espera, mesmo que ele estivesse"
+                  + " numa coluna de trabalho. As três fases somam o cycle time.",
               "O histórico de mudanças de estado do work item no Azure Boards — cada transição abre"
                   + " uma fatia e fecha a anterior.",
               "O sistema classifica cada estado pela categoria que o Azure Boards já atribui a ele:"
@@ -53,7 +55,10 @@ final class ViewExplanations {
                   + " Completed, Resolved e Removed encerram a contagem. Quando a categoria não"
                   + " está disponível, a classificação cai para o nome do estado, com as mesmas"
                   + " palavras-chave (além de blocked, hold, waiting, ready, backlog, to do e new"
-                  + " para Espera).",
+                  + " para Espera). Em seguida vem o impedimento: o trecho de um intervalo Ativo"
+                  + " ou Review em que o item estava impedido sai dessa fase e entra na Espera —"
+                  + " o impedimento é sobreposição, não uma quarta fase. Trecho que já era Espera"
+                  + " por estado fica como está, para não contar a mesma hora duas vezes.",
               "O tempo no backlog antes do primeiro estado de trabalho é ignorado — ele entra no"
                   + " Lead Time (fluxo), não aqui. A Espera conta apenas a ociosidade entre o"
                   + " início do trabalho e a conclusão.",
@@ -62,20 +67,54 @@ final class ViewExplanations {
               "Um item criado dia 1º, iniciado dia 5, parado em 'Blocked' dos dias 7 a 9, em 'Code"
                   + " Review' dos dias 9 a 10 e concluído dia 10: Ativo 48h, Espera 48h, Review"
                   + " 24h — cycle time de 120h. Os 4 dias entre criação e início não aparecem em"
-                  + " nenhuma fase.\n\nPara o time usar bem: se o board tem um estado chamado"
-                  + " 'Homologação', ele cai em Ativo, não em Review, porque nenhuma das"
-                  + " palavras-chave aparece no nome. Renomear para 'Em homologação (QA)' passa a"
-                  + " classificá-lo como Review."),
+                  + " nenhuma fase.\n\nMesmo item, mas sem a coluna 'Blocked': ele fica em"
+                  + " 'Active' do dia 5 ao 9 e, dos dias 7 a 9, com a tag 'Impedimento:infra'. O"
+                  + " resultado é o mesmo — 48h de Espera —, porque o impedimento é lido onde ele"
+                  + " aconteceu.\n\nPara o time usar bem: marcar o impedimento é o que faz esse"
+                  + " tempo aparecer, e escrever o motivo na tag ('Impedimento:infra') é o que"
+                  + " nomeia a fatia quando alguém abre a Espera. Marcar só o campo de"
+                  + " impedimento conta o tempo, mas cai em 'Sem motivo'. E o estado chamado"
+                  + " 'Homologação' cai em Ativo, não em Review, porque nenhuma das palavras-chave"
+                  + " aparece no nome: renomear para 'Em homologação (QA)' passa a classificá-lo"
+                  + " como Review."),
           "type_distribution",
           new MetricExplanation(
               "Como o tempo do período se dividiu entre tipos de trabalho — feature, bug, dívida"
                   + " técnica, manutenção.",
               "Work items concluídos, pelo tipo registrado no Azure Boards.",
-              "Itens concluídos no período, com o tempo rateado quando houve concorrência.",
-              "Itens sem tipo classificado entram como Outros, não são descartados.",
+              "Itens concluídos no período, com o tempo rateado quando houve concorrência e sem o"
+                  + " tempo em que o item estava marcado como impedido — item parado não é trabalho"
+                  + " indo a lugar nenhum.",
+              "Itens sem tipo classificado entram como Outros, não são descartados. O tempo"
+                  + " impedido não entra em tipo nenhum: ele aparece como Espera no dashboard de"
+                  + " Fluxo.",
               "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
                   + " não tem recorte próprio de tempo além do período selecionado.",
               "42% feature, 22% bug, 15% dívida técnica. A soma é sempre 100% do tempo medido."),
+          "impediment_reasons",
+          new MetricExplanation(
+              "De que a Espera do período foi feita: cada motivo de impedimento que o time"
+                  + " escreveu, o que foi impedimento sem motivo declarado, e o que foi fila do"
+                  + " board sem nenhum impedimento marcado.",
+              "Work items do Azure Boards: o campo de impedimento e as tags com o prefixo"
+                  + " configurado em Admin, lidos do histórico de mudanças do item.",
+              "O motivo é o texto depois do prefixo da tag — 'Impedimento:infra' vira 'infra',"
+                  + " ignorando maiúsculas e espaços, de modo que a mesma palavra escrita de"
+                  + " formas diferentes é um motivo só. 'Sem motivo' é o tempo impedido sem tag que"
+                  + " o nomeie (o campo marcado, tipicamente). 'Fila do board' é o que"
+                  + " sobra da Espera, e é calculado por subtração — nunca acumulado em paralelo,"
+                  + " para não poder discordar do total.",
+              "Impedimento registrado antes do trabalho começar, que fica no backlog e não entra"
+                  + " em fase nenhuma. As fatias descrevem a soma das horas de espera da população"
+                  + " do período — não são uma divisão do card de Espera, que é mediana: mediana"
+                  + " não é soma de nada, e fingir o contrário inventaria uma conta que não fecha.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
+              "De 40h de espera no período: 18h 'infra' (45%), 6h 'aprovação' (15%), 4h 'Sem"
+                  + " motivo' (10%) e 12h de fila (30%).\n\nA linha de cobertura ao lado diz em"
+                  + " quantos itens havia algum sinal de impedimento. Se ela diz 0 de 20, a"
+                  + " Espera é toda fila — mas também é possível que o time simplesmente não"
+                  + " marque impedimento, e aí o número bonito não significa nada."),
           "coverage",
           new MetricExplanation(
               "Quanto dos eventos do período o sistema conseguiu atribuir a uma pessoa e a um"

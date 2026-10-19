@@ -5,6 +5,8 @@ import com.engperf.adapter.inbound.web.admin.ConfigDtos.AiRequest;
 import com.engperf.adapter.inbound.web.admin.ConfigDtos.AiView;
 import com.engperf.adapter.inbound.web.admin.ConfigDtos.EmailRequest;
 import com.engperf.adapter.inbound.web.admin.ConfigDtos.EmailView;
+import com.engperf.adapter.inbound.web.admin.ConfigDtos.ImpedimentRequest;
+import com.engperf.adapter.inbound.web.admin.ConfigDtos.ImpedimentView;
 import com.engperf.adapter.inbound.web.admin.ConfigDtos.TestEmailRequest;
 import com.engperf.application.port.inbound.PlatformConfigUseCase;
 import com.engperf.domain.config.AiStrategy;
@@ -21,7 +23,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Inbound REST adapter for the platform configuration. The Azure DevOps connection is no longer
  * configured here (no org URL, no PAT — ingestion is per-repository, auth is device-code); only the
- * integration status is read. The AI convention and the outgoing email server are configured here.
+ * integration status is read. The AI and impediment conventions and the outgoing email server are
+ * configured here.
  */
 @RestController
 public class ConfigController {
@@ -51,6 +54,18 @@ public class ConfigController {
     return AiView.from(
         config.saveAiConvention(
             strategy, request.trailer(), request.tag(), request.regex(), request.caseSensitive()));
+  }
+
+  @GetMapping("/api/admin/impediment-convention")
+  public ImpedimentView getImpedimentConvention() {
+    return ImpedimentView.from(config.impedimentConvention());
+  }
+
+  /** Both values blank is how an admin switches the impediment overlay off. */
+  @PutMapping("/api/admin/impediment-convention")
+  public ImpedimentView saveImpedimentConvention(@RequestBody ImpedimentRequest request) {
+    return ImpedimentView.from(
+        config.saveImpedimentConvention(request.fieldName(), request.tagPrefix()));
   }
 
   @GetMapping("/api/admin/email")
