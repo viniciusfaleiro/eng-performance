@@ -155,12 +155,19 @@ coverage.
 - **THEN** they are labelled and computed separately (board created→done vs change→production)
 
 ### Requirement: WIP counts work items in progress
-The system SHALL compute **WIP** as the **count of work items that were in progress at any moment
-inside the selected period** — an item whose in-progress interval, reconstructed from its own state
-history, overlaps the period — reported as a count ("itens"), lower-is-better, with
-correct-polarity evolution and coverage. A count is concurrency-safe: many simultaneously open items
-cannot inflate it the way summing each item's hours did. Work items with no usable state history
-SHALL be reflected in coverage as "no data", never counted.
+The system SHALL compute **WIP** as the **count of work items that were committed and not delivered
+at any moment inside the selected period** — an item whose **committed stretch**, reconstructed from
+its own state history (per the ado-integration capability), overlaps the period — reported as a
+count ("itens"), lower-is-better, with correct-polarity evolution and coverage. A count is
+concurrency-safe: many simultaneously open items cannot inflate it the way summing each item's hours
+did. Work items with no usable state history SHALL be reflected in coverage as "no data", never
+counted.
+
+The committed stretch spans **queue and work alike** — from the moment the team took the item on
+until it was delivered — and SHALL exclude the stretches the item was **impeded**. Counting only the
+time someone had a hand on the item made the metric blind where work actually stalls: an item
+finished and parked waiting for deploy is the most expensive inventory a team holds, and it used to
+disappear from the number that exists to expose it.
 
 An item SHALL be counted whether or not it was **completed** inside the period: a task in progress on
 the 3rd and finished on the 10th was in progress during that month. WIP therefore includes the
@@ -197,6 +204,14 @@ during the period" rather than a count of items open simultaneously.
 #### Scenario: An item that only sat in the backlog does not count
 - **WHEN** a work item existed during the period but never entered a working state
 - **THEN** it is not counted
+
+#### Scenario: An item waiting in a delivery queue counts
+- **WHEN** a work item spent the period finished but parked in a queue before production
+- **THEN** it counts in that period's WIP
+
+#### Scenario: An item impeded for the whole period does not count
+- **WHEN** a work item was marked as impeded for the entire selected period
+- **THEN** it is not counted, because the impeded stretches are not part of the committed stretch
 
 ### Requirement: The Fluxo scatter compares structures only
 The system SHALL provide a throughput×cycle comparison of the node's children — at the
@@ -369,4 +384,26 @@ the user discovering it. The remaining segments keep their current behaviour.
 #### Scenario: The segment looks openable
 - **WHEN** the phase card is rendered
 - **THEN** the waiting segment carries an affordance showing it can be opened, and is reachable by keyboard
+
+### Requirement: WIP is offered only at the daily frequency
+WIP SHALL be presented **only when the selected frequency is daily**, and SHALL be absent — not
+greyed, not zeroed — from the Fluxo cards, from the trend metric selection and from the comparison
+heatmap at any other frequency.
+
+The reason is the metric's own arithmetic: membership is decided by overlap, so the same item counts
+in every period it crosses. The days of a week do not add up to the week, and a month necessarily
+counts more items than a day. A figure that cannot be summed or compared across lengths invites
+exactly those two readings whenever it is on screen next to figures that can.
+
+#### Scenario: WIP appears at daily frequency
+- **WHEN** the Fluxo dashboard is requested at the daily frequency
+- **THEN** the WIP card is present
+
+#### Scenario: WIP is absent at weekly and monthly
+- **WHEN** the Fluxo dashboard is requested at the weekly or monthly frequency
+- **THEN** no WIP card is shown
+
+#### Scenario: WIP cannot be charted outside the daily frequency
+- **WHEN** a user is choosing a metric to chart at a non-daily frequency
+- **THEN** WIP is not among the options
 
