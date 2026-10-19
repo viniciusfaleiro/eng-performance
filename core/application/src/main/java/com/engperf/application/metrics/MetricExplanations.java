@@ -108,28 +108,42 @@ final class MetricExplanations {
                   "Pelo instante em que o item foi concluído. A duração inteira fica nesse período, mesmo"
                       + " que o trabalho tenha atravessado períodos anteriores.",
                   "Um item criado dia 1º e concluído dia 11 tem lead time de 10 dias. Se o trabalho"
-                      + " só começou dia 9, o cycle time é 2 dias — os outros 8 foram fila.")),
+                      + " só começou dia 9, o cycle time é 2 dias — os outros 8 foram fila."
+                      + "\n\nO WIP conta outro trecho do mesmo item: ele começa quando o time se"
+                      + " compromete (Ready), e não quando alguém começa a fazer. Os dois cobrem"
+                      + " pedaços diferentes de propósito, então não tente reconciliá-los.")),
           Map.entry(
               "wip",
               new MetricExplanation(
-                  "Quantos work items estiveram em progresso em algum momento do período. É uma"
-                      + " contagem de itens, não uma soma de horas.",
-                  "Work items do Azure Boards, pelos intervalos em estado de trabalho ativo"
-                      + " reconstruídos do histórico de estados do próprio item.",
-                  "Itens cujo trabalho atravessou o período, inclusive os que foram concluídos"
-                      + " dentro dele — uma tarefa em progresso no dia 3 e entregue no dia 10"
-                      + " esteve em progresso naquele mês. Um item ainda aberto conta até agora.",
-                  "Itens que nunca saíram da fila, e itens sem histórico de estado aproveitável —"
-                      + " sem intervalo não há como saber se houve trabalho no período.",
-                  "Pelos intervalos em que o item esteve em progresso: ele entra em todo período"
-                      + " que esses intervalos atravessam, e a data do registro não decide nada."
-                      + " Por isso a contagem não é aditiva — o mesmo item conta na semana e em"
-                      + " cada dia dela — e dois períodos de tamanhos diferentes não se comparam:"
-                      + " um mês sempre atravessa mais itens que um dia.",
-                  "Três itens em progresso na semana, um deles entregue na quarta: o WIP da semana"
-                      + " é 3. Se um deles esteve em progresso só na terça, ele conta no WIP de"
-                      + " terça e não no de quarta — e a soma dos dias passa de 3, porque o mesmo"
-                      + " item aparece em cada dia que atravessou.")),
+                  "Quantos work items o time tinha pegado e ainda não entregue em algum momento do"
+                      + " dia. É uma contagem de itens, não uma soma de horas.",
+                  "Work items do Azure Boards, pelo trecho comprometido reconstruído do histórico"
+                      + " de estados do próprio item: da entrada na fila comprometida (Ready, ou o"
+                      + " primeiro estado de trabalho quando o tipo não tem fila) até o estado"
+                      + " terminal.",
+                  "Itens cujo trecho comprometido atravessou o dia, inclusive os que foram"
+                      + " entregues dentro dele e os que estão parados em fila — item pronto"
+                      + " esperando deploy é o estoque mais caro que existe, e contá-lo é metade"
+                      + " do motivo de a métrica existir. Um item ainda aberto conta até agora."
+                      + " Contêineres (Epic, e qualquer item com filhas ingeridas) contam por"
+                      + " padrão; o seletor 'Itens' permite ler só as folhas, sem o mesmo trabalho"
+                      + " contado duas vezes.",
+                  "Itens que nunca saíram do backlog, itens sem histórico de estado aproveitável,"
+                      + " e o tempo em que o item esteve marcado como impedido — trabalho travado"
+                      + " não é trabalho em andamento.",
+                  "Pelo trecho comprometido do item: ele entra em todo período que esse trecho"
+                      + " atravessa, e a data do registro não decide nada. Por isso a contagem não"
+                      + " é aditiva — o mesmo item contaria na semana e em cada dia dela — e dois"
+                      + " períodos de tamanhos diferentes não se comparam: um mês sempre atravessa"
+                      + " mais itens que um dia. É por isso que esta métrica só é oferecida na"
+                      + " frequência Diário.",
+                  "Três itens comprometidos hoje, um deles entregue de manhã e outro parado em"
+                      + " 'Pronto p/ Prod': o WIP do dia é 3.\n\nO Cycle Time mede outro trecho —"
+                      + " ele começa quando alguém pega para fazer, não quando o time se"
+                      + " compromete —, então o WIP cobre um pedaço maior da vida do item e os dois"
+                      + " não se explicam um pelo outro.\n\nPeríodos sincronizados antes desta"
+                      + " regra foram medidos pelo trecho antigo (só o tempo de trabalho ativo) e"
+                      + " só mudam ao reprocessar.")),
           Map.entry(
               "flow_efficiency",
               new MetricExplanation(

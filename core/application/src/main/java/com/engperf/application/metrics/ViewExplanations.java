@@ -115,6 +115,26 @@ final class ViewExplanations {
                   + " quantos itens havia algum sinal de impedimento. Se ela diz 0 de 20, a"
                   + " Espera é toda fila — mas também é possível que o time simplesmente não"
                   + " marque impedimento, e aí o número bonito não significa nada."),
+          "container_filter",
+          new MetricExplanation(
+              "Qual lado da linha contêiner × folha está sendo lido: tudo, só os itens que agrupam"
+                  + " trabalho, ou só o trabalho em si.",
+              "Os work items ingeridos e a relação de pai que cada um registra.",
+              "Contêiner é quem tem filhas ingeridas — uma User Story que agrupa Tasks conta como"
+                  + " contêiner tanto quanto um Epic. O Epic é a única exceção decidida por tipo:"
+                  + " ele é artefato de planejamento mesmo sem nenhuma filha. A classificação é"
+                  + " feita sobre todo o corpus, não sobre o período, para que um item não mude de"
+                  + " lado quando o leitor muda a janela.",
+              "Nada é descartado: o padrão é 'Todos', que conta os dois lados — exatamente a"
+                  + " leitura que existia antes deste seletor. As métricas de deploy (DORA) não"
+                  + " respondem a ele, porque deploy não agrupa work item nenhum.",
+              "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
+                  + " não tem recorte próprio de tempo além do período selecionado.",
+              "Um Epic aberto há três meses conta junto com as seis User Stories e as vinte Tasks"
+                  + " dele: o mesmo trabalho entra duas e três vezes. 'Só folhas' responde 'quanto"
+                  + " trabalho está aberto?'; 'Só contêineres' responde 'quantas frentes estão"
+                  + " correndo?'. São perguntas diferentes, e por isso o seletor existe em vez de"
+                  + " o sistema escolher uma."),
           "coverage",
           new MetricExplanation(
               "Quanto dos eventos do período o sistema conseguiu atribuir a uma pessoa e a um"

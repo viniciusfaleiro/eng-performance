@@ -3,6 +3,7 @@ package com.engperf.application.metrics;
 import com.engperf.application.port.inbound.FlowDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.WorkTypeFilter;
@@ -33,15 +34,16 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
   }
 
   @Override
-  public FlowDashboard dashboard(String nodeId, Period period, WorkTypeFilter workTypes) {
-    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period, workTypes);
+  public FlowDashboard dashboard(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
+    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period, workTypes, containers);
 
     List<FlowCard> cards = new ArrayList<>();
     // Fluxo first, then the volume metrics — volume is context, it must not compete with the
     // delivery headline.
     for (MetricDefinition def : concat(catalog.fluxo(), catalog.volume())) {
       MetricCard c = nodeCards.get(def.key());
-      if (c != null) {
+      if (c != null && MetricAvailability.readableAt(def, period.frequency())) {
         cards.add(FlowCard.of(def, c));
       }
     }
@@ -57,7 +59,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
     List<Child> children = children(nodeId);
     List<ScatterPoint> scatter = new ArrayList<>();
     for (Child ch : children) {
-      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period, workTypes);
+      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period, workTypes, containers);
       scatter.add(
           new ScatterPoint(
               ch.id(),
@@ -71,7 +73,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
         childType(nodeId),
         cards,
         phases,
-        metrics.impediments(nodeId, period, workTypes),
+        metrics.impediments(nodeId, period, workTypes, containers),
         scatter);
   }
 
@@ -83,9 +85,9 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
   }
 
   private Map<String, MetricCard> cardsByKey(
-      String nodeId, Period period, WorkTypeFilter workTypes) {
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, period, workTypes)) {
+    for (MetricCard card : metrics.cards(nodeId, period, workTypes, containers)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

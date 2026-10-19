@@ -47,9 +47,27 @@ public record InProgressSpans(List<Interval> intervals) {
    * keep it out of their numbers rather than counting it as zero.
    */
   public static InProgressSpans of(RawEvent item, Instant readNow) {
+    return of(item, readNow, "spans");
+  }
+
+  /**
+   * The stretches recorded under {@code key}, falling back to the in-progress ones when the event
+   * does not carry that key.
+   *
+   * <p>The fallback is for events ingested before a stretch existed. An interval metric reads the
+   * whole corpus, so without it the figure would collapse on the day the new stretch started being
+   * recorded and only recover as the window moved — which reads as a bug, not as a rule change. The
+   * two stretches mean different things, so the mixture is temporary by design: it resolves as old
+   * events age out or on the first reprocessing.
+   */
+  public static InProgressSpans of(RawEvent item, Instant readNow, String key) {
     Objects.requireNonNull(item, "item must not be null");
     Objects.requireNonNull(readNow, "readNow must not be null");
-    String raw = item.detail().get("spans");
+    Objects.requireNonNull(key, "key must not be null");
+    String raw = item.detail().get(key);
+    if (raw == null || raw.isBlank()) {
+      raw = item.detail().get("spans");
+    }
     if (raw == null || raw.isBlank()) {
       return NONE;
     }

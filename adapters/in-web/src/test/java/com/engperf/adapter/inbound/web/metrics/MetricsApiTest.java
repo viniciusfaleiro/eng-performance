@@ -21,6 +21,7 @@ import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
 import com.engperf.domain.metrics.Aggregation;
 import com.engperf.domain.metrics.AttributionScope;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.EventType;
@@ -28,6 +29,7 @@ import com.engperf.domain.metrics.Frequency;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricValue;
 import com.engperf.domain.metrics.Period;
+import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -307,12 +309,12 @@ class MetricsApiTest {
 
     @Override
     public ImpedimentReasons impediments(
-        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
       return ImpedimentReasons.none();
     }
 
     /** The last work-type selection this fake was asked for — what the API test checks. */
-    static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
+    static WorkTypeFilter lastFilter;
 
     @Override
     public List<MetricDefinition> catalog() {
@@ -332,7 +334,7 @@ class MetricsApiTest {
 
     @Override
     public List<MetricCard> cards(
-        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
       lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return List.of(new MetricCard(DEF, v, new Coverage(9, 10)));
@@ -343,7 +345,8 @@ class MetricsApiTest {
         String metricKey,
         String nodeId,
         Period period,
-        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        WorkTypeFilter workTypes,
+        ContainerFilter containers) {
       lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
@@ -355,7 +358,7 @@ class MetricsApiTest {
         String nodeId,
         Period period,
         boolean aiAssisted,
-        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        WorkTypeFilter workTypes) {
       lastFilter = workTypes;
       MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
       return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
@@ -363,10 +366,7 @@ class MetricsApiTest {
 
     @Override
     public List<com.engperf.application.metrics.EntityShare> entityShares(
-        String metricKey,
-        String nodeId,
-        Period period,
-        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
       lastFilter = workTypes;
       return List.of(
           new com.engperf.application.metrics.EntityShare("p:ana", "Ana", 0, 3),
@@ -378,7 +378,8 @@ class MetricsApiTest {
         String metricKey,
         String nodeId,
         Period period,
-        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        WorkTypeFilter workTypes,
+        ContainerFilter containers) {
       lastFilter = workTypes;
       return List.of(
           new MetricDrilldownItem(

@@ -83,14 +83,27 @@ class MetricCatalogExplanationTest {
             .explained()
             .orElseThrow();
 
-    assertThat(wip.placement()).containsIgnoringCase("intervalo").containsIgnoringCase("atravess");
+    assertThat(wip.placement())
+        .containsIgnoringCase("trecho comprometido")
+        .containsIgnoringCase("atravess");
     assertThat(wip.placement())
         .as("a não-aditividade precisa estar dita onde o número é lido")
         .containsIgnoringCase("não é aditiva");
+    assertThat(wip.placement())
+        .as("e por que, por causa dela, a métrica só existe no diário")
+        .containsIgnoringCase("Diário");
     assertThat(wip.excluded())
         .as("item concluído dentro do período passou a contar")
         .doesNotContainIgnoringCase("Itens concluídos e");
-    assertThat(wip.included()).containsIgnoringCase("concluídos dentro dele");
+    assertThat(wip.excluded())
+        .as("tempo impedido não é trabalho em andamento")
+        .containsIgnoringCase("impedido");
+    assertThat(wip.included())
+        .as("fila de entrega conta, e é metade do motivo da métrica existir")
+        .containsIgnoringCase("fila");
+    assertThat(wip.included())
+        .as("contêiner conta por padrão, e dá para ler só as folhas")
+        .containsIgnoringCase("ntêiner");
   }
 
   /**

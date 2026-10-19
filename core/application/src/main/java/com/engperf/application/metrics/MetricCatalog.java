@@ -128,7 +128,7 @@ public final class MetricCatalog {
                       Aggregation.SUM,
                       "itens",
                       Direction.LOWER_BETTER)
-                  .over(Occupation.INTERVAL),
+                  .over(Occupation.COMMITTED),
               // ---- Fluxo (S5): cycle time + phases, PR size, flow efficiency ----
               new MetricDefinition(
                       // Cycle Time = median of the work item's first-active → terminal duration.

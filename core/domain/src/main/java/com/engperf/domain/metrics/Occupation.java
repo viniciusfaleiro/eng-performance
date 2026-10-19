@@ -16,16 +16,39 @@ package com.engperf.domain.metrics;
 public enum Occupation {
 
   /** The event belongs to the period containing its own date. The default for every metric. */
-  INSTANT,
+  INSTANT(null),
 
   /**
-   * The event belongs to every period its in-progress interval overlaps, and its own date decides
-   * nothing.
+   * The event belongs to every period the stretches it was <em>being worked on</em> overlap, and
+   * its own date decides nothing.
    *
    * <p>A consequence to state wherever such a number is shown: it is <strong>not additive across
    * periods</strong>. One item in progress on three days of a week is counted once in the week and
    * once in each of the three days, so the week is not the sum of its days. It also grows with the
    * length of the period, so two periods of different lengths are not comparable.
    */
-  INTERVAL
+  IN_PROGRESS("spans"),
+
+  /**
+   * The event belongs to every period the stretch it was <strong>committed and not
+   * delivered</strong> overlaps — queue included, impediment excluded.
+   *
+   * <p>An item can occupy time in more than one way, and which one a metric means is a product
+   * decision, not a detail. "What was this person working on?" and "what has the team taken on and
+   * not finished?" are different stretches of the same item, and while a single interval served
+   * both, the second silently inherited the boundaries of the first: work parked in a delivery
+   * queue disappeared from the figure that exists to expose it.
+   */
+  COMMITTED("committed_spans");
+
+  private final String detailKey;
+
+  Occupation(String detailKey) {
+    this.detailKey = detailKey;
+  }
+
+  /** Which recorded stretch of the event this occupation reads; {@code null} for an instant. */
+  public String detailKey() {
+    return detailKey;
+  }
 }

@@ -2,6 +2,7 @@ package com.engperf.adapter.outbound.ado;
 
 import com.engperf.domain.config.ImpedimentConvention;
 import com.engperf.domain.metrics.Interval;
+import com.engperf.domain.metrics.Intervals;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ record WorkItemFlow(
     Instant completion,
     boolean started,
     String spans,
+    String committedSpans,
     Map<String, Double> impededByReason,
     Map<String, String> impededLabels,
     String impededSpans) {
@@ -60,48 +62,32 @@ record WorkItemFlow(
     if (states.size() < 2) {
       LOG.debug(
           "WI {}: {} transição(ões) utilizável(is) — sem flow (mínimo 2)", wiId, states.size());
-      return new WorkItemFlow(0, 0, 0, null, null, null, false, "", Map.of(), Map.of(), "");
+      return new WorkItemFlow(0, 0, 0, null, null, null, false, "", "", Map.of(), Map.of(), "");
     }
     ImpedimentTimeline blocked = ImpedimentTimeline.of(wiId, updates, impediment, changed, now);
     states.sort(Comparator.comparing(StateAt::at));
-    double activeMs = 0;
-    double reviewMs = 0;
-    double waitMs = 0;
-    Instant firstWork = null;
-    Instant completion = null;
-    StringJoiner spans = new StringJoiner(",");
-    List<Interval> counted = new ArrayList<>();
+    Walk walk = new Walk();
     for (int i = 0; i < states.size(); i++) {
       Segment seg = states.get(i).segment();
       Instant from = states.get(i).at();
       if (seg == Segment.DONE) {
-        completion = from;
+        walk.completion = from;
         LOG.debug("WI {}: DONE em {} — encerra a contagem", wiId, from);
         break;
       }
       Instant to = i + 1 < states.size() ? states.get(i + 1).at() : now;
-      if (!from.isBefore(to)) {
-        continue;
-      }
-      double ms = to.toEpochMilli() - (double) from.toEpochMilli();
-      if (working(seg)) {
-        if (firstWork == null) {
-          firstWork = from;
-        }
-        spans.add(from.toEpochMilli() + ":" + to.toEpochMilli());
-        double impededMs = blocked.overlapMs(from, to);
-        double workMs = ms - impededMs;
-        activeMs += seg == Segment.ACTIVE ? workMs : 0;
-        reviewMs += seg == Segment.REVIEW ? workMs : 0;
-        waitMs += impededMs; // o item estava em coluna de trabalho, mas o trabalho estava parado
-        counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
-      } else if (firstWork != null) {
-        waitMs += ms; // idle during the flow; backlog before the first work is ignored
-        // Sem overlapMs: já é 100% espera. O intervalo entra na janela só para que o impedimento
-        // que ocorreu aqui ganhe motivo na quebra — sem ser somado a waitMs uma segunda vez.
-        counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
+      if (from.isBefore(to)) {
+        walk.step(seg, from, to, blocked);
       }
     }
+    double activeMs = walk.activeMs;
+    double reviewMs = walk.reviewMs;
+    double waitMs = walk.waitMs;
+    Instant firstWork = walk.firstWork;
+    Instant completion = walk.completion;
+    StringJoiner spans = walk.spans;
+    List<Interval> counted = walk.counted;
+    Instant committedStart = walk.committedStart;
     LOG.debug(
         "WI {}: flow ativo={}h review={}h espera={}h conclusão={}",
         wiId,
@@ -109,6 +95,7 @@ record WorkItemFlow(
         reviewMs / 3_600_000.0,
         waitMs / 3_600_000.0,
         completion);
+    List<Interval> committed = committed(committedStart, completion, now, blocked);
     Map<String, Double> byReason = blocked.hoursByReason(counted);
     Map<String, String> labels = new LinkedHashMap<>();
     byReason.keySet().forEach(r -> labels.put(r, blocked.label(r)));
@@ -121,9 +108,29 @@ record WorkItemFlow(
         completion,
         firstWork != null,
         spans.toString(),
+        joinSpans(committed),
         byReason,
         labels,
         joinSpans(blocked.blocked()));
+  }
+
+  /**
+   * The stretch the item was committed and not delivered: from the first committed queue or working
+   * state to the terminal one, less the time it was impeded.
+   *
+   * <p>It is one continuous stretch and not the union of the working ones — queue time between two
+   * hands is still work the team has taken on. An item sent back to refinement halfway through
+   * stays inside it for the same reason: it is still owed, and dropping it would make the figure
+   * fall exactly when a piece of work goes backwards.
+   */
+  private static List<Interval> committed(
+      Instant start, Instant completion, Instant now, ImpedimentTimeline blocked) {
+    Instant end = completion != null ? completion : now;
+    if (start == null || !start.isBefore(end)) {
+      return List.of();
+    }
+    List<Interval> whole = List.of(new Interval(start.toEpochMilli(), end.toEpochMilli()));
+    return blocked.isEmpty() ? whole : Intervals.subtract(whole, blocked.blocked());
   }
 
   private static String joinSpans(List<Interval> intervals) {
@@ -146,6 +153,12 @@ record WorkItemFlow(
     detail.put("den", AdoMapper.num(active + waitH)); //          denominator = working + wait
     detail.put("hours", AdoMapper.num(active)); // individual distribution total (active work)
     detail.put("spans", spans);
+    // Ao lado de spans, não no lugar dele: os dois respondem perguntas diferentes sobre o mesmo
+    // item — "o que esta pessoa estava fazendo?" e "o que o time pegou e não entregou?" — e um
+    // registro só servindo aos dois foi o que fez o WIP herdar as fronteiras do painel individual.
+    if (!committedSpans.isEmpty()) {
+      detail.put("committed_spans", committedSpans);
+    }
     fillImpediment(detail);
     if (completion == null) {
       detail.put("in_progress", "1");
@@ -183,6 +196,55 @@ record WorkItemFlow(
         });
     if (!impededSpans.isEmpty()) {
       detail.put("impeded_spans", impededSpans);
+    }
+  }
+
+  /**
+   * The running totals of one pass over the item's states.
+   *
+   * <p>A class rather than a pile of locals because the per-interval decision is itself the
+   * interesting part — what counts as work, what counts as waiting, where the commitment starts —
+   * and inlining it left the reconstruction as one method nobody could read in a sitting.
+   */
+  private static final class Walk {
+    private double activeMs;
+    private double reviewMs;
+    private double waitMs;
+    private Instant firstWork;
+    private Instant committedStart;
+    private Instant completion;
+    private final StringJoiner spans = new StringJoiner(",");
+    private final List<Interval> counted = new ArrayList<>();
+
+    /** Accounts for one state interval {@code [from, to)}. */
+    private void step(Segment seg, Instant from, Instant to, ImpedimentTimeline blocked) {
+      double ms = to.toEpochMilli() - (double) from.toEpochMilli();
+      // O compromisso começa na primeira fila comprometida OU no primeiro trabalho, o que vier
+      // antes: a partir daí o item é trabalho que o time pegou e ainda não entregou, esteja alguém
+      // com a mão nele ou não.
+      if (committedStart == null && (seg == Segment.QUEUE || working(seg))) {
+        committedStart = from;
+      }
+      if (working(seg)) {
+        work(seg, from, to, ms, blocked.overlapMs(from, to));
+      } else if (firstWork != null) {
+        waitMs += ms; // idle during the flow; backlog before the first work is ignored
+        // Sem overlapMs: já é 100% espera. O intervalo entra na janela só para que o impedimento
+        // que ocorreu aqui ganhe motivo na quebra — sem ser somado a waitMs uma segunda vez.
+        counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
+      }
+    }
+
+    private void work(Segment seg, Instant from, Instant to, double ms, double impededMs) {
+      if (firstWork == null) {
+        firstWork = from;
+      }
+      spans.add(from.toEpochMilli() + ":" + to.toEpochMilli());
+      double workMs = ms - impededMs;
+      activeMs += seg == Segment.ACTIVE ? workMs : 0;
+      reviewMs += seg == Segment.REVIEW ? workMs : 0;
+      waitMs += impededMs; // o item estava em coluna de trabalho, mas o trabalho estava parado
+      counted.add(new Interval(from.toEpochMilli(), to.toEpochMilli()));
     }
   }
 

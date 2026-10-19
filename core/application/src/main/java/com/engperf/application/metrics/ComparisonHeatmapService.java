@@ -42,7 +42,12 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
   @Override
   public ComparisonHeatmap heatmap(
       String nodeId, Period period, String scope, WorkTypeFilter workTypes) {
-    List<MetricDefinition> columns = columns();
+    // Coluna que não pode ser comparada é pior que coluna ausente: a matriz inteira existe para
+    // comparar. O WIP sai fora do diário pela mesma razão que as métricas de volume nunca entram.
+    List<MetricDefinition> columns =
+        columns().stream()
+            .filter(d -> MetricAvailability.readableAt(d, period.frequency()))
+            .toList();
     // A coluna diz se o filtro a alcança. Sem isso, um heatmap com filtro ativo mistura duas
     // populações — as de deploy lidas por inteiro, o resto recortado — sem nada na tela dizendo.
     List<HeatmapMetric> metricColumns =

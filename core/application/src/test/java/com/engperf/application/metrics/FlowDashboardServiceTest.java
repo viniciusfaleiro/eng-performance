@@ -70,14 +70,14 @@ class FlowDashboardServiceTest {
     events.add(prCode("id-ana", 2, 20));
 
     var dash = flow.dashboard("t:checkout", period(Frequency.MONTHLY));
-    // Volume comes last: context after the delivery headline.
+    // Volume comes last: context after the delivery headline. O WIP não está aqui: ele só existe
+    // na frequência diária, porque não soma entre períodos nem se compara entre tamanhos.
     assertThat(dash.cards())
         .extracting(c -> c.definition().key())
         .containsExactly(
             "cycle_time",
             "throughput",
             "flow_lead_time",
-            "wip",
             "flow_efficiency",
             "pr_review_time",
             "pr_size",
@@ -350,5 +350,26 @@ class FlowDashboardServiceTest {
         null,
         false,
         detail);
+  }
+
+  /**
+   * O WIP é contado por sobreposição: o mesmo item entra em cada período que atravessa. Semana não
+   * é a soma dos dias e mês conta mais itens que dia — então ele só é oferecido no diário, onde
+   * essas duas leituras erradas não têm como ser feitas.
+   */
+  @Test
+  void wipExistsOnlyAtTheDailyFrequency() {
+    baseStructure();
+    events.add(doneItem("id-ana", 6, 0, 2));
+
+    assertThat(flow.dashboard("t:checkout", period(Frequency.DAILY)).cards())
+        .extracting(c -> c.definition().key())
+        .contains("wip");
+    assertThat(flow.dashboard("t:checkout", period(Frequency.WEEKLY)).cards())
+        .extracting(c -> c.definition().key())
+        .doesNotContain("wip");
+    assertThat(flow.dashboard("t:checkout", period(Frequency.MONTHLY)).cards())
+        .extracting(c -> c.definition().key())
+        .doesNotContain("wip");
   }
 }

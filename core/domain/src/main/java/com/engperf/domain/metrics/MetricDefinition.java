@@ -165,8 +165,13 @@ public record MetricDefinition(
     return eventType != EventType.DEPLOY;
   }
 
+  /** Which stretch of the event decides period membership; {@code null} for an instant metric. */
+  public String intervalKey() {
+    return occupation.detailKey();
+  }
+
   public boolean readsIntervals() {
-    return occupation == Occupation.INTERVAL;
+    return occupation != Occupation.INSTANT;
   }
 
   /** Absent while a metric has not been explained yet — see the catalog's completeness test. */
