@@ -4,6 +4,7 @@ import com.engperf.domain.metrics.InProgressSpans;
 import com.engperf.domain.metrics.Interval;
 import com.engperf.domain.metrics.Intervals;
 import com.engperf.domain.metrics.RawEvent;
+import com.engperf.domain.metrics.WorkItemRole;
 import com.engperf.domain.metrics.WorkType;
 import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Instant;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -66,7 +66,7 @@ public record WorkDistribution(
     List<RawEvent> leaves = new ArrayList<>();
     int containers = 0;
     for (RawEvent w : items) {
-      if (isContainer(w, parentIds)) {
+      if (WorkItemRole.isContainer(w, parentIds)) {
         containers++;
       } else {
         leaves.add(w);
@@ -74,11 +74,6 @@ public record WorkDistribution(
     }
     Tally tally = tally(leaves, from, to, readNow);
     return new WorkDistribution(slices(tally), containers, shortItems(tally));
-  }
-
-  private static boolean isContainer(RawEvent item, Set<String> parentIds) {
-    return parentIds.contains(item.id())
-        || "epic".equals(item.detail().getOrDefault("ado_type", "").toLowerCase(Locale.ROOT));
   }
 
   /** What each item was open for and what it ended up contributing, by item and by type. */

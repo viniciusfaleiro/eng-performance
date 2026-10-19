@@ -33,12 +33,14 @@ public class FlowDashboardController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
     FlowDashboard dash =
-        flow.dashboard(node, periods.resolve(selection.toRequest()), workTypes.filter());
+        flow.dashboard(
+            node, periods.resolve(selection.toRequest()), workTypes.filter(), containers.filter());
     return FlowDashboardDto.from(dash, user.scope()::canView);
   }
 

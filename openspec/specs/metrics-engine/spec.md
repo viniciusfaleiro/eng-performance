@@ -278,17 +278,22 @@ The metric catalog SHALL declare, per metric, whether its events occupy time **a
 
 - **Instant** — the event belongs to the period containing its own date. This is how a commit, a
   deploy, a closed pull request and a completed work item are counted, and it stays the default.
-- **Interval** — the event belongs to every period its in-progress interval overlaps, and its own
-  date is irrelevant. An item worked from 5 to 12 June belongs to June, to the week of the 8th and
-  to each of those days, whatever date its record carries.
+- **Interval** — the event belongs to every period its interval overlaps, and its own date is
+  irrelevant. An item worked from 5 to 12 June belongs to June, to the week of the 8th and to each
+  of those days, whatever date its record carries.
+
+An interval metric SHALL declare **which** interval of the event it reads. An event can carry more
+than one — what a person was working on and what the team had taken on are different stretches of
+the same item — and a single implicit interval forced every interval metric to answer with the
+boundaries of whichever reading recorded it first.
 
 Membership SHALL be decided in **one place**, so that the value, the trend chart and the openable
 item list can never disagree about which items a period contains.
 
-An item's in-progress interval SHALL be read from the item's own state history. An item that has
-**not** reached a terminal state SHALL have its interval extended to the **clock of the reading**,
-not the clock of the ingestion that recorded it — otherwise a daily reading reports what the
-scheduler last saw instead of what is open, and the number silently depends on when the sync ran.
+An item's interval SHALL be read from the item's own state history. An item that has **not** reached
+a terminal state SHALL have its interval extended to the **clock of the reading**, not the clock of
+the ingestion that recorded it — otherwise a daily reading reports what the scheduler last saw
+instead of what is open, and the number silently depends on when the sync ran.
 
 The reading clock is the same injected clock the rest of the engine uses, so a pinned demo
 environment stays deterministic.
@@ -316,6 +321,10 @@ environment stays deterministic.
 #### Scenario: The item list matches the counted set
 - **WHEN** the openable list is requested for an interval metric in a period
 - **THEN** it lists exactly the items the displayed value counted
+
+#### Scenario: Two interval metrics read their own intervals
+- **WHEN** one metric declares the committed stretch and another the in-progress stretches of the same item
+- **THEN** each decides membership by the interval it declared, and the two may contain different periods
 
 ### Requirement: Population can be restricted by work type
 The engine SHALL support restricting a metric's population to a set of work types, composing that

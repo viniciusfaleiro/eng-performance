@@ -5,6 +5,7 @@ import com.engperf.application.metrics.ImpedimentReasons;
 import com.engperf.application.metrics.MetricCard;
 import com.engperf.application.metrics.MetricDrilldownItem;
 import com.engperf.application.metrics.MetricSeries;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.Period;
@@ -36,13 +37,29 @@ public interface MetricsQueryUseCase {
    * Every metric for a node, restricted to a work-type selection. A metric that cannot be read by
    * work type (deploy-based) is computed over its whole population and says so on the card.
    */
-  List<MetricCard> cards(String nodeId, Period period, WorkTypeFilter workTypes);
+  default List<MetricCard> cards(String nodeId, Period period, WorkTypeFilter workTypes) {
+    return cards(nodeId, period, workTypes, ContainerFilter.none());
+  }
+
+  /** As above, also restricted to one side of the container/leaf line. */
+  List<MetricCard> cards(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers);
 
   default MetricSeries series(String metricKey, String nodeId, Period period) {
     return series(metricKey, nodeId, period, WorkTypeFilter.none());
   }
 
-  MetricSeries series(String metricKey, String nodeId, Period period, WorkTypeFilter workTypes);
+  default MetricSeries series(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+    return series(metricKey, nodeId, period, workTypes, ContainerFilter.none());
+  }
+
+  MetricSeries series(
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers);
 
   /**
    * Series for a metric computed over only the AI-assisted ({@code aiAssisted=true}) or non-AI
@@ -67,8 +84,17 @@ public interface MetricsQueryUseCase {
   }
 
   /** As {@link #items}, under the same work-type selection as the card that opened the list. */
+  default List<MetricDrilldownItem> items(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+    return items(metricKey, nodeId, period, workTypes, ContainerFilter.none());
+  }
+
   List<MetricDrilldownItem> items(
-      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes);
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers);
 
   /**
    * Per-person breakdown of a metric that counts distinct people, ordered from the lowest share to
@@ -89,5 +115,10 @@ public interface MetricsQueryUseCase {
    * by, over the very items the waiting phase was computed from. The slices compose that
    * population's waiting hours — they do not decompose the waiting card, which is a median.
    */
-  ImpedimentReasons impediments(String nodeId, Period period, WorkTypeFilter workTypes);
+  default ImpedimentReasons impediments(String nodeId, Period period, WorkTypeFilter workTypes) {
+    return impediments(nodeId, period, workTypes, ContainerFilter.none());
+  }
+
+  ImpedimentReasons impediments(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers);
 }

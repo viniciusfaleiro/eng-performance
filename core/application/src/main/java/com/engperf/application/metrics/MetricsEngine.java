@@ -97,8 +97,8 @@ public final class MetricsEngine {
 
     Predicate<RawEvent> population = requested.cohort();
     WorkTypeFilter workTypes = requested.workTypes();
-    boolean filtered = filters(def, workTypes);
-    Predicate<RawEvent> selected = restrict(population, def, workTypes);
+    boolean filtered = MetricSelections.filters(def, workTypes);
+    Predicate<RawEvent> selected = MetricSelections.restrict(population, def, requested);
     Frequency freq = period.frequency();
     // Um relógio só. O motor precisava de uma data (o período em curso) e passou a precisar de um
     // instante (até quando um item aberto está em progresso); receber os dois convidaria os dois a
@@ -191,8 +191,8 @@ public final class MetricsEngine {
       MetricPopulation requested) {
     Predicate<RawEvent> population = requested.cohort();
     WorkTypeFilter workTypes = requested.workTypes();
-    boolean filtered = filters(def, workTypes);
-    Predicate<RawEvent> selected = restrict(population, def, workTypes);
+    boolean filtered = MetricSelections.filters(def, workTypes);
+    Predicate<RawEvent> selected = MetricSelections.restrict(population, def, requested);
     List<Matched> matched = match(index, events, def, nodeId, selected, readNow);
     return new MetricCard(
         def,
@@ -200,24 +200,6 @@ public final class MetricsEngine {
         coverage(index, events, def, selected),
         filtered,
         untypedExcluded(index, events, def, nodeId, population, filtered));
-  }
-
-  /**
-   * Whether this selection reaches this metric. A deploy metric never filters (see {@link
-   * MetricDefinition#filterableByWorkType()}), and an empty selection filters nothing at all.
-   */
-  public static boolean filters(MetricDefinition def, WorkTypeFilter workTypes) {
-    return !workTypes.isEmpty() && def.filterableByWorkType();
-  }
-
-  /**
-   * The cohort predicate narrowed by the work-type selection, when the selection applies. The two
-   * are composed into one population so every statistic — median included — is recomputed over the
-   * selected work instead of being assembled from per-type values.
-   */
-  public static Predicate<RawEvent> restrict(
-      Predicate<RawEvent> population, MetricDefinition def, WorkTypeFilter workTypes) {
-    return filters(def, workTypes) ? population.and(workTypes::matches) : population;
   }
 
   /**
@@ -324,7 +306,9 @@ public final class MetricsEngine {
                 detail(e, "den", 1.0),
                 attr.get().entityKey(),
                 e,
-                def.readsIntervals() ? InProgressSpans.of(e, readNow) : EMPTY_SPANS));
+                def.readsIntervals()
+                    ? InProgressSpans.of(e, readNow, def.intervalKey())
+                    : EMPTY_SPANS));
       }
     }
     return matched;

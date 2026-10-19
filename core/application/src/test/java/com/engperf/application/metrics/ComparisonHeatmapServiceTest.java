@@ -83,10 +83,15 @@ class ComparisonHeatmapServiceTest {
     events.add(pr("id-carla"));
 
     var h = heatmap.heatmap("all", period(Frequency.MONTHLY), "times");
-    assertThat(h.metrics()).extracting(HeatmapMetric::key).containsExactlyElementsOf(COLUMN_ORDER);
+    // O WIP sai fora do diário: coluna que não pode ser comparada é pior que coluna ausente numa
+    // matriz cuja única afordância é comparar.
+    assertThat(h.metrics())
+        .extracting(HeatmapMetric::key)
+        .containsExactlyElementsOf(COLUMN_ORDER.stream().filter(k -> !k.equals("wip")).toList());
     // Default overview scope compares the teams.
     assertThat(h.rows()).extracting(HeatmapRow::nodeId).containsExactly("t:checkout", "t:core");
-    assertThat(h.rows()).allSatisfy(r -> assertThat(r.values()).hasSize(COLUMN_ORDER.size()));
+    assertThat(h.rows())
+        .allSatisfy(r -> assertThat(r.values()).hasSize(COLUMN_ORDER.size() - 1)); // sem o WIP
     assertThat(h.rows()).extracting(HeatmapRow::rowType).containsOnly("Time");
   }
 
@@ -308,5 +313,18 @@ class ComparisonHeatmapServiceTest {
     public Optional<CommitterIdentity> findIdentity(String identity) {
       return identities.stream().filter(c -> c.identity().equals(identity)).findFirst();
     }
+  }
+
+  @Test
+  void theWipColumnIsOfferedOnlyAtTheDailyFrequency() {
+    baseStructure();
+    events.add(pr("id-ana"));
+
+    assertThat(heatmap.heatmap("all", period(Frequency.DAILY), "times").metrics())
+        .extracting(HeatmapMetric::key)
+        .contains("wip");
+    assertThat(heatmap.heatmap("all", period(Frequency.MONTHLY), "times").metrics())
+        .extracting(HeatmapMetric::key)
+        .doesNotContain("wip");
   }
 }

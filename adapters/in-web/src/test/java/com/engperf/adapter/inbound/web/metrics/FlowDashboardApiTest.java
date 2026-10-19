@@ -141,12 +141,18 @@ class FlowDashboardApiTest {
   }
 
   private static final class FakeFlow implements FlowDashboardUseCase {
+    com.engperf.domain.metrics.ContainerFilter lastContainers;
+
     static com.engperf.domain.metrics.WorkTypeFilter lastFilter;
 
     @Override
     public FlowDashboard dashboard(
-        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes,
+        com.engperf.domain.metrics.ContainerFilter containers) {
       lastFilter = workTypes;
+      lastContainers = containers;
       MetricValue v = MetricValue.of(9, 10.0, Direction.LOWER_BETTER);
       FlowCard card =
           new FlowCard(

@@ -5,6 +5,7 @@ import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.domain.metrics.Aggregation;
 import com.engperf.domain.metrics.Bucket;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.MetricExplanation;
 import com.engperf.domain.metrics.Period;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Reads the structure + events through the ports, builds a {@link StructureIndex}, and delegates to
@@ -61,7 +63,8 @@ public final class MetricsService implements MetricsQueryUseCase {
   }
 
   @Override
-  public List<MetricCard> cards(String nodeId, Period period, WorkTypeFilter workTypes) {
+  public List<MetricCard> cards(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     Instant readNow = clock.instant();
     StructureIndex index = buildIndex();
     List<MetricCard> cards = new ArrayList<>();
@@ -76,14 +79,18 @@ public final class MetricsService implements MetricsQueryUseCase {
               period,
               readNow,
               BUCKETS,
-              new MetricPopulation(catalog.population(def.key()), workTypes)));
+              population(def.key(), workTypes, containers)));
     }
     return cards;
   }
 
   @Override
   public MetricSeries series(
-      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
     return MetricsEngine.series(
@@ -94,7 +101,7 @@ public final class MetricsService implements MetricsQueryUseCase {
         period,
         clock.instant(),
         BUCKETS,
-        new MetricPopulation(catalog.population(metricKey), workTypes));
+        population(metricKey, workTypes, containers));
   }
 
   @Override
@@ -120,7 +127,11 @@ public final class MetricsService implements MetricsQueryUseCase {
 
   @Override
   public List<MetricDrilldownItem> items(
-      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers) {
     MetricDefinition def = definition(metricKey);
     List<RawEvent> window = fetch(def, period);
     return MetricsDrilldown.items(
@@ -130,7 +141,8 @@ public final class MetricsService implements MetricsQueryUseCase {
         nodeId,
         period,
         clock.instant(),
-        MetricsEngine.restrict(catalog.population(metricKey), def, workTypes));
+        MetricSelections.restrict(
+            catalog.population(metricKey), def, population(metricKey, workTypes, containers)));
   }
 
   @Override
@@ -148,7 +160,7 @@ public final class MetricsService implements MetricsQueryUseCase {
             nodeId,
             period,
             clock.instant(),
-            MetricsEngine.restrict(catalog.population(metricKey), def, workTypes))
+            MetricSelections.restrict(catalog.population(metricKey), def, workTypes))
         .stream()
         .map(
             s ->
@@ -158,7 +170,8 @@ public final class MetricsService implements MetricsQueryUseCase {
   }
 
   @Override
-  public ImpedimentReasons impediments(String nodeId, Period period, WorkTypeFilter workTypes) {
+  public ImpedimentReasons impediments(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     // A mesma definição, população e janela do card de Espera ao lado: a composição tem de falar
     // dos itens que aquele número contou, não de uma coorte parecida.
     return catalog
@@ -172,8 +185,25 @@ public final class MetricsService implements MetricsQueryUseCase {
                     nodeId,
                     period,
                     clock.instant(),
-                    MetricsEngine.restrict(catalog.population(def.key()), def, workTypes)))
+                    MetricSelections.restrict(
+                        catalog.population(def.key()),
+                        def,
+                        population(def.key(), workTypes, containers))))
         .orElseGet(ImpedimentReasons::none);
+  }
+
+  /**
+   * A população de uma métrica com as seleções do leitor. Os ids de pai só são buscados quando a
+   * seleção de contêiner está ativa: é uma varredura do corpus de work items, e cobrá-la de quem
+   * não pediu o filtro seria pagar por um dado que ninguém vai usar.
+   */
+  private MetricPopulation population(
+      String metricKey, WorkTypeFilter workTypes, ContainerFilter containers) {
+    return new MetricPopulation(
+        catalog.population(metricKey),
+        workTypes,
+        containers,
+        containers.isEmpty() ? Set.of() : events.parentWorkItemIds());
   }
 
   private MetricDefinition definition(String metricKey) {

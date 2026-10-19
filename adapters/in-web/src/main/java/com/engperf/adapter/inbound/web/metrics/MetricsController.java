@@ -64,9 +64,13 @@ public class MetricsController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
-    return metrics.cards(node, periods.resolve(selection.toRequest()), workTypes.filter()).stream()
+    return metrics
+        .cards(
+            node, periods.resolve(selection.toRequest()), workTypes.filter(), containers.filter())
+        .stream()
         .map(CardDto::from)
         .toList();
   }
@@ -77,10 +81,16 @@ public class MetricsController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
     return SeriesDto.from(
-        metrics.series(key, node, periods.resolve(selection.toRequest()), workTypes.filter()));
+        metrics.series(
+            key,
+            node,
+            periods.resolve(selection.toRequest()),
+            workTypes.filter(),
+            containers.filter()));
   }
 
   @GetMapping("/api/metrics/{key}/items")
@@ -89,10 +99,16 @@ public class MetricsController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
     return metrics
-        .items(key, node, periods.resolve(selection.toRequest()), workTypes.filter())
+        .items(
+            key,
+            node,
+            periods.resolve(selection.toRequest()),
+            workTypes.filter(),
+            containers.filter())
         .stream()
         .map(DrilldownItemDto::from)
         .toList();
