@@ -10,7 +10,8 @@
 - [ ] 2.3 Helper novo ao lado de `ImpedimentBreakdown` (ex.: `PhaseComposition`) com a soma por fase, testável isoladamente.
 - [ ] 2.4 `FlowDashboardService`: cada fase passa a ser `cycleTimeCard × Σfase / Σtotal`; `Σtotal = 0` ou card ausente ⇒ as três são zero.
 - [ ] 2.5 Testes: E1 (300/100/100 com card 20 → 12/4/4) e E2 (8 fechados direto + 2 com ciclo → 35,0/2,5/0,5 somando 38) em `FlowDashboardServiceTest`; E7 com filtro de tipo e de contêiner.
-- [ ] 2.6 Ajustar `cardsPhasesAndFlowEfficiency`, que hoje fixa as fases como mediana.
+- [ ] 2.6 SPA: a barra de fases passa a exibir **horas e percentual** por fase na legenda (e no tooltip do segmento), para responder "quantos por cento do nosso tempo é espera?" sem conta na cabeça.
+- [ ] 2.7 Ajustar `cardsPhasesAndFlowEfficiency`, que hoje fixa as fases como mediana.
 
 ## 3. O drawer bate com a Espera
 
@@ -18,8 +19,9 @@
 - [ ] 3.2 `ImpedimentBreakdown`: redução proporcional quando os motivos da população excedem a espera da população, com residual zero.
 - [ ] 3.3 `FlowDashboardService`: aplicar `scaledTo` com a Espera calculada em 2.4.
 - [ ] 3.4 `FlowDtos.ImpedimentsDto`: `totalHours` = Espera exibida, `populationHours` novo; javadoc.
-- [ ] 3.5 SPA: o título do bloco passa a declarar a Espera exibida; a soma bruta, se mostrada, vem rotulada como contexto. Manter a linha de cobertura do sinal e a lista de itens com a espera real de cada item.
-- [ ] 3.6 Testes: E3 (1000 h de população → 4,8/3,2 sobre 8 h exibidas), E4 (motivos excedentes reduzidos), E6 (população sem horas), e os dois testes existentes que verificam `waitingHours` como soma da população.
+- [ ] 3.5 SPA: cada motivo exibido com **horas e percentual** da Espera (a barra empilhada e as linhas da lista), de modo que "quantos por cento da nossa espera foi infra?" se leia direto.
+- [ ] 3.6 SPA: o título do bloco passa a declarar a Espera exibida; a soma bruta, se mostrada, vem rotulada como contexto. Manter a linha de cobertura do sinal e a lista de itens com a espera real de cada item.
+- [ ] 3.7 Testes: E3 (1000 h de população → 4,8/3,2 sobre 8 h exibidas), E4 (motivos excedentes reduzidos), E6 (população sem horas), e os dois testes existentes que verificam `waitingHours` como soma da população.
 
 ## 4. Motivos simultâneos (ingestão)
 

@@ -37,6 +37,10 @@ Cycle Time do card**; e as horas do drawer baterem com a Espera do board.
   de trabalho**. Item fechado direto sai das fases (continua no Throughput).
 - **Cada fase passa a ser a participação média dela no tempo dos itens, aplicada ao Cycle Time do
   card** — então as três **somam o card**. Substitui a mediana por fase.
+- **A barra de fases passa a mostrar horas e percentual** em cada fase, e o drawer da Espera faz o
+  mesmo por motivo. A pergunta que o time quer responder é "quantos por cento do nosso tempo é
+  espera?" — e, abrindo, "quantos por cento de cada motivo". Com a regra de composição isso sai de
+  graça: o percentual é a própria participação que decide o valor da fatia.
 - **O drawer da Espera passa a ser escalado para a Espera exibida**: as fatias somam exatamente a
   Espera do board. A soma bruta da população continua disponível como contexto, rotulada como tal.
 - **Motivos simultâneos passam a repartir o trecho** igualmente na ingestão, com proteção na leitura

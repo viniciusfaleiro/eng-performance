@@ -6,6 +6,9 @@ impediment reason **above** the item list, and the parts SHALL add up to the **w
 on the board** — the number the reader clicked to get there. Any other total belongs to a different
 question and SHALL be labelled as context, never as the sum of the slices.
 
+Every slice SHALL carry **its hours and its share of the waiting time**: the hours say how much, the
+share says how much of the problem it is, and a reader comparing two periods needs the second.
+
 It SHALL also state how much of the period's population carries an impediment signal at all.
 Without that statement a team that simply never marks impediments is indistinguishable from a team
 that is never blocked, and the second reading is the flattering one.
@@ -20,6 +23,10 @@ single item checkable; the slices above explain the figure, the list explains th
 #### Scenario: The slices sum to the figure that opened the drawer
 - **WHEN** a user opens the waiting drawer from a board showing 8 h of waiting
 - **THEN** the slices in the drawer sum to 8 h
+
+#### Scenario: Each slice shows hours and share
+- **WHEN** the waiting drawer lists a reason
+- **THEN** it shows that reason's hours and its percentage of the waiting figure
 
 #### Scenario: The drawer states the signal's coverage
 - **WHEN** the waiting metric's drawer is shown

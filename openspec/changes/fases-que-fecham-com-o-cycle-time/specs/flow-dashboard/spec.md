@@ -33,11 +33,16 @@ The segment values SHALL be recomputed over the node's own population, never com
 children's values. When the population has no phase hours at all, or there is no Cycle Time to
 apply the shares to, the three segments SHALL be zero.
 
+Each segment SHALL be shown **both in hours and as its share of the cycle**. The share is not a
+decoration on top of the hours: it is the figure the question is about — "how much of our time is
+waiting?" — and it is already what decides the segment's value, so showing one without the other
+hides half of what was computed.
+
 The PR-side review time remains available as the `pr_review_time` code drill-down.
 
 #### Scenario: Phase breakdown returns the state segments
 - **WHEN** the Fluxo dashboard is requested for a node
-- **THEN** the waiting, active, review and done/deploy segment medians for that node are returned, each from the work items' own board states
+- **THEN** the waiting, active and review segments for that node are returned, each derived from the work items' own board states
 
 #### Scenario: The three phases add up to the card
 - **WHEN** the population spent 300 h waiting, 100 h active and 100 h in review, and the Cycle Time card reads 20 h
@@ -54,6 +59,10 @@ The PR-side review time remains available as the `pr_review_time` code drill-dow
 #### Scenario: An unfinished item does not contribute a partial phase
 - **WHEN** a work item is still in progress in the period
 - **THEN** its active, waiting and review hours are excluded from the phases
+
+#### Scenario: Each phase is shown in hours and in share
+- **WHEN** the phases read 12 h waiting, 4 h active and 4 h review over a 20 h cycle
+- **THEN** each is presented with its hours and its share — 60%, 20% and 20%
 
 #### Scenario: Without phase hours the breakdown is zero
 - **WHEN** no item of the population carries phase hours
@@ -90,6 +99,9 @@ scales — a board reading 0 h of waiting next to a drawer reading twenty thousa
 reader with no way to tell which number was about their team. The raw population total MAY still be
 shown as secondary context, labelled as such.
 
+Each part SHALL likewise be shown **in hours and as its share of the waiting time**, so a reader can
+answer "how much of our waiting was infra?" without doing arithmetic on the slices.
+
 The residual SHALL be **derived** from the population's waiting total rather than accumulated
 separately, so the two can never disagree. Should the recorded reasons of the population exceed that
 waiting total — which stale data can, from before simultaneous reasons were split — the reasons
@@ -106,6 +118,10 @@ the larger reasons are shown and the remainder is grouped.
 #### Scenario: The parts add up to the waiting figure on the board
 - **WHEN** the population spent 1000 h waiting — 600 h on "infra" and 400 h with no signal — and the board shows 8 h of waiting
 - **THEN** the drawer shows 4,8 h for "infra" and 3,2 h for the residual, summing to the 8 h on the board
+
+#### Scenario: Each reason is shown in hours and in share
+- **WHEN** the drawer shows 4,8 h for "infra" out of 8 h of waiting
+- **THEN** it also shows that this is 60% of the waiting time
 
 #### Scenario: Stale reasons are scaled to fit
 - **WHEN** the recorded reasons of the population add up to more waiting than the population actually waited
