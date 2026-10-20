@@ -125,10 +125,16 @@ public class MetricsController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     requireView(user, node);
     return metrics
-        .entityShares(key, node, periods.resolve(selection.toRequest()), workTypes.filter())
+        .entityShares(
+            key,
+            node,
+            periods.resolve(selection.toRequest()),
+            workTypes.filter(),
+            containers.filter())
         .stream()
         .filter(s -> user.scope().canView(s.entityId()))
         .map(EntityShareDto::from)

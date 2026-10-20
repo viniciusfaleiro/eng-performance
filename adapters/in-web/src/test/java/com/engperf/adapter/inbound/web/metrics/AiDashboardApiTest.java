@@ -125,7 +125,10 @@ class AiDashboardApiTest {
 
     @Override
     public AiDashboard dashboard(
-        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes,
+        com.engperf.domain.metrics.ContainerFilter containers) {
       lastFilter = workTypes;
       List<AiCard> cards =
           List.of(
@@ -161,7 +164,10 @@ class AiDashboardApiTest {
 
     @Override
     public AiCard impact(
-        String nodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String nodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes,
+        com.engperf.domain.metrics.ContainerFilter containers) {
       return new AiCard(
           MetricCatalog.AI_IMPACT,
           MetricValue.of(40.0, null, Direction.HIGHER_BETTER),
@@ -179,5 +185,18 @@ class AiDashboardApiTest {
           "%",
           Direction.HIGHER_BETTER);
     }
+  }
+
+  /**
+   * Seleção inventada é recusada aqui como em qualquer outro endpoint. Enquanto este controller não
+   * declarava o parâmetro, o Spring o descartava e respondia 200 — a mesma pergunta recebia duas
+   * respostas conforme a tela.
+   */
+  @Test
+  void anUnknownContainerSelectionIsRejected() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/ai?node=all&freq=Mensal&container=epicos")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest());
   }
 }

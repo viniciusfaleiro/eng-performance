@@ -4,6 +4,7 @@ import com.engperf.application.port.inbound.AiDashboardUseCase;
 import com.engperf.application.port.inbound.ComparisonHeatmapUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.WorkTypeFilter;
@@ -41,7 +42,11 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
 
   @Override
   public ComparisonHeatmap heatmap(
-      String nodeId, Period period, String scope, WorkTypeFilter workTypes) {
+      String nodeId,
+      Period period,
+      String scope,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers) {
     // Coluna que não pode ser comparada é pior que coluna ausente: a matriz inteira existe para
     // comparar. O WIP sai fora do diário pela mesma razão que as métricas de volume nunca entram.
     List<MetricDefinition> columns =
@@ -64,11 +69,11 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
 
     List<HeatmapRow> rows = new ArrayList<>();
     for (Row child : childRows(nodeId, scope)) {
-      Map<String, MetricCard> cards = cardsByKey(child.id(), period, workTypes);
+      Map<String, MetricCard> cards = cardsByKey(child.id(), period, workTypes, containers);
       List<Double> values = new ArrayList<>();
       for (MetricDefinition def : columns) {
         if (def.key().equals(MetricCatalog.AI_IMPACT.key())) {
-          values.add(ai.impact(child.id(), period, workTypes).value().value());
+          values.add(ai.impact(child.id(), period, workTypes, containers).value().value());
         } else {
           MetricCard card = cards.get(def.key());
           values.add(card == null ? 0.0 : card.current().value());
@@ -90,9 +95,9 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
   }
 
   private Map<String, MetricCard> cardsByKey(
-      String nodeId, Period period, WorkTypeFilter workTypes) {
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, period, workTypes)) {
+    for (MetricCard card : metrics.cards(nodeId, period, workTypes, containers)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

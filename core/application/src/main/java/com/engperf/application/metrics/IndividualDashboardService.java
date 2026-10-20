@@ -5,6 +5,7 @@ import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.EventStorePort;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
 import com.engperf.application.port.outbound.UserAccountRepositoryPort;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.RawEvent;
@@ -52,7 +53,7 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
 
   @Override
   public IndividualDashboard dashboard(
-      String personNodeId, Period period, WorkTypeFilter workTypes) {
+      String personNodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     String label = structure.findPerson(personNodeId).map(p -> p.name()).orElse(personNodeId);
     Set<String> identities = identitiesOf(personNodeId);
 
@@ -94,9 +95,10 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
             events.parentWorkItemIds(),
             periodFrom,
             periodTo,
-            clock.instant());
+            clock.instant(),
+            containers);
 
-    Delivery delivery = delivery(personNodeId, period, workTypes);
+    Delivery delivery = delivery(personNodeId, period, workTypes, containers);
 
     return new IndividualDashboard(
         personNodeId,
@@ -164,10 +166,11 @@ public final class IndividualDashboardService implements IndividualDashboardUseC
     return (double) firstPass / prs.size() * 100.0;
   }
 
-  private Delivery delivery(String personNodeId, Period period, WorkTypeFilter workTypes) {
+  private Delivery delivery(
+      String personNodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     List<MetricSeries> series =
         DELIVERY_KEYS.stream()
-            .map(k -> metrics.series(k, personNodeId, period, workTypes))
+            .map(k -> metrics.series(k, personNodeId, period, workTypes, containers))
             .toList();
     long untyped = series.stream().mapToLong(MetricSeries::untypedExcluded).max().orElse(0L);
     return new Delivery(series, untyped);

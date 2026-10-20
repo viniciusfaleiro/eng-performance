@@ -169,4 +169,17 @@ class FlowDashboardApiTest {
           nodeId, "vertical", List.of(card), phases, ImpedimentReasons.none(), scatter);
     }
   }
+
+  /**
+   * Seleção inventada é recusada aqui como em qualquer outro endpoint. Enquanto este controller não
+   * declarava o parâmetro, o Spring o descartava e respondia 200 — a mesma pergunta recebia duas
+   * respostas conforme a tela.
+   */
+  @Test
+  void anUnknownContainerSelectionIsRejected() throws Exception {
+    mvc.perform(
+            get("/api/dashboards/flow?node=all&freq=Mensal&container=epicos")
+                .requestAttr(AuthWeb.USER, user(admin())))
+        .andExpect(status().isBadRequest());
+  }
 }

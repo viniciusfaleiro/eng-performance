@@ -33,12 +33,14 @@ public class AiDashboardController {
       @RequestParam(defaultValue = "all") String node,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
     AiDashboard dash =
-        ai.dashboard(node, periods.resolve(selection.toRequest()), workTypes.filter());
+        ai.dashboard(
+            node, periods.resolve(selection.toRequest()), workTypes.filter(), containers.filter());
     return AiDashboardDto.from(dash, user.scope()::canView);
   }
 

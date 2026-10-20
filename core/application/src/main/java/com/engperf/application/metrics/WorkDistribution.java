@@ -1,5 +1,6 @@
 package com.engperf.application.metrics;
 
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.InProgressSpans;
 import com.engperf.domain.metrics.Interval;
 import com.engperf.domain.metrics.Intervals;
@@ -62,18 +63,27 @@ public record WorkDistribution(
    *     behaviour is what it was before the relationship was recorded
    */
   public static WorkDistribution of(
-      List<RawEvent> items, Set<String> parentIds, Instant from, Instant to, Instant readNow) {
-    List<RawEvent> leaves = new ArrayList<>();
-    int containers = 0;
+      List<RawEvent> items,
+      Set<String> parentIds,
+      Instant from,
+      Instant to,
+      Instant readNow,
+      ContainerFilter containers) {
+    // A regra de folha é o padrão, e o leitor pode invertê-la: quem escolheu "só contêineres"
+    // perguntou quanto tempo os itens que agrupam trabalho ficaram abertos, e responder com as
+    // folhas responderia outra pergunta.
+    boolean wantContainers = containers == ContainerFilter.CONTAINERS;
+    List<RawEvent> counted = new ArrayList<>();
+    int excluded = 0;
     for (RawEvent w : items) {
-      if (WorkItemRole.isContainer(w, parentIds)) {
-        containers++;
+      if (WorkItemRole.isContainer(w, parentIds) == wantContainers) {
+        counted.add(w);
       } else {
-        leaves.add(w);
+        excluded++;
       }
     }
-    Tally tally = tally(leaves, from, to, readNow);
-    return new WorkDistribution(slices(tally), containers, shortItems(tally));
+    Tally tally = tally(counted, from, to, readNow);
+    return new WorkDistribution(slices(tally), excluded, shortItems(tally));
   }
 
   /** What each item was open for and what it ended up contributing, by item and by type. */

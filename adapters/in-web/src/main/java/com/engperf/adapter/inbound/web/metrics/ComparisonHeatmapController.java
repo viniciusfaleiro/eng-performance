@@ -35,12 +35,18 @@ public class ComparisonHeatmapController {
       @RequestParam(defaultValue = "times") String scope,
       PeriodQuery selection,
       WorkTypeQuery workTypes,
+      ContainerQuery containers,
       @RequestAttribute(AuthWeb.USER) AuthenticatedUser user) {
     if (!user.scope().canView(node)) {
       throw new ForbiddenException("node outside access scope: " + node);
     }
     ComparisonHeatmap heatmap =
-        comparison.heatmap(node, periods.resolve(selection.toRequest()), scope, workTypes.filter());
+        comparison.heatmap(
+            node,
+            periods.resolve(selection.toRequest()),
+            scope,
+            workTypes.filter(),
+            containers.filter());
     return ComparisonHeatmapDto.from(heatmap, user.scope());
   }
 
