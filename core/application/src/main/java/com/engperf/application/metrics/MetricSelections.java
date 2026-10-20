@@ -1,7 +1,6 @@
 package com.engperf.application.metrics;
 
 import com.engperf.domain.metrics.ContainerFilter;
-import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.MetricDefinition;
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkTypeFilter;
@@ -44,7 +43,7 @@ final class MetricSelections {
    * work items. Saying so is what keeps the selection from looking silently ignored.
    */
   public static boolean filters(MetricDefinition def, ContainerFilter containers) {
-    return !containers.isEmpty() && def.eventType() == EventType.WORKITEM;
+    return !containers.isEmpty() && def.filterableByContainer();
   }
 
   /** The population narrowed by every selection it carries, each only where it applies. */
