@@ -52,7 +52,14 @@ public final class ComparisonHeatmapService implements ComparisonHeatmapUseCase 
     // populações — as de deploy lidas por inteiro, o resto recortado — sem nada na tela dizendo.
     List<HeatmapMetric> metricColumns =
         columns.stream()
-            .map(d -> new HeatmapMetric(d.key(), d.label(), d.unit(), d.filterableByWorkType()))
+            .map(
+                d ->
+                    new HeatmapMetric(
+                        d.key(),
+                        d.label(),
+                        d.unit(),
+                        d.filterableByWorkType(),
+                        d.filterableByContainer()))
             .toList();
 
     List<HeatmapRow> rows = new ArrayList<>();

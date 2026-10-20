@@ -12,10 +12,12 @@ public final class ComparisonDtos {
   private ComparisonDtos() {}
 
   /** {@code filterable} is false for a column the work-type filter never reaches (deploy). */
-  public record HeatmapMetricDto(String key, String label, String unit, boolean filterable) {
+  public record HeatmapMetricDto(
+      String key, String label, String unit, boolean filterable, boolean containerFilterable) {
 
     public static HeatmapMetricDto from(HeatmapMetric m) {
-      return new HeatmapMetricDto(m.key(), m.label(), m.unit(), m.filterable());
+      return new HeatmapMetricDto(
+          m.key(), m.label(), m.unit(), m.filterable(), m.containerFilterable());
     }
   }
 

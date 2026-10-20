@@ -90,6 +90,22 @@ class WorkTypeTest {
     }
   }
 
+  /**
+   * Contêiner × folha só existe para quem é work item: deploy pertence a um pipeline e pull request
+   * a um repositório, e nenhum dos dois agrupa work item. Quem não responde tem de poder dizer isso
+   * — filtro que some em silêncio é o que faz o leitor desconfiar do número certo.
+   */
+  @Test
+  @DisplayName("só as métricas de work item respondem ao filtro de contêiner")
+  void onlyWorkItemMetricsAreContainerFilterable() {
+    assertThat(definition(EventType.WORKITEM).filterableByContainer()).isTrue();
+    for (EventType t : EventType.values()) {
+      if (t != EventType.WORKITEM) {
+        assertThat(definition(t).filterableByContainer()).as(t.name()).isFalse();
+      }
+    }
+  }
+
   private static MetricDefinition definition(EventType type) {
     return new MetricDefinition(
         "m",

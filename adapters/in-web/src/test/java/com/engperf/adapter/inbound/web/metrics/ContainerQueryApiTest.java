@@ -34,4 +34,31 @@ class ContainerQueryApiTest {
         .hasMessageContaining("epicos")
         .hasMessageContaining("leaves");
   }
+
+  /**
+   * O card diz se responde à seleção — é o que o filtro de tipo de trabalho já faz, e a falta disso
+   * deixava PR Size e Commits parados sem explicação com "Folhas" ligado.
+   */
+  @Test
+  void aMetricThatCannotBeFilteredSaysSo() {
+    assertThat(definition(com.engperf.domain.metrics.EventType.WORKITEM).filterableByContainer())
+        .isTrue();
+    assertThat(definition(com.engperf.domain.metrics.EventType.PR).filterableByContainer())
+        .isFalse();
+    assertThat(definition(com.engperf.domain.metrics.EventType.DEPLOY).filterableByContainer())
+        .isFalse();
+  }
+
+  private static com.engperf.domain.metrics.MetricDefinition definition(
+      com.engperf.domain.metrics.EventType type) {
+    return new com.engperf.domain.metrics.MetricDefinition(
+        "m",
+        "M",
+        "fluxo",
+        type,
+        com.engperf.domain.metrics.AttributionScope.PERSON,
+        com.engperf.domain.metrics.Aggregation.SUM,
+        "itens",
+        com.engperf.domain.metrics.Direction.HIGHER_BETTER);
+  }
 }

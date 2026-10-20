@@ -937,14 +937,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),
-          filtered:!!e.filtered,untyped:e.untyped||0,trend:snapSyn(id,m,freq).trend};
+          filtered:!!e.filtered,untyped:e.untyped||0,ctrOff:!!e.ctrOff,trend:snapSyn(id,m,freq).trend};
       }
     }else if(IA_KEYS.has(m.key)){
       const c=IA_CACHE[state.node+"|"+state.freq+"|"+selKey()];
       if(c&&c.byNode&&c.byNode[id]&&c.byNode[id][m.key]!=null){
         const e=c.byNode[id][m.key];
         return {cur:e.cur,prev:e.cur,pct:(e.pct==null?0:e.pct),dir:(e.dir||"flat"),
-          filtered:!!e.filtered,untyped:e.untyped||0,trend:snapSyn(id,m,freq).trend};
+          filtered:!!e.filtered,untyped:e.untyped||0,ctrOff:!!e.ctrOff,trend:snapSyn(id,m,freq).trend};
       }
     }
     // Nada real para esta métrica/nó. "Carregando" e "não existe" são coisas diferentes: anunciar
@@ -1031,7 +1031,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       let cur=c.value;if(pk==="fe")cur=c.value*100;
       m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
         dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat"),
-        filtered:!!c.filtered,untyped:c.untypedExcluded||0};});
+        filtered:!!c.filtered,untyped:c.untypedExcluded||0,ctrOff:c.filterableByContainer===false};});
     byNode[d.nodeId]=m;
     // Children carry only throughput (tp) + cycle time (ct) — enough for the rank/scatter panels.
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
@@ -1064,7 +1064,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       let cur=c.value;if(pk==="aic"||pk==="aad")cur=c.value*100;
       m[pk]={cur,pct:(c.changePct==null?0:Math.round(c.changePct*10)/10),
         dir:(c.sentiment==="good"?"up":c.sentiment==="bad"?"down":"flat"),
-        filtered:!!c.filtered,untyped:c.untypedExcluded||0};});
+        filtered:!!c.filtered,untyped:c.untypedExcluded||0,ctrOff:c.filterableByContainer===false};});
     byNode[d.nodeId]=m;
     // Children carry only adoption (aad) — enough for the adoption ranking panel.
     (d.adoption||[]).forEach(a=>{byNode[a.nodeId]={aad:{cur:a.adoption*100}};});
@@ -1098,13 +1098,15 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     // Quais colunas o filtro não alcança — quem decide é o servidor, não uma regra repetida aqui.
     const unfiltered=new Set(
       (d.metrics||[]).filter(mc=>mc.filterable===false).map(mc=>CMP_API2PROTO[mc.key]||mc.key));
+    const ctrUnfiltered=new Set(
+      (d.metrics||[]).filter(mc=>mc.containerFilterable===false).map(mc=>CMP_API2PROTO[mc.key]||mc.key));
     (d.rows||[]).forEach(r=>{
       const m={};
       (d.metrics||[]).forEach((mc,ci)=>{const pk=CMP_API2PROTO[mc.key]||mc.key;let v=r.values[ci];
         if(pk==="df")v=v/days;else if(pk==="cfr"||pk==="fe"||pk==="aic"||pk==="aad")v=v*100;m[pk]=v;});
       byNode[r.nodeId]=m;rows.push({id:r.nodeId,label:r.label,rowType:r.rowType});
     });
-    return {byNode,rows,cols,unfiltered};
+    return {byNode,rows,cols,unfiltered,ctrUnfiltered};
   }
   /* Individual panel wired to the real engine: /api/individuals/{p:…} gives the person's commit
      calendar, PR assertiveness, delivery series (throughput/cycle/%IA), code-review stats,
@@ -1183,11 +1185,18 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
      perdeu eventos por falta de vínculo diz quantos — é a diferença entre "não houve bug neste
      período" e "não dá para saber, porque os PRs não estão ligados ao board". */
   function filterNote(m,s){
-    if(!wtActive())return "";
-    if(m.dora)return '<div class="filter-note">não filtra por tipo — o deploy é do repositório</div>';
-    if(!s||!s.untyped)return "";
-    return '<div class="filter-note filter-warn">'+s.untyped+
-      ' evento(s) sem vínculo com o board ficaram de fora</div>';
+    let out="";
+    if(wtActive()){
+      if(m.dora)out+='<div class="filter-note">não filtra por tipo — o deploy é do repositório</div>';
+      else if(s&&s.untyped)out+='<div class="filter-note filter-warn">'+s.untyped+
+        ' evento(s) sem vínculo com o board ficaram de fora</div>';
+    }
+    // Uma linha por seleção ativa: card que não responde ao filtro de itens tem de dizer, senão o
+    // número fica parado enquanto os vizinhos se mexem e nada na tela explica a diferença.
+    if(ctrActive()&&s&&s.ctrOff){
+      out+='<div class="filter-note">não responde ao filtro de itens — não agrupa work item</div>';
+    }
+    return out;
   }
   function sectionHead(t,viewKey){
     const i=viewKey?infoBtn("view",viewKey,t):"";
@@ -1798,7 +1807,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     // Com filtro ativo, a coluna que o filtro não alcança fica marcada: um heatmap meio filtrado
     // compara duas populações, e sem a marca nada na tela revela isso.
     const unfilteredCols=(real&&c.unfiltered)?c.unfiltered:new Set(DORA.map(m=>m.key));
-    const colOff=(m)=>wtActive()&&unfilteredCols.has(m.key);
+    const ctrOffCols=(real&&c.ctrUnfiltered)?c.ctrUnfiltered:new Set();
+    const colOff=(m)=>(wtActive()&&unfilteredCols.has(m.key))||(ctrActive()&&ctrOffCols.has(m.key));
     h+='<tr><th class="rowh">'+rowType+infoBtn("view","heatmap","o heatmap comparativo")+'</th>'+
        metrics.map(m=>'<th'+(colOff(m)?' class="unfiltered-col"':'')+' title="'+m.label+
          (colOff(m)?' — não filtra por tipo de trabalho (mede o deploy)':'')+'">'+SHORT[m.key]+
@@ -1813,6 +1823,8 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+='<div class="baseline-note" style="margin-top:14px"><span class="pill" style="color:var(--good)">■ melhor do grupo</span><span class="pill" style="color:var(--warn)">■ intermediário</span><span class="pill" style="color:var(--crit)">■ pior do grupo</span></div>';
     if(wtActive())h+='<p class="filter-note">* colunas marcadas não respondem ao filtro de tipo de '+
       'trabalho: medem o deploy, que pertence ao repositório e carrega vários tipos ao mesmo tempo.</p>';
+    if(ctrActive())h+='<p class="filter-note">* colunas marcadas não respondem ao filtro de itens: '+
+      'medem deploy ou pull request, que não agrupam work item.</p>';
     return h;
   }
 

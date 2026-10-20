@@ -26,6 +26,7 @@ public final class FlowDtos {
       Double changePct,
       String sentiment,
       double coveragePct,
+      boolean filterableByContainer,
       boolean filtered,
       long untypedExcluded) {
 
@@ -41,6 +42,7 @@ public final class FlowDtos {
           v.changePct(),
           v.sentiment().name().toLowerCase(Locale.ROOT),
           c.coverage().percent(),
+          d.filterableByContainer(),
           c.filtered(),
           c.untypedExcluded());
     }

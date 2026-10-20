@@ -327,4 +327,25 @@ class ComparisonHeatmapServiceTest {
         .extracting(HeatmapMetric::key)
         .doesNotContain("wip");
   }
+
+  /**
+   * A coluna que não responde à seleção de contêiner tem de vir marcada: sem isso, com "Folhas"
+   * ligado, as colunas de deploy e de PR ficam paradas enquanto as vizinhas se mexem, e nada na
+   * matriz explica a diferença.
+   */
+  @Test
+  void columnsSayWhetherTheyRespondToTheContainerSelection() {
+    baseStructure();
+    events.add(pr("id-ana"));
+
+    var h = heatmap.heatmap("all", period(Frequency.MONTHLY), "times");
+
+    assertThat(h.metrics())
+        .filteredOn(m -> m.key().equals("cycle_time"))
+        .allMatch(HeatmapMetric::containerFilterable);
+    assertThat(h.metrics())
+        .filteredOn(m -> List.of("deploy_freq", "pr_review_time", "pr_size").contains(m.key()))
+        .isNotEmpty()
+        .noneMatch(HeatmapMetric::containerFilterable);
+  }
 }

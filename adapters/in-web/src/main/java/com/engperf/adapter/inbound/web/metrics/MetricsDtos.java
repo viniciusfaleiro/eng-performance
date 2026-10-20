@@ -147,6 +147,7 @@ public final class MetricsDtos {
       String sentiment,
       double coveragePct,
       boolean filterableByWorkType,
+      boolean filterableByContainer,
       boolean filtered,
       long untypedExcluded) {
 
@@ -164,6 +165,7 @@ public final class MetricsDtos {
           v.sentiment().name().toLowerCase(Locale.ROOT),
           c.coverage().percent(),
           d.filterableByWorkType(),
+          d.filterableByContainer(),
           c.filtered(),
           c.untypedExcluded());
     }

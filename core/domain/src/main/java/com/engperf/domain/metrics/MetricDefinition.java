@@ -165,6 +165,18 @@ public record MetricDefinition(
     return eventType != EventType.DEPLOY;
   }
 
+  /**
+   * Whether this metric can be read by container or leaf.
+   *
+   * <p>Only a work-item metric has a side to be on: a deploy belongs to a pipeline and a pull
+   * request to a repository, and neither groups work items. Derived from the event for the same
+   * reason as the work-type rule above — a list of exceptions declared per metric is a list someone
+   * forgets to update.
+   */
+  public boolean filterableByContainer() {
+    return eventType == EventType.WORKITEM;
+  }
+
   /** Which stretch of the event decides period membership; {@code null} for an instant metric. */
   public String intervalKey() {
     return occupation.detailKey();
