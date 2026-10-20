@@ -107,8 +107,17 @@ public interface MetricsQueryUseCase {
   }
 
   /** As {@link #entityShares}, under the active work-type selection. */
+  default List<EntityShare> entityShares(
+      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+    return entityShares(metricKey, nodeId, period, workTypes, ContainerFilter.none());
+  }
+
   List<EntityShare> entityShares(
-      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes);
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers);
 
   /**
    * What the waiting time of {@code nodeId}'s population in {@code period} was spent being blocked

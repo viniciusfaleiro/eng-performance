@@ -3,6 +3,7 @@ package com.engperf.application.metrics;
 import com.engperf.application.port.inbound.AiDashboardUseCase;
 import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.outbound.StructureRepositoryPort;
+import com.engperf.domain.metrics.ContainerFilter;
 import com.engperf.domain.metrics.Coverage;
 import com.engperf.domain.metrics.Direction;
 import com.engperf.domain.metrics.MetricDefinition;
@@ -41,8 +42,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
   }
 
   @Override
-  public AiDashboard dashboard(String nodeId, Period period, WorkTypeFilter workTypes) {
-    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period, workTypes);
+  public AiDashboard dashboard(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
+    Map<String, MetricCard> nodeCards = cardsByKey(nodeId, period, workTypes, containers);
 
     List<AiCard> cards = new ArrayList<>();
     for (MetricDefinition def : catalog.ia()) {
@@ -51,7 +53,7 @@ public final class AiDashboardService implements AiDashboardUseCase {
         cards.add(AiCard.of(def, c));
       }
     }
-    Impact impact = computeImpact(nodeId, period, workTypes);
+    Impact impact = computeImpact(nodeId, period, workTypes, containers);
     cards.add(
         new AiCard(
             MetricCatalog.AI_IMPACT,
@@ -62,7 +64,7 @@ public final class AiDashboardService implements AiDashboardUseCase {
 
     List<AdoptionRank> adoption = new ArrayList<>();
     for (Child ch : children(nodeId)) {
-      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period, workTypes);
+      Map<String, MetricCard> childCards = cardsByKey(ch.id(), period, workTypes, containers);
       adoption.add(new AdoptionRank(ch.id(), ch.label(), value(childCards, "ai_adoption")));
     }
     adoption.sort(Comparator.comparingDouble(AdoptionRank::adoption).reversed());
@@ -75,8 +77,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
   }
 
   @Override
-  public AiCard impact(String nodeId, Period period, WorkTypeFilter workTypes) {
-    Impact i = computeImpact(nodeId, period, workTypes);
+  public AiCard impact(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
+    Impact i = computeImpact(nodeId, period, workTypes, containers);
     return new AiCard(
         MetricCatalog.AI_IMPACT,
         i.value(),
@@ -85,7 +88,8 @@ public final class AiDashboardService implements AiDashboardUseCase {
         i.untypedExcluded());
   }
 
-  private Impact computeImpact(String nodeId, Period period, WorkTypeFilter workTypes) {
+  private Impact computeImpact(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     List<Double> withAi = seriesValues(nodeId, period, true, workTypes);
     List<Double> withoutAi = seriesValues(nodeId, period, false, workTypes);
     int last = withAi.size() - 1;
@@ -133,9 +137,9 @@ public final class AiDashboardService implements AiDashboardUseCase {
   }
 
   private Map<String, MetricCard> cardsByKey(
-      String nodeId, Period period, WorkTypeFilter workTypes) {
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
     Map<String, MetricCard> byKey = new LinkedHashMap<>();
-    for (MetricCard card : metrics.cards(nodeId, period, workTypes)) {
+    for (MetricCard card : metrics.cards(nodeId, period, workTypes, containers)) {
       byKey.put(card.definition().key(), card);
     }
     return byKey;

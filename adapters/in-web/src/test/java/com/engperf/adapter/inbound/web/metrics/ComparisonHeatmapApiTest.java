@@ -106,7 +106,8 @@ class ComparisonHeatmapApiTest {
         String nodeId,
         Period period,
         String scope,
-        com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        com.engperf.domain.metrics.WorkTypeFilter workTypes,
+        com.engperf.domain.metrics.ContainerFilter containers) {
       lastFilter = workTypes;
       List<HeatmapMetric> metrics =
           List.of(
@@ -118,5 +119,19 @@ class ComparisonHeatmapApiTest {
               new HeatmapRow("p:ana", "Ana", "Pessoa", List.of(1.0, 15.0)));
       return new ComparisonHeatmap(nodeId, metrics, rows);
     }
+  }
+
+  /**
+   * Seleção inventada é recusada aqui como em qualquer outro endpoint. Enquanto este controller não
+   * declarava o parâmetro, o Spring o descartava e respondia 200 — a mesma pergunta recebia duas
+   * respostas conforme a tela.
+   */
+  @Test
+  void anUnknownContainerSelectionIsRejected() throws Exception {
+    AccessScope admin = new AccessScope(true, true, Set.of(), Set.of(), Set.of());
+    mvc.perform(
+            get("/api/comparison/heatmap?node=all&freq=Mensal&container=epicos")
+                .requestAttr(AuthWeb.USER, user(admin)))
+        .andExpect(status().isBadRequest());
   }
 }

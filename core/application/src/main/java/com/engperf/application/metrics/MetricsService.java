@@ -147,7 +147,11 @@ public final class MetricsService implements MetricsQueryUseCase {
 
   @Override
   public List<EntityShare> entityShares(
-      String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
+      String metricKey,
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers) {
     MetricDefinition def = definition(metricKey);
     if (def.aggregation() != Aggregation.DISTINCT_RATIO) {
       throw new IllegalArgumentException(
@@ -160,7 +164,8 @@ public final class MetricsService implements MetricsQueryUseCase {
             nodeId,
             period,
             clock.instant(),
-            MetricSelections.restrict(catalog.population(metricKey), def, workTypes))
+            MetricSelections.restrict(
+                catalog.population(metricKey), def, population(metricKey, workTypes, containers)))
         .stream()
         .map(
             s ->

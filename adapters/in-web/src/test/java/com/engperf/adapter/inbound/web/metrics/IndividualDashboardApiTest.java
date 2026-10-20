@@ -132,7 +132,10 @@ class IndividualDashboardApiTest {
 
     @Override
     public IndividualDashboard dashboard(
-        String personNodeId, Period period, com.engperf.domain.metrics.WorkTypeFilter workTypes) {
+        String personNodeId,
+        Period period,
+        com.engperf.domain.metrics.WorkTypeFilter workTypes,
+        com.engperf.domain.metrics.ContainerFilter containers) {
       lastFilter = workTypes;
       return new IndividualDashboard(
           personNodeId,
@@ -177,5 +180,20 @@ class IndividualDashboardApiTest {
           !workTypes.isEmpty(),
           workTypes.isEmpty() ? 0L : 2L);
     }
+  }
+
+  /**
+   * Seleção inventada é recusada aqui como em qualquer outro endpoint. Enquanto este controller não
+   * declarava o parâmetro, o Spring o descartava e respondia 200 — a mesma pergunta recebia duas
+   * respostas conforme a tela.
+   */
+  @Test
+  void anUnknownContainerSelectionIsRejected() throws Exception {
+    AccessScope manager =
+        new AccessScope(false, false, Set.of("t:checkout"), Set.of(), Set.of("p:ana"));
+    mvc.perform(
+            get("/api/individuals/p:ana?freq=Mensal&container=epicos")
+                .requestAttr(AuthWeb.USER, user(manager)))
+        .andExpect(status().isBadRequest());
   }
 }

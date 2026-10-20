@@ -7,33 +7,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.engperf.adapter.inbound.web.auth.AuthWeb;
 import com.engperf.adapter.inbound.web.auth.AuthWebExceptionHandler;
 import com.engperf.application.auth.AuthenticatedUser;
-import com.engperf.application.metrics.ImpedimentReasons;
-import com.engperf.application.metrics.MetricCard;
-import com.engperf.application.metrics.MetricDrilldownItem;
-import com.engperf.application.metrics.MetricSeries;
 import com.engperf.application.metrics.PeriodResolver;
-import com.engperf.application.metrics.SeriesPoint;
-import com.engperf.application.port.inbound.MetricsQueryUseCase;
 import com.engperf.application.port.inbound.PeriodResolverUseCase;
 import com.engperf.domain.access.AccessScope;
 import com.engperf.domain.account.AccountStatus;
 import com.engperf.domain.account.Role;
 import com.engperf.domain.account.UserAccount;
-import com.engperf.domain.metrics.Aggregation;
-import com.engperf.domain.metrics.AttributionScope;
-import com.engperf.domain.metrics.ContainerFilter;
-import com.engperf.domain.metrics.Coverage;
-import com.engperf.domain.metrics.Direction;
-import com.engperf.domain.metrics.EventType;
 import com.engperf.domain.metrics.Frequency;
-import com.engperf.domain.metrics.MetricDefinition;
-import com.engperf.domain.metrics.MetricValue;
-import com.engperf.domain.metrics.Period;
-import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,17 +30,6 @@ class MetricsApiTest {
 
   private static final PeriodResolverUseCase PERIODS =
       new PeriodResolver(Clock.fixed(Instant.parse("2026-06-30T12:00:00Z"), ZoneOffset.UTC));
-
-  private static final MetricDefinition DEF =
-      new MetricDefinition(
-          "throughput",
-          "Throughput",
-          "fluxo",
-          EventType.PR,
-          AttributionScope.PERSON,
-          Aggregation.SUM,
-          "PRs",
-          Direction.HIGHER_BETTER);
 
   private MockMvc mvc;
 
@@ -303,96 +275,5 @@ class MetricsApiTest {
     mvc.perform(get("/api/metrics/catalog").requestAttr(AuthWeb.USER, user(member())))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].aggregation").value("sum"));
-  }
-
-  private static final class FakeMetrics implements MetricsQueryUseCase {
-
-    @Override
-    public ImpedimentReasons impediments(
-        String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
-      return ImpedimentReasons.none();
-    }
-
-    /** The last work-type selection this fake was asked for — what the API test checks. */
-    static WorkTypeFilter lastFilter;
-
-    @Override
-    public List<MetricDefinition> catalog() {
-      return List.of(DEF);
-    }
-
-    @Override
-    public java.util.Map<String, com.engperf.domain.metrics.MetricExplanation> viewExplanations() {
-      return java.util.Map.of(
-          "trend", new com.engperf.domain.metrics.MetricExplanation("r", "s", "i", "e", "p", "x"));
-    }
-
-    @Override
-    public String attributionNote() {
-      return "as-of-event";
-    }
-
-    @Override
-    public List<MetricCard> cards(
-        String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
-      lastFilter = workTypes;
-      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
-      return List.of(new MetricCard(DEF, v, new Coverage(9, 10)));
-    }
-
-    @Override
-    public MetricSeries series(
-        String metricKey,
-        String nodeId,
-        Period period,
-        WorkTypeFilter workTypes,
-        ContainerFilter containers) {
-      lastFilter = workTypes;
-      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
-      return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
-    }
-
-    @Override
-    public MetricSeries cohortSeries(
-        String metricKey,
-        String nodeId,
-        Period period,
-        boolean aiAssisted,
-        WorkTypeFilter workTypes) {
-      lastFilter = workTypes;
-      MetricValue v = MetricValue.of(period.frequency().ordinal(), null, DEF.direction());
-      return new MetricSeries(DEF, List.of(new SeriesPoint("2026-06-01", v)), new Coverage(9, 10));
-    }
-
-    @Override
-    public List<com.engperf.application.metrics.EntityShare> entityShares(
-        String metricKey, String nodeId, Period period, WorkTypeFilter workTypes) {
-      lastFilter = workTypes;
-      return List.of(
-          new com.engperf.application.metrics.EntityShare("p:ana", "Ana", 0, 3),
-          new com.engperf.application.metrics.EntityShare("p:bruno", "Bruno", 2, 2));
-    }
-
-    @Override
-    public List<MetricDrilldownItem> items(
-        String metricKey,
-        String nodeId,
-        Period period,
-        WorkTypeFilter workTypes,
-        ContainerFilter containers) {
-      lastFilter = workTypes;
-      return List.of(
-          new MetricDrilldownItem(
-              "pr:1",
-              EventType.PR,
-              "https://ado/pr/1",
-              // echoes the resolved interval so the test can assert what the engine was handed
-              "period=" + period.start() + ".." + period.end(),
-              nodeId,
-              Instant.parse("2026-06-10T10:00:00Z"),
-              1.0,
-              true,
-              null));
-    }
   }
 }
