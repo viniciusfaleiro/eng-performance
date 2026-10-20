@@ -109,14 +109,21 @@ SHALL be excluded from the distribution and reflected as "no data" in the panel'
 counted as zero.
 
 Impeded time is excluded because the distribution answers where the person's work went, and an item
-standing still is not work going anywhere. The intervals that report an item as **in progress**
-SHALL NOT change for this reason, so work-in-progress keeps counting an impeded item.
+standing still is not work going anywhere. The **recorded intervals** of an item being worked on
+SHALL NOT change for this reason: the impeded stretches are recorded apart, and each reading
+subtracts them for itself.
 
-The system SHALL count only **leaf work**: a work item that has ingested children is a container of
-work rather than work itself, and SHALL NOT contribute time to the distribution. An Epic SHALL NOT
-contribute time whether or not it has children, since an Epic is a planning artifact. Every other
-item SHALL contribute time when it has no ingested children, regardless of its type, so a team that
-works directly in a User Story or a Feature is measured rather than reported as idle.
+By default the system SHALL count only **leaf work**: a work item that has ingested children is a
+container of work rather than work itself, and SHALL NOT contribute time to the distribution. An Epic
+SHALL NOT contribute time whether or not it has children, since an Epic is a planning artifact. Every
+other item SHALL contribute time when it has no ingested children, regardless of its type, so a team
+that works directly in a User Story or a Feature is measured rather than reported as idle.
+
+That default SHALL yield to the reader's **container selection** (per the container-filter
+capability) when it asks for containers: a reader who selected "containers only" asked how much time
+the items that group work were open, and answering with the leaves would answer a different
+question. The selection is the one place that decides which side is being read, rather than each
+screen deciding for itself.
 
 Whether an item has children SHALL be determined from the whole ingested corpus, not from the
 selected period, so that an item's classification does not change when the viewer changes the window.
@@ -171,6 +178,14 @@ the list, since the list has to add up to the figure it opens from.
 #### Scenario: Impeded time does not count as the person's work
 - **WHEN** one of the person's items was impeded during part of its in-progress time in the period
 - **THEN** only the time that was not impeded contributes to the distribution
+
+#### Scenario: The distribution follows the container selection
+- **WHEN** a reader selects containers only
+- **THEN** the distribution reports the hours of the items that group work, instead of the leaves
+
+#### Scenario: Without a selection the leaf rule stands
+- **WHEN** no container selection is in force
+- **THEN** the distribution counts leaf work exactly as it did before the selection existed
 
 ### Requirement: The activity feed deep-links to Azure DevOps
 The system SHALL include the person's most recent commits and PRs, each with its Azure DevOps
