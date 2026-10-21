@@ -12,5 +12,5 @@
 
 ## 3. Fechamento
 
-- [ ] 3.1 Conferir no app rodando, com "Folhas" selecionado no Fluxo, que PR Size e Commits dizem que não respondem — e que nenhum número mudou em relação a "Todos".
-- [ ] 3.2 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir **BUILD SUCCESSFUL**.
+- [x] 3.1 Conferir no app rodando, com "Folhas" selecionado no Fluxo, que PR Size e Commits dizem que não respondem — e que nenhum número mudou em relação a "Todos".
+- [x] 3.2 Rodar `./gradlew spotlessApply && ./gradlew build` e garantir **BUILD SUCCESSFUL**.
