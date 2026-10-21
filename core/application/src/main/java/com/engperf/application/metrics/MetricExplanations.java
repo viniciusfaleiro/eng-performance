@@ -217,14 +217,17 @@ final class MetricExplanations {
           Map.entry(
               "waiting_time",
               new MetricExplanation(
-                  "A mediana do tempo que os itens passaram parados: na fila do board, antes de"
-                      + " alguém começar, e também travados por impedimento depois disso.",
+                  "Quanto do tempo dos itens foi parado: na fila do board, antes de alguém"
+                      + " começar, e também travado por impedimento depois disso. No board o valor"
+                      + " é essa participação aplicada ao Cycle Time, para que as três fases somem"
+                      + " o card.",
                   "Work items do Azure Boards, pelo tempo em estados de espera e pelo tempo em que"
                       + " o item estava marcado como impedido — campo de impedimento e/ou tag,"
                       + " conforme a convenção configurada em Admin.",
-                  "Itens concluídos que passaram por estado de espera ou por impedimento. O tempo"
-                      + " impedido dentro de uma coluna de trabalho entra aqui e sai do Ativo ou"
-                      + " do Review; o que já era espera por estado não é contado duas vezes.",
+                  "Itens concluídos que entraram em algum estado de trabalho — a mesma população do"
+                      + " card de Cycle Time. O tempo impedido dentro de uma coluna de trabalho"
+                      + " entra aqui e sai do Ativo ou do Review; o que já era espera por estado"
+                      + " não é contado duas vezes.",
                   "O tempo depois que o trabalho começou e sem impedimento — isso é Ativo ou"
                       + " Review.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"
@@ -237,10 +240,13 @@ final class MetricExplanations {
           Map.entry(
               "active_time",
               new MetricExplanation(
-                  "A mediana do tempo em que os itens estiveram efetivamente em desenvolvimento.",
+                  "Quanto do tempo dos itens foi desenvolvimento de fato. No board o valor é essa"
+                      + " participação aplicada ao Cycle Time, para que as três fases somem o"
+                      + " card.",
                   "Work items do Azure Boards, pelo tempo em estados de trabalho ativo, descontado"
                       + " o tempo em que o item estava marcado como impedido.",
-                  "Itens concluídos que passaram por estado ativo.",
+                  "Itens concluídos que entraram em algum estado de trabalho — a mesma população do"
+                      + " card de Cycle Time.",
                   "Fila e revisão — elas têm suas próprias fases — e o tempo impedido, que vai"
                       + " para a Espera ainda que o item estivesse numa coluna de trabalho.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"
@@ -249,10 +255,13 @@ final class MetricExplanations {
           Map.entry(
               "review_time",
               new MetricExplanation(
-                  "A mediana do tempo que os itens passaram aguardando ou recebendo revisão.",
+                  "Quanto do tempo dos itens foi aguardando ou recebendo revisão. No board o valor"
+                      + " é essa participação aplicada ao Cycle Time, para que as três fases somem"
+                      + " o card.",
                   "Work items do Azure Boards, pelo tempo em estados de revisão, descontado o"
                       + " tempo em que o item estava marcado como impedido.",
-                  "Itens concluídos que passaram por estado de revisão.",
+                  "Itens concluídos que entraram em algum estado de trabalho — a mesma população do"
+                      + " card de Cycle Time.",
                   "Tempo de fila inicial, de desenvolvimento, e o tempo impedido, que vai para a"
                       + " Espera.",
                   "Pelo instante em que o item foi concluído; as horas da fase ficam nesse período mesmo"

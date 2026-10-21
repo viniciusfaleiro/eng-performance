@@ -46,22 +46,32 @@ final class ViewExplanations {
               "O tempo de cada item é fatiado entre Espera, Ativo e Review conforme o estado em que"
                   + " ele esteve no board, momento a momento — e, por cima disso, o tempo em que o"
                   + " item estava marcado como impedido conta como Espera, mesmo que ele estivesse"
-                  + " numa coluna de trabalho. As três fases somam o cycle time.",
+                  + " numa coluna de trabalho. Cada fase é mostrada em horas e em percentual, e as"
+                  + " três somam exatamente o Cycle Time do card ao lado.",
               "O histórico de mudanças de estado do work item no Azure Boards — cada transição abre"
-                  + " uma fatia e fecha a anterior.",
+                  + " uma fatia e fecha a anterior. Entram os itens concluídos no período que"
+                  + " passaram por algum estado de trabalho: exatamente a população do card de"
+                  + " Cycle Time.",
               "O sistema classifica cada estado pela categoria que o Azure Boards já atribui a ele:"
                   + " Proposed conta como Espera; InProgress conta como Review quando o nome do"
                   + " estado contém review, testing, qa ou verify, e como Ativo caso contrário;"
                   + " Completed, Resolved e Removed encerram a contagem. Quando a categoria não"
                   + " está disponível, a classificação cai para o nome do estado, com as mesmas"
                   + " palavras-chave (além de blocked, hold, waiting, ready, backlog, to do e new"
-                  + " para Espera). Em seguida vem o impedimento: o trecho de um intervalo Ativo"
+                  + " para Espera). O valor de cada fase é a participação dela no tempo dos itens"
+                  + " contados — as horas daquela fase divididas pelas horas das três — aplicada ao"
+                  + " Cycle Time do card. É isso que faz as três somarem o card. Em seguida vem o"
+                  + " impedimento: o trecho de um intervalo Ativo"
                   + " ou Review em que o item estava impedido sai dessa fase e entra na Espera —"
                   + " o impedimento é sobreposição, não uma quarta fase. Trecho que já era Espera"
                   + " por estado fica como está, para não contar a mesma hora duas vezes.",
               "O tempo no backlog antes do primeiro estado de trabalho é ignorado — ele entra no"
                   + " Lead Time (fluxo), não aqui. A Espera conta apenas a ociosidade entre o"
-                  + " início do trabalho e a conclusão.",
+                  + " início do trabalho e a conclusão. E o item que foi de Novo para Concluído sem"
+                  + " passar por trabalho fica inteiro de fora: ele não tem ciclo. Contá-lo com"
+                  + " zero em cada fase — que era o que acontecia — puxava as três para perto de"
+                  + " zero num time que fecha tarefa sem mover no board, ao lado de um Cycle Time"
+                  + " de dezenas de horas. Ele continua contando no Throughput.",
               "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
                   + " não tem recorte próprio de tempo além do período selecionado.",
               "Um item criado dia 1º, iniciado dia 5, parado em 'Blocked' dos dias 7 a 9, em 'Code"
@@ -95,7 +105,8 @@ final class ViewExplanations {
           new MetricExplanation(
               "De que a Espera do período foi feita: cada motivo de impedimento que o time"
                   + " escreveu, o que foi impedimento sem motivo declarado, e o que foi fila do"
-                  + " board sem nenhum impedimento marcado.",
+                  + " board sem nenhum impedimento marcado. Cada fatia vem em horas e em"
+                  + " percentual, e as fatias somam exatamente a Espera mostrada no board.",
               "Work items do Azure Boards: o campo de impedimento e as tags com o prefixo"
                   + " configurado em Admin, lidos do histórico de mudanças do item.",
               "O motivo é o texto depois do prefixo da tag — 'Impedimento:infra' vira 'infra',"
@@ -105,13 +116,14 @@ final class ViewExplanations {
                   + " sobra da Espera, e é calculado por subtração — nunca acumulado em paralelo,"
                   + " para não poder discordar do total.",
               "Impedimento registrado antes do trabalho começar, que fica no backlog e não entra"
-                  + " em fase nenhuma. As fatias descrevem a soma das horas de espera da população"
-                  + " do período — não são uma divisão do card de Espera, que é mediana: mediana"
-                  + " não é soma de nada, e fingir o contrário inventaria uma conta que não fecha.",
+                  + " em fase nenhuma. Um trecho travado por dois motivos ao mesmo tempo é dividido"
+                  + " entre eles — dez horas sob duas tags são cinco para cada, não dez para cada.",
               "Cada card da visão diz a que data ou intervalo o item dele pertence; a visão"
                   + " não tem recorte próprio de tempo além do período selecionado.",
-              "De 40h de espera no período: 18h 'infra' (45%), 6h 'aprovação' (15%), 4h 'Sem"
-                  + " motivo' (10%) e 12h de fila (30%).\n\nA linha de cobertura ao lado diz em"
+              "De 8h de Espera no board: 4,8h 'infra' (60%), 1,2h 'aprovação' (15%), 0,8h 'Sem"
+                  + " motivo' (10%) e 1,2h de fila (15%). A soma das horas dos itens do período"
+                  + " aparece ao lado como contexto, e é outro número: ela soma a população"
+                  + " inteira, enquanto o board mostra o ciclo típico.\n\nA linha de cobertura ao lado diz em"
                   + " quantos itens havia algum sinal de impedimento. Se ela diz 0 de 20, a"
                   + " Espera é toda fila — mas também é possível que o time simplesmente não"
                   + " marque impedimento, e aí o número bonito não significa nada."),

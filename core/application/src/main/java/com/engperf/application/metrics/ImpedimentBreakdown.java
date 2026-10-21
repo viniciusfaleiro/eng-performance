@@ -83,7 +83,10 @@ final class ImpedimentBreakdown {
         withSignal++;
       }
     }
-    return new ImpedimentReasons(slices(hours, labels, waiting), waiting, items, withSignal);
+    // waitingHours nasce igual ao total da população; quem escala para a Espera exibida é o
+    // dashboard, que é quem conhece o número que o leitor está vendo.
+    return new ImpedimentReasons(
+        slices(hours, labels, waiting), waiting, waiting, items, withSignal);
   }
 
   /**
@@ -93,6 +96,11 @@ final class ImpedimentBreakdown {
    */
   private static List<ImpedimentSlice> slices(
       Map<String, Double> hours, Map<String, String> labels, double waiting) {
+    // Dado antigo pode trazer mais motivo do que espera: antes de os motivos simultâneos serem
+    // repartidos, um trecho sob duas tags contava inteiro nas duas. Reduzir proporcionalmente é o
+    // que mantém a quebra cabendo na fase que ela explica — truncar no residual, como antes,
+    // escondia a diferença em vez de absorvê-la, e foi assim que o erro sobreviveu.
+    hours = fitted(hours, waiting);
     List<ImpedimentSlice> out = new ArrayList<>();
     double named = 0;
     for (Map.Entry<String, Double> e : hours.entrySet()) {
@@ -117,6 +125,18 @@ final class ImpedimentBreakdown {
     if (residual > 0) {
       out.add(new ImpedimentSlice("queue", "Fila do board", residual, share(residual, waiting)));
     }
+    return out;
+  }
+
+  /** The reasons scaled down to fit {@code waiting}, untouched when they already do. */
+  private static Map<String, Double> fitted(Map<String, Double> hours, double waiting) {
+    double sum = hours.values().stream().mapToDouble(Double::doubleValue).sum();
+    if (sum <= waiting || sum <= 0) {
+      return hours;
+    }
+    double factor = waiting / sum;
+    Map<String, Double> out = new LinkedHashMap<>();
+    hours.forEach((reason, h) -> out.put(reason, h * factor));
     return out;
   }
 

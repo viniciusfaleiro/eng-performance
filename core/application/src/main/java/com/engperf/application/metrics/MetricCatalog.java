@@ -370,16 +370,26 @@ public final class MetricCatalog {
           // população garante é só que o item chegou a entrar em estado de trabalho — quem nunca
           // saiu do backlog não tem intervalo nenhum e não é trabalho em progresso.
           "wip", e -> e.detail().containsKey("spans") || e.detail().containsKey("in_progress"),
-          // As fases e a eficiência descrevem a mesma população do Cycle Time exibido ao lado.
-          // Item inacabado tem medida parcial, que ainda pode andar nos dois sentidos; e item sem
-          // histórico aproveitável não recebe num/den, caindo nos defaults do motor (0 sobre 1) e
-          // afundando a razão por não ter dado em vez de por ter esperado.
+          // A eficiência conta todo item concluído: item inacabado tem medida parcial, que ainda
+          // pode andar nos dois sentidos, e item sem histórico aproveitável não recebe num/den,
+          // caindo nos defaults do motor (0 sobre 1) sem puxar a razão para baixo.
           "flow_efficiency", completed(),
-          "active_time", completed(),
-          "waiting_time", completed(),
-          "review_time", completed());
+          // As fases contam o item concluído que TEM ciclo — a população do card de Cycle Time, de
+          // verdade. "Concluído" sozinho não era: o item fechado sem passar por trabalho não grava
+          // cycle_h e sai do card por medida ausente, mas grava active_h = wait_h = review_h = 0 e
+          // entrava aqui, porque zero não é ausência. Num time que fecha task sem mover no board
+          // esses zeros são maioria, e as medianas das fases iam para perto de zero ao lado de um
+          // Cycle Time de 21 h — o sintoma que ninguém conseguia explicar olhando a tela.
+          "active_time", cycled(),
+          "waiting_time", cycled(),
+          "review_time", cycled());
 
   private static Predicate<RawEvent> completed() {
     return e -> "1".equals(e.detail().get("completed"));
+  }
+
+  /** Concluído <em>e</em> com ciclo: entrou em estado de trabalho antes de terminar. */
+  private static Predicate<RawEvent> cycled() {
+    return completed().and(e -> e.detail().containsKey("cycle_h"));
   }
 }

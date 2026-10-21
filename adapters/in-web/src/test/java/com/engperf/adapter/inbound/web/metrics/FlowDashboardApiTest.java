@@ -159,8 +159,8 @@ class FlowDashboardApiTest {
               CYCLE, v, new Coverage(9, 10), !workTypes.isEmpty(), workTypes.isEmpty() ? 0 : 3);
       List<PhaseSlice> phases =
           List.of(
-              new PhaseSlice("coding_time", "Coding", 5),
-              new PhaseSlice("pickup_time", "PR Pickup", 1));
+              new PhaseSlice("coding_time", "Coding", 5, 50.0),
+              new PhaseSlice("pickup_time", "PR Pickup", 1, 50.0));
       List<ScatterPoint> scatter =
           List.of(
               new ScatterPoint("v:pag", "Pagamentos", 12, 9),

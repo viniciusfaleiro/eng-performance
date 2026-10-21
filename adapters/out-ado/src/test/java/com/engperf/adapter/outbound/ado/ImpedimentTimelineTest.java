@@ -267,4 +267,51 @@ class ImpedimentTimelineTest {
       throw new RuntimeException(e);
     }
   }
+
+  /**
+   * E5: dez horas sob duas tags são cinco para cada, não dez para cada. Somar cada motivo inteiro
+   * fazia os motivos passarem da espera do item, e o excedente sumia no truncamento do residual — a
+   * quebra parecia fechar enquanto estava errada.
+   */
+  @Test
+  void twoReasonsAtOnceSplitTheStretch() {
+    ImpedimentTimeline t =
+        timeline(
+            tags(h(0), "", "Impedimento:infra; Impedimento:negócio"),
+            tags(h(10), "Impedimento:infra; Impedimento:negócio", ""),
+            CONVENTION);
+
+    assertThat(t.hoursByReason(EVERYTHING))
+        .containsOnly(Map.entry("infra", 5.0), Map.entry("negócio", 5.0));
+  }
+
+  /** Sobreposição parcial: só o trecho comum se divide. */
+  @Test
+  void partlyOverlappingReasonsSplitOnlyTheOverlap() {
+    ImpedimentTimeline t =
+        timeline(
+            tags(h(0), "", "Impedimento:infra"),
+            tags(h(6), "Impedimento:infra", "Impedimento:infra; Impedimento:negócio"),
+            tags(h(10), "Impedimento:infra; Impedimento:negócio", ""),
+            CONVENTION);
+
+    assertThat(t.hoursByReason(EVERYTHING))
+        .containsOnly(Map.entry("infra", 8.0), Map.entry("negócio", 2.0));
+  }
+
+  /** A invariante: a soma dos motivos é exatamente o tempo impedido dentro das janelas. */
+  @Test
+  void theReasonsOfAnItemSumToItsImpededTime() {
+    ImpedimentTimeline t =
+        timeline(
+            both(h(0), "", "Yes", "", "Impedimento:infra"),
+            tags(h(4), "Impedimento:infra", "Impedimento:infra; Impedimento:negócio"),
+            both(h(9), "Yes", "None", "Impedimento:infra; Impedimento:negócio", ""),
+            CONVENTION);
+
+    double sum =
+        t.hoursByReason(EVERYTHING).values().stream().mapToDouble(Double::doubleValue).sum();
+
+    assertThat(sum).isEqualTo(t.overlapMs(T0, NOW) / 3_600_000.0);
+  }
 }

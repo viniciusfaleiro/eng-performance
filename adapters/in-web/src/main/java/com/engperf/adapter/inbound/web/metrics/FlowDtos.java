@@ -48,10 +48,15 @@ public final class FlowDtos {
     }
   }
 
-  public record PhaseDto(String key, String label, double hours) {
+  /**
+   * Uma fase com as duas leituras: as horas e a participação dela no ciclo. A participação é a
+   * pergunta ("quantos por cento do nosso tempo é espera?") e as horas são o que a torna
+   * conferível.
+   */
+  public record PhaseDto(String key, String label, double hours, double sharePct) {
 
     public static PhaseDto from(PhaseSlice p) {
-      return new PhaseDto(p.key(), p.label(), p.hours());
+      return new PhaseDto(p.key(), p.label(), p.hours(), p.sharePct());
     }
   }
 
@@ -68,16 +73,25 @@ public final class FlowDtos {
   }
 
   /**
-   * {@code items}/{@code itemsWithSignal} is the signal's coverage. Without it a team that never
-   * marks impediments reads exactly like a team that is never blocked.
+   * {@code totalHours} é a <strong>Espera exibida no board</strong> — o número do qual a gaveta foi
+   * aberta, e a soma exata das fatias. {@code populationHours} é a soma bruta das horas de espera
+   * da população, outra pergunta, que a tela mostra como contexto e nunca como total das fatias.
+   *
+   * <p>{@code items}/{@code itemsWithSignal} é a cobertura do sinal. Sem ela, um time que nunca
+   * marca impedimento se lê igual a um time que nunca travou.
    */
   public record ImpedimentsDto(
-      List<ImpedimentSliceDto> slices, double totalHours, int items, int itemsWithSignal) {
+      List<ImpedimentSliceDto> slices,
+      double totalHours,
+      double populationHours,
+      int items,
+      int itemsWithSignal) {
 
     public static ImpedimentsDto from(ImpedimentReasons r) {
       return new ImpedimentsDto(
           r.slices().stream().map(ImpedimentSliceDto::from).toList(),
           r.waitingHours(),
+          r.populationHours(),
           r.items(),
           r.itemsWithSignal());
     }

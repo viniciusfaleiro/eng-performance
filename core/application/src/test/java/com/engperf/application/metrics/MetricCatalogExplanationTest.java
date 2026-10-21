@@ -154,4 +154,26 @@ class MetricCatalogExplanationTest {
   void attributionIsStatedOnceForEveryMetric() {
     assertThat(catalog.attributionNote()).contains("time em que a pessoa estava");
   }
+
+  /**
+   * As fases deixaram de ser mediana por fase e passaram a ser a participação aplicada ao card. O
+   * texto tem de dizer isso e dizer quem fica de fora — item fechado sem passar por trabalho —,
+   * porque é a diferença entre "a conta está errada" e "estes itens não têm ciclo".
+   */
+  @Test
+  void thePhaseExplanationsStateThePopulationAndTheComposition() {
+    for (String key : List.of("waiting_time", "active_time", "review_time")) {
+      MetricExplanation e =
+          catalog.all().stream()
+              .filter(d -> d.key().equals(key))
+              .findFirst()
+              .orElseThrow()
+              .explained()
+              .orElseThrow();
+      assertThat(e.rule()).as("regra de %s", key).containsIgnoringCase("Cycle Time");
+      assertThat(e.included())
+          .as("população de %s", key)
+          .containsIgnoringCase("estado de trabalho");
+    }
+  }
 }

@@ -1,8 +1,10 @@
 package com.engperf.domain.metrics;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
+import java.util.TreeSet;
 
 /**
  * Set arithmetic over {@link Interval}s — the one implementation of "these stretches of time, taken
@@ -99,6 +101,46 @@ public final class Intervals {
       }
     }
     return List.copyOf(out);
+  }
+
+  /**
+   * {@code base} cut at every boundary {@code cuts} introduces, so each resulting stretch is
+   * covered by a constant set of them.
+   *
+   * <p>It is what lets a stretch be divided among whoever covers it: without the cut, a stretch
+   * half-covered by one party and wholly by another has no single answer to "how many cover this?".
+   */
+  public static List<Interval> slice(List<Interval> base, Collection<List<Interval>> cuts) {
+    TreeSet<Long> marks = new TreeSet<>();
+    for (Interval i : base) {
+      marks.add(i.start());
+      marks.add(i.end());
+    }
+    for (List<Interval> cut : cuts) {
+      for (Interval i : cut) {
+        marks.add(i.start());
+        marks.add(i.end());
+      }
+    }
+    List<Interval> out = new ArrayList<>();
+    Long[] points = marks.toArray(new Long[0]);
+    for (int i = 0; i + 1 < points.length; i++) {
+      Interval candidate = new Interval(points[i], points[i + 1]);
+      if (covers(base, candidate)) {
+        out.add(candidate);
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /** Whether some interval of {@code intervals} contains {@code slice} whole. */
+  public static boolean covers(List<Interval> intervals, Interval slice) {
+    for (Interval i : intervals) {
+      if (i.start() <= slice.start() && i.end() >= slice.end()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

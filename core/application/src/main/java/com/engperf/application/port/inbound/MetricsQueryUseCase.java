@@ -120,6 +120,14 @@ public interface MetricsQueryUseCase {
       ContainerFilter containers);
 
   /**
+   * The hours each cycle-time phase took over {@code nodeId}'s population in {@code period}, keyed
+   * by metric key. It is the composition behind the phases shown on the board: each phase's share
+   * of this total, applied to the Cycle Time card, is what makes the three add up to it.
+   */
+  Map<String, Double> phaseHours(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers);
+
+  /**
    * What the waiting time of {@code nodeId}'s population in {@code period} was spent being blocked
    * by, over the very items the waiting phase was computed from. The slices compose that
    * population's waiting hours — they do not decompose the waiting card, which is a median.
