@@ -236,6 +236,15 @@ select.sel{font-family:inherit;font-size:13px;color:var(--on-surface);background
 .row-go{font-size:15px;color:var(--on-surf-var);padding-left:2px;}
 .hbar-row.click:hover .row-go,.mini-row.click:hover .row-go{color:var(--pri);}
 .hours-note{font-size:11.5px;color:var(--on-surf-var);line-height:1.5;margin-top:10px;}
+/* Paginação das listas de itens considerados: dez por vez, com a posição à vista. Sem ela a lista
+   que existe para conferir um número vira uma parede de centenas de linhas numa gaveta. */
+.pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 0 2px;}
+.pager-pos{font-size:12px;color:var(--on-surface-var);}
+.pager-btn{background:var(--surface-2);color:var(--on-surface);border:1px solid var(--outline-var);
+  border-radius:8px;width:30px;height:30px;font-size:15px;cursor:pointer;}
+.pager-btn:hover:not(:disabled){border-color:var(--primary);color:var(--primary);}
+.pager-btn:disabled{opacity:.35;cursor:default;}
+.pager-btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px;}
 .wi-h{font-family:var(--mono);font-size:12px;}
 .wi-h.dim{color:var(--on-surf-var);}
 
@@ -1508,6 +1517,49 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const legend='<div class="cal-legend">Menos <i style="background:var(--cal-0)"></i><i style="background:var(--cal-1)"></i><i style="background:var(--cal-2)"></i><i style="background:var(--cal-3)"></i><i style="background:var(--cal-4)"></i> Mais</div>';
     return '<div class="chart-wrap cal-card" data-activity="'+id+'" role="button" tabindex="0" aria-label="Ver commits e PRs recentes"><div class="chart-head"><div class="chart-title">Contribuições — últimos 12 meses</div><div class="card-note"><span class="num">'+total+'</span> commits · ver detalhes ›</div></div><div class="cal"><div class="cal-inner">'+monthRow+'<div class="cal-grid">'+cells+'</div></div></div>'+legend+'</div>';
   }
+  /* ---------- Listas paginadas ----------
+     Toda lista de itens considerados mostra dez por vez. O que ela existe para fazer é deixar o
+     leitor conferir um número item a item; um mês de trabalho são centenas de linhas numa gaveta de
+     540 px, e rolar sem referência faz a pessoa acreditar ou duvidar do número por atacado — que é
+     o oposto de conferir. A paginação muda quantos itens aparecem, nunca quais contam. */
+  const PAGE_SIZE=10;
+  const LISTS={};
+  function pagedList(id,rows,note){
+    LISTS[id]={rows:rows,note:note||"",page:0};
+    return '<div id="'+id+'">'+pagedInner(id)+'</div>';
+  }
+  function pagedInner(id){
+    const L=LISTS[id];if(!L)return "";
+    const total=L.rows.length;
+    const pages=Math.max(1,Math.ceil(total/PAGE_SIZE));
+    if(L.page>pages-1)L.page=pages-1;
+    if(L.page<0)L.page=0;
+    const slice=L.rows.slice(L.page*PAGE_SIZE,L.page*PAGE_SIZE+PAGE_SIZE).join("");
+    let h='<div class="act-list">'+slice+'</div>';
+    if(pages>1||L.note){
+      h+='<div class="pager">'+
+        '<button class="pager-btn" data-page="'+id+':-1"'+(L.page===0?' disabled':'')+' aria-label="Página anterior">‹</button>'+
+        '<span class="pager-pos">Página <b class="num">'+(L.page+1)+'</b> de <b class="num">'+pages+
+        '</b> · <b class="num">'+total+'</b> '+(total===1?'item':'itens')+(L.note?' · '+L.note:'')+'</span>'+
+        '<button class="pager-btn" data-page="'+id+':1"'+(L.page>=pages-1?' disabled':'')+' aria-label="Próxima página">›</button>'+
+        '</div>';
+    }
+    return h;
+  }
+  function turnPage(id,delta){
+    const L=LISTS[id];if(!L)return;
+    L.page+=delta;
+    const box=$(id);if(box)box.innerHTML=pagedInner(id);
+  }
+  ["click","keydown"].forEach(t=>document.addEventListener(t,(ev)=>{
+    if(t==="keydown"&&ev.key!=="Enter"&&ev.key!==" ")return;
+    const b=ev.target.closest&&ev.target.closest("[data-page]");
+    if(!b||b.disabled)return;
+    ev.preventDefault();ev.stopPropagation();
+    const [id,delta]=b.dataset.page.split(":");
+    turnPage(id,parseInt(delta,10));
+  },true));
+
   function stackBlock(title,items,unit){
     const sum=items.reduce((a,b)=>a+b.val,0)||1;
     const bar='<div class="phasebar">'+items.map(p=>'<div class="phaseseg" style="width:'+(p.val/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(p.val,unit)+(unit==="%"?"%":" "+unit)+'"></div>').join("")+'</div>';
@@ -1727,20 +1779,25 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     if(!t)return;
     const n=NODES[state.node]||{vertical:"",team:"",label:""};
     const shown=t.items||[];
-    let rows="";
+    const rows=[];
     shown.forEach(i=>{
       const el=Math.round(i.elapsedHours*10)/10,ct=Math.round(i.countedHours*10)/10;
-      rows+='<a class="act-item" href="'+escHtml(i.url)+'" target="_blank" rel="noopener">'+
+      rows.push('<a class="act-item" href="'+escHtml(i.url)+'" target="_blank" rel="noopener">'+
         '<div class="act-main"><div class="act-title">'+escHtml(i.title||i.id)+'</div>'+
         '<div class="act-meta"><span class="act-hash">'+escHtml(i.id)+'</span>'+
         '<span class="wi-h dim">'+el+' h em andamento</span>'+
-        '<span class="wi-h"><b>'+ct+' h</b> na conta</span></div></div><span class="act-ext">↗</span></a>';
+        '<span class="wi-h"><b>'+ct+' h</b> na conta</span></div></div><span class="act-ext">↗</span></a>');
     });
-    if(!rows)rows='<div class="card-note">Nenhum item contabilizado neste tipo no período.</div>';
     let h='<div class="drawer-head"><div><div class="crumb-level">'+escHtml(n.vertical+' › '+n.team)+'</div><h2 style="font-size:20px;margin-top:2px">'+escHtml(t.label)+' · '+(Math.round(t.hours*10)/10)+' h</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
     h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:6px">'+t.itemCount+' item(ns) contabilizados'+(t.itemCount>shown.length?(' · mostrando os '+shown.length+' maiores'):'')+'. Abrem direto no Azure DevOps ↗</div>';
     h+='<div class="hours-note" style="margin:0 0 14px">Some a coluna <b>na conta</b> para chegar nas '+(Math.round(t.hours*10)/10)+' h da fatia. A coluna <b>em andamento</b> pode somar mais que o período: é o mesmo tempo corrido contado em itens simultâneos.</div>';
-    h+='<div class="act-list">'+rows+'</div></div>';
+    // A lista servida vem cortada quando o tipo tem muitos itens; o aviso fica no paginador, que é
+    // onde o leitor chega à última página e conclui que a conta não fecha.
+    const cut=t.itemCount>shown.length?('lista parcial: os '+shown.length+' maiores de '+t.itemCount):"";
+    h+=rows.length
+      ? pagedList("wiItemsPaged",rows,cut)
+      : '<div class="card-note">Nenhum item contabilizado neste tipo no período.</div>';
+    h+='</div>';
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
   }
@@ -1755,21 +1812,23 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const count=dir==="received"?rv.reviewsReceived:rv.reviewsGiven;
     const title=dir==="received"?"Reviews que recebeu":"Reviews que fez";
     const n=NODES[state.node]||{vertical:"",team:"",label:""};
-    let rows="";
+    const rows=[];
     list.forEach(r=>{
       const dec=r.decision==="changes_requested"?'<span class="pr-status pr-open">mudanças solicitadas</span>':
         (r.decision==="approved"?'<span class="pr-status pr-merged">aprovada</span>':'');
-      rows+='<a class="act-item" href="'+escHtml(r.url)+'" target="_blank" rel="noopener">'+
+      rows.push('<a class="act-item" href="'+escHtml(r.url)+'" target="_blank" rel="noopener">'+
         '<div class="act-main"><div class="act-title">'+escHtml(r.title||r.id)+'</div>'+
         '<div class="act-meta"><span>'+escHtml(r.date)+'</span>'+(r.comments?'<span>'+r.comments+' comentário(s)</span>':'')+'</div></div>'+
-        (dec||'<span class="act-ext">↗</span>')+'</a>';
+        (dec||'<span class="act-ext">↗</span>')+'</a>');
     });
-    if(!rows)rows='<div class="card-note">Nenhuma review registrada no período.</div>';
     let h='<div class="drawer-head"><div><div class="crumb-level">'+escHtml(n.vertical+' › '+n.team)+'</div><h2 style="font-size:20px;margin-top:2px">'+title+' · '+count+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
     h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:14px">'+
       (dir==="received"?'As pull requests deste contribuidor que foram revisadas. A lista nomeia as PRs, não quem revisou.':'As reviews feitas por este contribuidor.')+
       ' A review não tem registro próprio no Azure DevOps, então o link abre a pull request ↗</div>';
-    h+='<div class="act-list">'+rows+'</div></div>';
+    h+=rows.length
+      ? pagedList("reviewsPaged",rows)
+      : '<div class="card-note">Nenhuma review registrada no período.</div>';
+    h+='</div>';
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
   }
@@ -2465,7 +2524,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
       .then(items=>{
         const box2=$("drawerItems");if(!box2)return; // drawer may have been closed/reopened meanwhile
         if(!items.length){box2.innerHTML='<div class="card-note">Nenhum item no período atual.</div>';return;}
-        box2.innerHTML='<div class="act-list">'+items.map(it=>{
+        box2.innerHTML=pagedList("drawerItemsPaged",items.map(it=>{
           const excluded=!it.counted;
           const tag=excluded?' <span class="badge unmapped">não contou'+(it.excludedReason?" · "+escHtml(it.excludedReason):"")+'</span>':"";
           const meta='<span>'+escHtml(it.entity||"")+'</span><span>'+new Date(it.occurredAt).toLocaleDateString("pt-BR")+'</span><span>'+fmt(it.measure,unit)+' '+unit+'</span>'+tag;
@@ -2473,7 +2532,7 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
           return it.url
             ?'<a class="act-item" href="'+escHtml(it.url)+'" target="_blank" rel="noopener">'+body+'<span class="act-ext">↗</span></a>'
             :'<div class="act-item">'+body+'</div>';
-        }).join("")+'</div>';
+        }));
       })
       .catch(()=>{const box3=$("drawerItems");if(box3)box3.innerHTML='<div class="callout danger">Não foi possível carregar os itens.</div>';});
   }
@@ -2491,29 +2550,31 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     const ADO="https://dev.azure.com/minhaorg";
     const esc=(s)=>String(s).replace(/[&<>"]/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
     const real=indData();
-    let commits="",prs="";
+    const commitRows=[],prRows=[];
     if(real&&real.activity&&real.activity.length){
       real.activity.filter(a=>a.kind==="commit").forEach(a=>{
-        commits+='<a class="act-item" href="'+esc(a.url)+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+esc(a.summary)+'</div><div class="act-meta"><span>'+esc(a.repo)+'</span><span>'+esc(a.date)+'</span></div></div><span class="act-ext">↗</span></a>';});
+        commitRows.push('<a class="act-item" href="'+esc(a.url)+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+esc(a.summary)+'</div><div class="act-meta"><span>'+esc(a.repo)+'</span><span>'+esc(a.date)+'</span></div></div><span class="act-ext">↗</span></a>');});
       real.activity.filter(a=>a.kind==="pr").forEach(a=>{
-        prs+='<a class="act-item" href="'+esc(a.url)+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+esc(a.summary)+'</div><div class="act-meta"><span>'+esc(a.repo)+'</span><span>'+esc(a.date)+'</span></div></div><span class="act-ext">↗</span></a>';});
+        prRows.push('<a class="act-item" href="'+esc(a.url)+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+esc(a.summary)+'</div><div class="act-meta"><span>'+esc(a.repo)+'</span><span>'+esc(a.date)+'</span></div></div><span class="act-ext">↗</span></a>');});
     }else{
       for(let i=0;i<8;i++){
         const hx=Math.floor(hash(id+"ch"+i)*0xfffffff).toString(16).padStart(7,"0").slice(0,7);
         const add=Math.round(hash(id+"ca"+i)*180+4),del=Math.round(hash(id+"cd"+i)*70),repo=pick(REPOS,id+"cr"+i);
         const url=ADO+"/"+repo+"/_git/"+repo+"/commit/"+hx;
-        commits+='<a class="act-item" href="'+url+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+pick(MSGS,id+"cm"+i)+'</div><div class="act-meta"><span class="act-hash">'+hx+'</span><span>'+repo+'</span><span>'+TIMES[i]+'</span><span><span class="act-add">+'+add+'</span> <span class="act-del">−'+del+'</span></span></div></div><span class="act-ext">↗</span></a>';
+        commitRows.push('<a class="act-item" href="'+url+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+pick(MSGS,id+"cm"+i)+'</div><div class="act-meta"><span class="act-hash">'+hx+'</span><span>'+repo+'</span><span>'+TIMES[i]+'</span><span><span class="act-add">+'+add+'</span> <span class="act-del">−'+del+'</span></span></div></div><span class="act-ext">↗</span></a>');
       }
       for(let i=0;i<6;i++){
         const num=100+Math.floor(hash(id+"pn"+i)*880*97)%880,rv=1+Math.floor(hash(id+"pv"+i)*5*97)%5,repo=pick(REPOS,id+"pr"+i);
         const stp=pick(STATUSES,id+"ps"+i),st=stp[0],cls=stp[1];
         const url=ADO+"/"+repo+"/_git/"+repo+"/pullrequest/"+num;
-        prs+='<a class="act-item" href="'+url+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+pick(TITLES,id+"pt"+i)+'</div><div class="act-meta"><span class="pr-num">#'+num+'</span><span>'+repo+'</span><span>'+TIMES[i]+'</span><span>'+rv+' reviews</span></div></div><span class="pr-status '+cls+'">'+st+'</span></a>';
+        prRows.push('<a class="act-item" href="'+url+'" target="_blank" rel="noopener"><div class="act-main"><div class="act-title">'+pick(TITLES,id+"pt"+i)+'</div><div class="act-meta"><span class="pr-num">#'+num+'</span><span>'+repo+'</span><span>'+TIMES[i]+'</span><span>'+rv+' reviews</span></div></div><span class="pr-status '+cls+'">'+st+'</span></a>');
       }
     }
     let h='<div class="drawer-head"><div><div class="crumb-level">'+n.vertical+' › '+n.team+'</div><h2 style="font-size:20px;margin-top:2px">'+n.label+'</h2></div><button class="icon-btn" id="drawerClose" aria-label="Fechar">✕</button></div>';
-    h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:14px">Itens abrem direto no Azure DevOps ↗</div><div class="chart-title" style="margin-bottom:6px">Últimos commits</div><div class="act-list">'+commits+'</div>';
-    h+='<div class="chart-title" style="margin-bottom:6px">Últimos PRs</div><div class="act-list">'+prs+'</div></div>';
+    h+='<div class="drawer-body"><div class="card-note" style="margin-bottom:14px">Itens abrem direto no Azure DevOps ↗</div><div class="chart-title" style="margin-bottom:6px">Últimos commits</div>'+
+      pagedList("activityCommitsPaged",commitRows);
+    h+='<div class="chart-title" style="margin-bottom:6px">Últimos PRs</div>'+
+      pagedList("activityPrsPaged",prRows)+'</div>';
     $("drawer").innerHTML=h;$("drawer").classList.add("open");$("scrim").classList.add("open");
     $("drawerClose").addEventListener("click",closeDrawer);
   }
