@@ -48,13 +48,7 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
       }
     }
 
-    List<PhaseSlice> phases = new ArrayList<>();
-    for (MetricDefinition def : catalog.phases()) {
-      MetricCard c = nodeCards.get(def.key());
-      if (c != null) {
-        phases.add(new PhaseSlice(def.key(), def.label(), c.current().value()));
-      }
-    }
+    List<PhaseSlice> phases = phases(nodeId, period, workTypes, containers, nodeCards);
 
     List<Child> children = children(nodeId);
     List<ScatterPoint> scatter = new ArrayList<>();
@@ -73,8 +67,49 @@ public final class FlowDashboardService implements FlowDashboardUseCase {
         childType(nodeId),
         cards,
         phases,
-        metrics.impediments(nodeId, period, workTypes, containers),
+        // Escalado para a Espera que o board mostra: as fatias têm de somar o número do qual a
+        // gaveta foi aberta, senão a tela põe duas escalas lado a lado sem dizer qual é qual.
+        metrics
+            .impediments(nodeId, period, workTypes, containers)
+            .scaledTo(phaseValue(phases, "waiting_time")),
         scatter);
+  }
+
+  /**
+   * Cada fase é <strong>a participação dela no tempo dos itens, aplicada ao Cycle Time do
+   * card</strong> — por isso as três somam o card, que é o que o leitor confere.
+   *
+   * <p>Era mediana por fase, e mediana das partes não é a mediana do todo: a fase que a maioria dos
+   * itens pula tem mediana zero por mais tempo que os poucos que passaram por ela tenham ficado lá.
+   * Daí 21 h de ciclo ao lado de 1,5 h de fases, sem nada na tela dizendo qual acreditar.
+   *
+   * <p>Soma zero — ou card ausente — devolve as três em zero: sem horas não há participação, e
+   * inventar uma divisão aqui seria devolver um número que não veio de dado nenhum.
+   */
+  private List<PhaseSlice> phases(
+      String nodeId,
+      Period period,
+      WorkTypeFilter workTypes,
+      ContainerFilter containers,
+      Map<String, MetricCard> nodeCards) {
+    MetricCard cycle = nodeCards.get("cycle_time");
+    Map<String, Double> hours = metrics.phaseHours(nodeId, period, workTypes, containers);
+    double total = hours.values().stream().mapToDouble(Double::doubleValue).sum();
+    List<PhaseSlice> phases = new ArrayList<>();
+    for (MetricDefinition def : catalog.phases()) {
+      double share = total <= 0 ? 0.0 : hours.getOrDefault(def.key(), 0.0) / total;
+      double value = cycle == null ? 0.0 : cycle.current().value() * share;
+      phases.add(new PhaseSlice(def.key(), def.label(), value, share * 100.0));
+    }
+    return phases;
+  }
+
+  private static double phaseValue(List<PhaseSlice> phases, String key) {
+    return phases.stream()
+        .filter(p -> p.key().equals(key))
+        .mapToDouble(PhaseSlice::hours)
+        .findFirst()
+        .orElse(0.0);
   }
 
   private static List<MetricDefinition> concat(

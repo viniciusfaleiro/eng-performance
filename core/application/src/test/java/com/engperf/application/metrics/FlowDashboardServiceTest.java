@@ -226,26 +226,34 @@ class FlowDashboardServiceTest {
   // ---- quebra da Espera por motivo de impedimento ----
 
   /**
-   * A quebra descreve a composição das horas de espera da mesma população do card — e não uma
-   * decomposição do card, que é mediana. O que tem de fechar é esse total.
+   * A quebra tem de somar a <strong>Espera exibida no board</strong> — o número do qual a gaveta
+   * foi aberta. A soma bruta da população continua disponível, como contexto, em populationHours:
+   * são duas perguntas, e trocá-las era o que punha 20.000 h ao lado de um board lendo zero.
    */
   @Test
-  void theBreakdownComposesThePopulationWaitingHours() {
+  void theBreakdownAddsUpToTheWaitingShownOnTheBoard() {
     baseStructure();
     events.add(impededItem("id-ana", 10, 0, 6, Map.of("infra", 4.0)));
     events.add(impededItem("id-bruno", 10, 0, 2, Map.of("infra", 1.0, "aprovação", 1.0)));
 
-    var breakdown = flow.dashboard("t:checkout", period(Frequency.MONTHLY)).impediments();
+    var dash = flow.dashboard("t:checkout", period(Frequency.MONTHLY));
+    var breakdown = dash.impediments();
+    double waitingShown =
+        dash.phases().stream()
+            .filter(p -> p.key().equals("waiting_time"))
+            .mapToDouble(PhaseSlice::hours)
+            .findFirst()
+            .orElseThrow();
 
-    assertThat(breakdown.waitingHours()).isEqualTo(8.0);
+    assertThat(breakdown.populationHours()).as("a soma bruta da população").isEqualTo(8.0);
+    assertThat(breakdown.waitingHours())
+        .as("o total das fatias é a Espera do board")
+        .isEqualTo(waitingShown);
     assertThat(breakdown.slices())
         .extracting(ImpedimentSlice::key)
         .containsExactly("infra", "aprovação", "queue");
-    assertThat(breakdown.slices())
-        .extracting(ImpedimentSlice::hours)
-        .containsExactly(5.0, 1.0, 2.0);
     assertThat(breakdown.slices().stream().mapToDouble(ImpedimentSlice::hours).sum())
-        .isEqualTo(breakdown.waitingHours());
+        .isCloseTo(waitingShown, Offset.offset(1e-9));
     assertThat(breakdown.slices().stream().mapToDouble(ImpedimentSlice::share).sum())
         .isCloseTo(100.0, Offset.offset(0.001));
   }
@@ -304,8 +312,8 @@ class FlowDashboardServiceTest {
                     com.engperf.domain.metrics.WorkType.BUG))
             .impediments();
 
-    assertThat(all.waitingHours()).isEqualTo(10.0);
-    assertThat(bugsOnly.waitingHours()).isEqualTo(4.0);
+    assertThat(all.populationHours()).isEqualTo(10.0);
+    assertThat(bugsOnly.populationHours()).isEqualTo(4.0);
     assertThat(bugsOnly.slices()).extracting(ImpedimentSlice::key).containsExactly("aprovação");
   }
 

@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -172,6 +173,30 @@ public final class MetricsService implements MetricsQueryUseCase {
                 s.withLabel(
                     structure.findPerson(s.entityId()).map(Person::name).orElse(s.entityId())))
         .toList();
+  }
+
+  @Override
+  public Map<String, Double> phaseHours(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
+    StructureIndex index = buildIndex();
+    Instant readNow = clock.instant();
+    Map<String, Double> byPhase = new LinkedHashMap<>();
+    for (MetricDefinition def : catalog.phases()) {
+      byPhase.put(
+          def.key(),
+          PhaseComposition.hours(
+              index,
+              fetch(def, period),
+              def,
+              nodeId,
+              period,
+              readNow,
+              MetricSelections.restrict(
+                  catalog.population(def.key()),
+                  def,
+                  population(def.key(), workTypes, containers))));
+    }
+    return byPhase;
   }
 
   @Override

@@ -1037,12 +1037,14 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     (d.scatter||[]).forEach(s=>{byNode[s.nodeId]={tp:{cur:s.throughput},ct:{cur:s.cycleTime}};});
     // As keys das fases vêm junto: é por elas que o segmento clicado sabe qual métrica abrir.
     return {byNode,childType:d.childType,phases:(d.phases||[]).map(p=>p.hours),
+      phaseShares:(d.phases||[]).map(p=>p.sharePct),
       phaseKeys:(d.phases||[]).map(p=>p.key),impediments:d.impediments||null,
       children:(d.scatter||[]).map(s=>s.nodeId)};
   }
   const flowCache=()=>FLOW_CACHE[state.node+"|"+state.freq+"|"+selKey()];
   function flowPhases(){const c=flowCache();return (c&&c.phases&&c.phases.length===3)?c.phases:null;}
   function flowPhaseKeys(){const c=flowCache();return (c&&c.phaseKeys&&c.phaseKeys.length===3)?c.phaseKeys:null;}
+  function flowPhaseShares(){const c=flowCache();return (c&&c.phaseShares&&c.phaseShares.length===3)?c.phaseShares:null;}
   function flowImpediments(){const c=flowCache();return c?c.impediments:null;}
   /* IA dashboard wired to the real engine: /api/dashboards/ai gives the node's three cards
      (ai_share, ai_adoption, ai_impact), the AI-adoption ranking of the children, and the
@@ -1319,10 +1321,18 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     h+=areaTrend("Cycle Time — evolução",M("ct"));
     h+='<div class="dash-grid">'+rankPanel("Cycle Time por "+et+" (menor é melhor)",ids,M("ct"))+scatterPanel("Throughput × Cycle Time por "+et,ids,M("tp"),M("ct"))+'</div>';
     h+=phaseBlock(state.node,M("ct"));
-    const phases=phaseSplit(state.node,state.freq,snap(state.node,M("ct"),state.freq).cur);const pmax=phases.indexOf(Math.max(...phases));
+    // O resumo lê as fases servidas, não a divisão sintética do protótipo: enquanto lia phaseSplit
+    // ele nomeava um gargalo que nenhum dado sustentava, contradizendo o gráfico logo acima.
+    const realPhases=flowPhases();
+    const pmax=realPhases?realPhases.indexOf(Math.max(...realPhases)):-1;
     const fast=best(ids,M("ct"),"min"),wip=best(ids,M("wip"),"max"),fe=best(ids,M("fe"),"max");
+    const shares=flowPhaseShares();
     const stats=[
-      {label:"Maior gargalo",value:PHASES[pmax].n,sub:fmt(phases[pmax],"h")+" h em média",tone:"warn"},
+      pmax<0
+        ? {label:"Maior gargalo",value:"—",sub:"sem dado de fases no período",tone:"warn"}
+        : {label:"Maior gargalo",value:PHASES[pmax].n,
+           sub:fmt(realPhases[pmax],"h")+" h do Cycle Time"+(shares?" · "+Math.round(shares[pmax])+"%":""),
+           tone:"warn"},
       {label:(et.charAt(0).toUpperCase()+et.slice(1))+" mais rápido",value:fmt(fast.v,"h")+" h",sub:fast.n.label,tone:"good"},
     ];
     // O WIP é leitura do diário: fora dele a faixa não o menciona, senão a métrica sai do card e
@@ -1438,8 +1448,13 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
     // Só é acionável com dado real atrás — no mock não há o que abrir.
     const keys=flowPhaseKeys();
     const openable=(i)=>keys&&keys[i]==="waiting_time";
-    let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div'+(openable(i)?' class="phaseseg click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phaseseg"')+' style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+'h'+(openable(i)?" · ver motivos":"")+'"></div>';});bar+='</div>';
-    let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div'+(openable(i)?' class="phase-item click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phase-item"')+'><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h</b>'+(openable(i)?'<span class="row-go">›</span>':'')+'</div>';});leg+='</div>';
+    // Horas e percentual juntos: a pergunta é "quantos por cento do nosso tempo é espera?", e as
+    // horas são o que torna essa resposta conferível. O percentual vem servido — é a própria
+    // participação que decidiu o valor da fase —, com o da barra como reserva do modo protótipo.
+    const shares=flowPhaseShares()||parts.map(v=>v/sum*100);
+    const pct=(i)=>Math.round(shares[i])+"%";
+    let bar='<div class="phasebar">';PHASES.forEach((p,i)=>{bar+='<div'+(openable(i)?' class="phaseseg click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phaseseg"')+' style="width:'+(parts[i]/sum*100).toFixed(1)+'%;background:'+p.c+'" title="'+p.n+': '+fmt(parts[i],"h")+' h · '+pct(i)+' do ciclo'+(openable(i)?" · ver motivos":"")+'"></div>';});bar+='</div>';
+    let leg='<div class="phase-legend">';PHASES.forEach((p,i)=>{leg+='<div'+(openable(i)?' class="phase-item click" data-phase="waiting_time" role="button" tabindex="0" aria-label="Ver a Espera por motivo de impedimento"':' class="phase-item"')+'><i style="background:'+p.c+'"></i>'+p.n+'<b class="num">'+fmt(parts[i],"h")+' h · '+pct(i)+'</b>'+(openable(i)?'<span class="row-go">›</span>':'')+'</div>';});leg+='</div>';
     // A leitura das fases depende de saber como o board é interpretado — sem isso o time não sabe
     // por que um estado caiu em Ativo e não em Review.
     return '<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">'+
@@ -2420,10 +2435,16 @@ a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(
         hours:rest.reduce((a,b)=>a+b.hours,0),share:rest.reduce((a,b)=>a+b.share,0)}]);
     }
     const color=(sl,i)=>sl.key==="queue"?"var(--cat-2)":(sl.key==="?"?"var(--outline)":IMP_COLORS[i%IMP_COLORS.length]);
-    const items=shown.map((sl,i)=>({n:escHtml(sl.label),c:color(sl,i),val:sl.hours}));
+    const items=shown.map((sl,i)=>({n:escHtml(sl.label)+' · '+pctLabel(sl.share),c:color(sl,i),val:sl.hours}));
     const maxH=Math.max.apply(null,shown.map(sl=>sl.hours))||1;
+    // O total declarado é a Espera do board — o número do qual a gaveta foi aberta e a soma exata
+    // das fatias. A soma bruta da população é outra pergunta e vem rotulada como contexto.
+    const ctx=imp.populationHours&&imp.populationHours>0
+      ? ' <span class="card-note" style="font-weight:400">· '+fmt(imp.populationHours,"h")+
+        ' h somadas nos itens do período</span>'
+      : '';
     let out=stackBlock(title+' <span class="card-note" style="font-weight:400">· '+fmt(imp.totalHours,"h")+
-      ' h de espera no período</span>',items,"h");
+      ' h de espera no board</span>'+ctx,items,"h");
     let bars='<div class="chart-wrap" style="margin-top:14px"><div class="chart-title" style="margin-bottom:12px">Horas por motivo</div>';
     shown.forEach((sl,i)=>{bars+='<div class="hbar-row"><span class="hbar-name"><i style="background:'+color(sl,i)+
       '"></i>'+escHtml(sl.label)+'</span><div class="bar-track"><div class="bar-fill" style="width:'+

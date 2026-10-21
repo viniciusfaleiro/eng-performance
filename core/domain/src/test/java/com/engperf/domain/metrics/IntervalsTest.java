@@ -108,4 +108,41 @@ class IntervalsTest {
   void hoursConvertFromMilliseconds() {
     assertThat(new Interval(0, 3_600_000).hours()).isEqualTo(1.0);
   }
+
+  @Test
+  void slicingCutsAtEveryBoundaryTheCutsIntroduce() {
+    List<Interval> base = List.of(new Interval(0, 100));
+    List<Interval> sliced =
+        Intervals.slice(
+            base, List.of(List.of(new Interval(20, 60)), List.of(new Interval(40, 80))));
+
+    assertThat(sliced)
+        .containsExactly(
+            new Interval(0, 20),
+            new Interval(20, 40),
+            new Interval(40, 60),
+            new Interval(60, 80),
+            new Interval(80, 100));
+  }
+
+  /** Trecho fora da base não vira fatia: o corte não inventa tempo que a base não tem. */
+  @Test
+  void slicingKeepsOnlyWhatTheBaseCovers() {
+    List<Interval> sliced =
+        Intervals.slice(
+            List.of(new Interval(0, 10), new Interval(20, 30)),
+            List.of(List.of(new Interval(5, 25))));
+
+    assertThat(sliced)
+        .containsExactly(
+            new Interval(0, 5), new Interval(5, 10), new Interval(20, 25), new Interval(25, 30));
+  }
+
+  @Test
+  void coverageIsWholeContainment() {
+    List<Interval> blocked = List.of(new Interval(0, 10));
+    assertThat(Intervals.covers(blocked, new Interval(2, 8))).isTrue();
+    assertThat(Intervals.covers(blocked, new Interval(8, 12))).isFalse();
+    assertThat(Intervals.covers(List.of(), new Interval(0, 1))).isFalse();
+  }
 }

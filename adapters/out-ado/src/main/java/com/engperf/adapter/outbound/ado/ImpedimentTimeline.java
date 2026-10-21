@@ -172,28 +172,46 @@ final class ImpedimentTimeline {
     if (inside.isEmpty()) {
       return Map.of();
     }
+    Map<String, List<Interval>> clipped = new LinkedHashMap<>();
+    byReason.forEach(
+        (reason, intervals) -> {
+          List<Interval> within = Intervals.union(clipAll(intervals, windows));
+          if (!within.isEmpty()) {
+            clipped.put(reason, within);
+          }
+        });
+
     Map<String, Double> out = new LinkedHashMap<>();
-    List<Interval> accounted = new ArrayList<>();
     double unnamed = 0;
-    for (Map.Entry<String, List<Interval>> e : byReason.entrySet()) {
-      List<Interval> clipped = Intervals.union(clipAll(e.getValue(), windows));
-      double hours = hours(clipped);
-      if (hours <= 0) {
+    // Trecho a trecho, dividido pelos motivos que o cobrem. Somar cada motivo inteiro, como antes,
+    // fazia dez horas sob duas tags virarem vinte: os motivos passavam da espera do item, e o
+    // excedente sumia no truncamento do residual — a quebra parecia fechar enquanto estava errada.
+    for (Interval slice : Intervals.slice(inside, clipped.values())) {
+      List<String> covering = new ArrayList<>();
+      clipped.forEach(
+          (reason, intervals) -> {
+            if (Intervals.covers(intervals, slice)) {
+              covering.add(reason);
+            }
+          });
+      double hours = slice.hours();
+      if (covering.isEmpty()) {
+        // Impedimento sem tag nenhuma — o campo marcado, tipicamente — vai para o mesmo bucket da
+        // tag sem motivo: as duas dizem "travou" sem dizer no quê.
+        unnamed += hours;
         continue;
       }
-      accounted.addAll(clipped);
-      if (NO_REASON.equals(e.getKey())) {
-        unnamed += hours;
-      } else {
-        out.put(e.getKey(), hours);
+      double each = hours / covering.size();
+      for (String reason : covering) {
+        if (NO_REASON.equals(reason)) {
+          unnamed += each;
+        } else {
+          out.merge(reason, each, Double::sum);
+        }
       }
     }
-    // O que sobrou é impedimento sem tag nenhuma — o campo marcado, tipicamente — e vai para o
-    // mesmo bucket da tag sem motivo: as duas dizem "travou" sem dizer no quê. Sempre por último,
-    // para que a quebra leia primeiro o que o time nomeou.
-    double unaccounted = unnamed + hours(Intervals.subtract(inside, accounted));
-    if (unaccounted > 0) {
-      out.put(NO_REASON, unaccounted);
+    if (unnamed > 0) {
+      out.put(NO_REASON, unnamed); // sempre por último: primeiro o que o time nomeou
     }
     return out;
   }

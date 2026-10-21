@@ -19,11 +19,18 @@ import com.engperf.domain.metrics.Period;
 import com.engperf.domain.metrics.WorkTypeFilter;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Catálogo de uma métrica só, com as seleções que o controller recebeu guardadas para conferência.
  */
 final class FakeMetrics implements MetricsQueryUseCase {
+
+  @Override
+  public Map<String, Double> phaseHours(
+      String nodeId, Period period, WorkTypeFilter workTypes, ContainerFilter containers) {
+    return Map.of();
+  }
 
   static final MetricDefinition DEF =
       new MetricDefinition(
