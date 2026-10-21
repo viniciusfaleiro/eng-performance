@@ -134,4 +134,23 @@ class ComparisonHeatmapApiTest {
                 .requestAttr(AuthWeb.USER, user(admin)))
         .andExpect(status().isBadRequest());
   }
+
+  /**
+   * Chegar a um agregado não pode virar caminho para o lado: o membro abre a organização, lê o
+   * número dela, e entre as linhas comparadas vê só o que já podia abrir. Sem isso, subir um nível
+   * entregaria todos os times da empresa numa tabela.
+   */
+  @Test
+  void aMemberOpeningTheOrganisationSeesOnlyRowsAlreadyInScope() throws Exception {
+    AccessScope member =
+        new AccessScope(false, false, true, Set.of("v:pag"), Set.of("t:checkout"), Set.of("p:ana"));
+
+    mvc.perform(
+            get("/api/comparison/heatmap?node=all&freq=Mensal")
+                .requestAttr(AuthWeb.USER, user(member)))
+        .andExpect(status().isOk())
+        .andExpect(
+            jsonPath("$.rows[*].nodeId")
+                .value(Matchers.everyItem(Matchers.not(Matchers.is("t:core")))));
+  }
 }

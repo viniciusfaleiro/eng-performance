@@ -63,14 +63,14 @@ class AccessPolicyTest {
   }
 
   @Test
-  void teamManagerSeesTeamAndItsPeopleOnly() {
+  void teamManagerSeesTeamAndItsPeopleAndNothingBeside() {
     AccessScope s = scope(Role.MANAGER, "p:carla"); // manages t:antifraude
     assertThat(s.canConfigure()).isFalse();
     assertThat(s.canView("t:antifraude")).isTrue();
     assertThat(s.canViewIndividual("p:diego")).isTrue(); // coaching own team
     assertThat(s.canViewIndividual("p:carla")).isTrue(); // self
-    assertThat(s.canView("t:checkout")).isFalse();
-    assertThat(s.canView("all")).isFalse();
+    assertThat(s.canView("t:checkout")).as("time irmão").isFalse();
+    assertThat(s.canView("all")).as("o agregado da organização é régua, não vizinho").isTrue();
   }
 
   @Test
@@ -83,15 +83,28 @@ class AccessPolicyTest {
     assertThat(s.canView("v:pag")).isFalse();
   }
 
+  /**
+   * A linha para um membro é <strong>lateral, não vertical</strong>: a cadeia acima é o que dá
+   * sentido ao próprio número — 40 h de ciclo não dizem nada sozinhas e dizem tudo ao lado de um
+   * time em 38 e de uma organização em 20 —, enquanto o time vizinho e o painel do colega são a
+   * comparação que o produto recusa.
+   */
   @Test
-  void memberSeesOwnDataAndTeamAggregateOnly() {
-    AccessScope s = scope(Role.CONTRIBUTOR, "p:bruno"); // member of t:checkout
-    assertThat(s.canView("t:checkout")).isTrue();
+  void memberSeesOwnDataAndEveryAggregateAbove() {
+    AccessScope s = scope(Role.CONTRIBUTOR, "p:bruno"); // member of t:checkout, vertical v:pag
     assertThat(s.canViewIndividual("p:bruno")).isTrue();
-    assertThat(s.canViewIndividual("p:ana")).isFalse(); // teammate — coaching-only
-    assertThat(s.canView("t:antifraude")).isFalse();
-    assertThat(s.canView("all")).isFalse();
+    assertThat(s.canView("t:checkout")).as("o próprio time").isTrue();
+    assertThat(s.canView("v:pag")).as("a vertical do time").isTrue();
+    assertThat(s.canView("all")).as("o agregado da organização").isTrue();
     assertThat(s.canConfigure()).isFalse();
+  }
+
+  @Test
+  void memberCannotStepSideways() {
+    AccessScope s = scope(Role.CONTRIBUTOR, "p:bruno");
+    assertThat(s.canViewIndividual("p:ana")).as("colega de time").isFalse();
+    assertThat(s.canView("t:antifraude")).as("time irmão na mesma vertical").isFalse();
+    assertThat(s.canView("v:plat")).as("outra vertical").isFalse();
   }
 
   @Test
