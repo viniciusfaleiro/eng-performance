@@ -101,17 +101,13 @@ public final class AdoEventSource implements AdoEventSourcePort {
     for (Repository repo : repos) {
       String ctx = repo.organization() + "/" + repo.project() + "/" + repo.key();
       LOG.info("ADO sync: repositório {} — PRs + commits", ctx);
-      String base =
-          normOrg(repo.organization())
-              + "/"
-              + enc(repo.project())
-              + "/_apis/git/repositories/"
-              + enc(repo.key());
+      RepoUrls urls = RepoUrls.of(repo);
+      String base = urls.api();
       try {
         Map<String, Set<WorkType>> typesByCommit = new HashMap<>();
         prs +=
             PullRequestSync.fetch(
-                client, repo, base, since, token, comments, events, typesByCommit);
+                client, repo, urls, since, token, comments, events, typesByCommit);
         progress.update("prs", "prs", prs);
         for (JsonNode c :
             arr(

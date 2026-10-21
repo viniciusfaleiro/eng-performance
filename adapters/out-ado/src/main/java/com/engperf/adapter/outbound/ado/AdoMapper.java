@@ -41,7 +41,8 @@ final class AdoMapper {
       boolean aiAssisted,
       VoteHistory votes,
       OptionalInt changedFiles,
-      Set<WorkType> workTypes) {
+      Set<WorkType> workTypes,
+      String webBase) {
     Instant created = instant(pr, "creationDate");
     Instant closed = pr.hasNonNull("closedDate") ? instant(pr, "closedDate") : created;
     double cycleH = hoursBetween(created, closed);
@@ -52,7 +53,7 @@ final class AdoMapper {
     detail.put("first_pass", votes.firstPass() ? "1" : "0");
     detail.put("repo", pr.path("repository").path("name").asText(""));
     detail.put("summary", pr.path("title").asText(""));
-    detail.put("url", webLink(pr));
+    detail.put("url", prLink(webBase, pr));
     applyCommitStats(detail, commits, cycleH);
     AdoWorkTypes.apply(detail, workTypes);
     // Só quando existe. Sem a contagem o PR cai fora do PR Size e derruba a cobertura dele, que é a
@@ -123,7 +124,8 @@ final class AdoMapper {
    * approved shows only the approval on the PR object, and reporting just that would erase the
    * review work that actually happened.
    */
-  static List<RawEvent> reviews(JsonNode pr, VoteHistory votes, Set<WorkType> workTypes) {
+  static List<RawEvent> reviews(
+      JsonNode pr, VoteHistory votes, Set<WorkType> workTypes, String webBase) {
     List<RawEvent> out = new ArrayList<>();
     String author = identity(pr.path("createdBy"));
     Instant when =
@@ -141,7 +143,7 @@ final class AdoMapper {
       detail.put("author", author);
       // A review has no standalone record in Azure DevOps — its link is the pull request's.
       detail.put("summary", pr.path("title").asText(""));
-      detail.put("url", webLink(pr));
+      detail.put("url", prLink(webBase, pr));
       AdoWorkTypes.apply(detail, workTypes);
       out.add(
           new RawEvent(
@@ -331,6 +333,23 @@ final class AdoMapper {
 
   private static String identityEmail(JsonNode author) {
     return author.path("email").asText(author.path("name").asText(""));
+  }
+
+  /**
+   * The pull request's address, built from the repository and the id.
+   *
+   * <p>Not read from {@code _links.web.href}: the list endpoint the sync reads does not carry it,
+   * so every pull request came out with an empty address and every drill-down row unclickable — a
+   * list that exists to be checked item by item, and whose items did not open. Building it also
+   * makes the address the same in every environment, instead of present or absent depending on
+   * which endpoint answered.
+   */
+  private static String prLink(String webBase, JsonNode pr) {
+    String id = pr.path("pullRequestId").asText("");
+    if (webBase == null || webBase.isBlank() || id.isEmpty()) {
+      return webLink(pr); // sem base conhecida, o que o payload tiver é melhor que nada
+    }
+    return webBase + "/pullrequest/" + id;
   }
 
   private static String webLink(JsonNode node) {
