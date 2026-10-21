@@ -26,12 +26,14 @@ final class PullRequestSync {
   static int fetch(
       AdoRestClient client,
       Repository repo,
-      String base,
+      RepoUrls urls,
       Instant since,
       String token,
       CommitComments comments,
       List<RawEvent> events,
       Map<String, Set<WorkType>> typesByCommit) {
+    String base = urls.api();
+    String webBase = urls.web();
     List<JsonNode> recent = new ArrayList<>();
     for (JsonNode pr :
         AdoEventSource.arr(
@@ -75,8 +77,9 @@ final class PullRequestSync {
               // Memoizado por commit: a varredura de IA acima e esta contagem leem a mesma
               // resposta, então o commit é buscado uma vez e não duas.
               comments.changedFiles(base, prCommits, token),
-              types));
-      events.addAll(AdoMapper.reviews(pr, votes, types));
+              types,
+              webBase));
+      events.addAll(AdoMapper.reviews(pr, votes, types, webBase));
     }
     return recent.size();
   }

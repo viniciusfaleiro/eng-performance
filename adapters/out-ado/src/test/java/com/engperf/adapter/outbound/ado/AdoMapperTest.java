@@ -24,6 +24,7 @@ class AdoMapperTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final ImpedimentConvention OFF = ImpedimentConvention.off();
+  private static final String WEB = "https://dev.azure.com/org/Proj/_git/checkout-service";
 
   /** PR sem contagem de arquivos — o caso em que o tamanho é "sem dado". */
   private static final OptionalInt NO_FILES = OptionalInt.empty();
@@ -40,7 +41,8 @@ class AdoMapperTest {
                 + "\"changeCounts\":{\"Add\":10,\"Edit\":5,\"Delete\":2}},"
                 + "{\"author\":{\"date\":\"2026-06-10T13:00:00Z\"},"
                 + "\"changeCounts\":{\"Add\":3,\"Edit\":0,\"Delete\":0}}]}");
-    RawEvent e = AdoMapper.pullRequest(pr, commits, false, APPROVED, OptionalInt.of(7), Set.of());
+    RawEvent e =
+        AdoMapper.pullRequest(pr, commits, false, APPROVED, OptionalInt.of(7), Set.of(), WEB);
 
     assertThat(e.id()).isEqualTo("pr:42");
     assertThat(e.type()).isEqualTo(EventType.PR);
@@ -66,11 +68,13 @@ class AdoMapperTest {
     JsonNode commits = json("{\"value\":[]}");
 
     assertThat(
-            AdoMapper.pullRequest(fixture("pr.json"), commits, true, APPROVED, NO_FILES, Set.of())
+            AdoMapper.pullRequest(
+                    fixture("pr.json"), commits, true, APPROVED, NO_FILES, Set.of(), WEB)
                 .ai())
         .isTrue();
     assertThat(
-            AdoMapper.pullRequest(fixture("pr.json"), commits, false, APPROVED, NO_FILES, Set.of())
+            AdoMapper.pullRequest(
+                    fixture("pr.json"), commits, false, APPROVED, NO_FILES, Set.of(), WEB)
                 .ai())
         .isFalse();
   }
@@ -90,7 +94,8 @@ class AdoMapperTest {
             false,
             rejectedThenApproved,
             NO_FILES,
-            Set.of());
+            Set.of(),
+            WEB);
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -104,7 +109,8 @@ class AdoMapperTest {
             false,
             VoteHistory.UNKNOWN,
             NO_FILES,
-            Set.of());
+            Set.of(),
+            WEB);
 
     assertThat(e.detail().get("first_pass")).isEqualTo("0");
   }
@@ -113,7 +119,7 @@ class AdoMapperTest {
   @Test
   void aChangeRequestIsNotErasedByALaterApproval() {
     List<RawEvent> reviews =
-        AdoMapper.reviews(fixture("pr.json"), new VoteHistory(true, true), Set.of());
+        AdoMapper.reviews(fixture("pr.json"), new VoteHistory(true, true), Set.of(), WEB);
 
     assertThat(reviews)
         .singleElement()
@@ -124,7 +130,7 @@ class AdoMapperTest {
   void pullRequestWithoutCommitsIsExcludedFromFlowEfficiency() {
     RawEvent e =
         AdoMapper.pullRequest(
-            fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED, NO_FILES, Set.of());
+            fixture("pr.json"), json("{\"value\":[]}"), false, APPROVED, NO_FILES, Set.of(), WEB);
     assertThat(e.detail().get("num")).isEqualTo("0"); // num=den=0 → contributes nothing to ratio
     assertThat(e.detail().get("den")).isEqualTo("0");
     assertThat(e.detail()).doesNotContainKey("files"); // size is "no data", not a fake zero
@@ -132,7 +138,7 @@ class AdoMapperTest {
 
   @Test
   void reviewsMapReviewerVotesAndSkipNoVote() {
-    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), APPROVED, Set.of());
+    List<RawEvent> reviews = AdoMapper.reviews(fixture("pr.json"), APPROVED, Set.of(), WEB);
 
     assertThat(reviews).hasSize(1); // carla (vote 0) is skipped
     RawEvent r = reviews.get(0);

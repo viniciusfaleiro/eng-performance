@@ -1,0 +1,10 @@
+{
+  "pullRequestId": 4711,
+  "title": "feat: retry no gateway de pagamento",
+  "status": "completed",
+  "createdBy": { "uniqueName": "ana@empresa.com" },
+  "creationDate": "2026-06-10T09:00:00Z",
+  "closedDate": "2026-06-10T15:00:00Z",
+  "repository": { "name": "checkout-service" },
+  "reviewers": [{ "uniqueName": "bruno@empresa.com", "vote": 10, "commentCount": 2 }]
+}
