@@ -16,7 +16,13 @@ import java.util.Set;
  * <p>{@code admin} grants configuration + everything; {@code exec} grants org-wide read of
  * aggregates (no individuals, no config). Otherwise the scope is derived from the Person: manager
  * of a team sees the team and its individuals (coaching); manager of a vertical sees the vertical
- * with its teams aggregated; a member sees their own data and their team's aggregate.
+ * with its teams aggregated; a member sees their own data and <em>every aggregate above them</em> —
+ * team, vertical and organisation.
+ *
+ * <p>The line for a member is lateral, not vertical: the chain above is what gives their own number
+ * meaning, while a sibling team or a teammate's panel is the comparison the product refuses. That
+ * is why the organisation arrives as its own right and not as {@code orgWide}, which would have
+ * opened every team at once.
  */
 public final class AccessPolicy {
 
@@ -37,7 +43,16 @@ public final class AccessPolicy {
           .filter(p -> p.id().equals(personId))
           .findFirst()
           .flatMap(Person::currentTeamId)
-          .ifPresent(teamIds::add);
+          .ifPresent(
+              teamId -> {
+                teamIds.add(teamId);
+                // E a vertical desse time: a cadeia acima inteira, que é o que dá sentido ao
+                // próprio número. O lado continua fechado — nenhum time irmão entra aqui.
+                teams.stream()
+                    .filter(t -> t.id().equals(teamId))
+                    .findFirst()
+                    .ifPresent(t -> verticalIds.add(t.verticalId()));
+              });
 
       for (Team team : teams) {
         if (personId.equals(team.managerId())) {
@@ -60,6 +75,9 @@ public final class AccessPolicy {
         }
       }
     }
-    return new AccessScope(admin, orgWide, verticalIds, teamIds, personIds);
+    // O agregado da organização é régua, não vizinho: quem tem posição na estrutura pode lê-lo, e
+    // isso não abre nó nomeado nenhum.
+    boolean orgAggregate = personId != null;
+    return new AccessScope(admin, orgWide, orgAggregate, verticalIds, teamIds, personIds);
   }
 }
