@@ -176,19 +176,24 @@ final class MetricExplanations {
           Map.entry(
               "pr_size",
               new MetricExplanation(
-                  "A mediana de arquivos alterados por pull request, somando os commits dele. Não é"
-                      + " medida em linhas: o Azure DevOps não informa linhas adicionadas ou"
-                      + " removidas em nenhum lugar da API, só quantos itens cada commit mexeu.",
-                  "Pull requests do Azure Repos, pela contagem de alterações de cada commit, pedida"
-                      + " commit a commit.",
-                  "PRs concluídos no período cuja contagem foi obtida em todos os commits.",
-                  "PRs em que a contagem de algum commit não pôde ser lida — entram como sem dado e"
-                      + " derrubam a cobertura, em vez de receber um número substituto. Ressalva:"
-                      + " uma pasta criada conta como item alterado, então um commit que cria"
-                      + " diretórios lê um pouco maior que os arquivos que toca.",
+                  "A mediana de arquivos alterados por pull request — os arquivos do diff do PR,"
+                      + " os mesmos que a aba Files do Azure DevOps mostra. Não é medida em linhas:"
+                      + " o Azure DevOps não informa linhas adicionadas ou removidas em nenhum"
+                      + " lugar da API.",
+                  "Pull requests do Azure Repos, pelo diff da última iteração do PR contra a base —"
+                      + " uma leitura por PR, não commit a commit.",
+                  "PRs concluídos no período cujo diff pôde ser lido. Cada arquivo conta uma vez,"
+                      + " por mais commits que o tenham tocado, e commit de merge dentro do PR não"
+                      + " infla a conta: o que vale é o que o PR propõe, não o que a outra branch"
+                      + " trouxe junto.",
+                  "PRs cujo diff não pôde ser lido — entram como sem dado e derrubam a cobertura,"
+                      + " em vez de receber um número substituto. Entradas de pasta não contam.",
                   "Pelo instante em que o pull request foi fechado.",
-                  "PRs de 2, 6, 14 e 40 arquivos → mediana de 10 arquivos. Um PR de 3 commits que"
-                      + " toca 1 arquivo cada conta 3 arquivos, não 3 commits.")),
+                  "PRs de 2, 6, 14 e 40 arquivos → mediana de 10 arquivos.\n\nUm PR com 5 arquivos"
+                      + " na aba Files conta 5, mesmo que seus commits somados toquem milhares de"
+                      + " itens — era assim que um PR de 5 arquivos aparecia como 2309."
+                      + "\n\nPeríodos sincronizados antes desta regra mantêm o número antigo até"
+                      + " um reprocessamento dos eventos.")),
           // ---- Volume ----
           Map.entry(
               "commit_count",

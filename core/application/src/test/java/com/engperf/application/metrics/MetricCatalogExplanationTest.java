@@ -128,6 +128,12 @@ class MetricCatalogExplanationTest {
         .as("sem contagem é sem dado, e a ressalva da pasta fica junto")
         .containsIgnoringCase("sem dado")
         .containsIgnoringCase("pasta");
+    assertThat(e.rule())
+        .as("o número é o do diff do PR, que é o que a aba Files mostra")
+        .containsIgnoringCase("diff do PR");
+    assertThat(e.included())
+        .as("commit de merge não pode voltar a inflar sem que o texto fique obsoleto junto")
+        .containsIgnoringCase("merge");
   }
 
   /** Quem conta só item concluído tem de dizer isso na colocação no tempo. */

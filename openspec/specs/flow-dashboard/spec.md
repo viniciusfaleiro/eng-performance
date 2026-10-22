@@ -20,6 +20,11 @@ files**), computed from PR/commit events and clearly presented as diagnostics, n
 headline. Each metric SHALL report its value, correct-polarity evolution, and coverage for the
 requested node and frequency. Fluxo metrics carry no DORA benchmark tier.
 
+PR Size SHALL be the number of files in the **pull request's own diff** — the same figure the Files
+tab shows — and SHALL NOT be the sum of its commits' changed items. Summed that way, a merge commit
+inside the pull request dragged in thousands of files from another branch and a file touched five
+times counted five, which is how a five-file pull request came to be reported as 2309.
+
 PR Size SHALL be expressed in **changed files** and SHALL NOT be presented as changed lines. Line
 counts do not exist in the source: the Azure DevOps Git REST API reports counts of changed *items*
 and carries no added/deleted line figure anywhere in a commit. A metric labelled in lines while
@@ -45,6 +50,10 @@ screen.
 #### Scenario: Delivery metrics come from the board, not the PR
 - **WHEN** Cycle Time, Throughput and Flow Efficiency are computed for a node
 - **THEN** they are derived from the node's work items' state history, so work with no code is included and the PR window is not mistaken for the whole cycle
+
+#### Scenario: PR Size matches the Files tab
+- **WHEN** a pull request shows five files in the Files tab
+- **THEN** PR Size counts five for it, regardless of how many items its commits touched
 
 #### Scenario: PR Size is reported in files
 - **WHEN** PR Size is requested for a node

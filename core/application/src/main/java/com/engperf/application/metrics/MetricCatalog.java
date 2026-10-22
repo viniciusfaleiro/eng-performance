@@ -190,10 +190,13 @@ public final class MetricCatalog {
                       EventType.PR,
                       AttributionScope.PERSON,
                       Aggregation.MEDIAN,
-                      // Arquivos, e não linhas: linha alterada não existe no Git REST do Azure
-                      // DevOps — nem GitCommit, nem GitCommitRef, nem GitChange têm o campo. O que
-                      // a fonte oferece é contagem de itens alterados, e era isso que a métrica
-                      // media o tempo todo, com o rótulo errado.
+                      // Arquivos do diff do próprio PR — o número da aba Files —, e não a soma
+                      // dos commits: commit de merge dentro do PR trazia todos os arquivos da
+                      // outra branch, e arquivo tocado em cinco commits contava cinco. Um PR de 5
+                      // arquivos era reportado como 2309.
+                      //
+                      // E arquivos, não linhas: linha alterada não existe no Git REST do Azure
+                      // DevOps — nem GitCommit, nem GitCommitRef, nem GitChange têm o campo.
                       "arquivos",
                       Direction.LOWER_BETTER)
                   .reading("files"),

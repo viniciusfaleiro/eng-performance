@@ -2,7 +2,6 @@ package com.engperf.adapter.outbound.ado;
 
 import com.engperf.domain.metrics.RawEvent;
 import com.engperf.domain.metrics.WorkType;
-import com.engperf.domain.structure.Repository;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -25,11 +24,11 @@ final class PullRequestSync {
    */
   static int fetch(
       AdoRestClient client,
-      Repository repo,
       RepoUrls urls,
       Instant since,
       String token,
       CommitComments comments,
+      PullRequestFiles files,
       List<RawEvent> events,
       Map<String, Set<WorkType>> typesByCommit) {
     String base = urls.api();
@@ -49,7 +48,7 @@ final class PullRequestSync {
     PullRequestWorkTypes workTypes =
         PullRequestWorkTypes.resolve(
             client,
-            AdoEventSource.normOrg(repo.organization()),
+            urls.org(),
             base,
             recent.stream().map(p -> p.path("pullRequestId").asLong()).toList(),
             token,
@@ -74,9 +73,9 @@ final class PullRequestSync {
               prCommits,
               comments.anyAi(base, prCommits, token),
               votes,
-              // Memoizado por commit: a varredura de IA acima e esta contagem leem a mesma
-              // resposta, então o commit é buscado uma vez e não duas.
-              comments.changedFiles(base, prCommits, token),
+              // O diff do próprio PR, e não a soma dos commits: commit de merge trazia milhares
+              // de arquivos da outra branch, e arquivo tocado em cinco commits contava cinco.
+              files.count(base, prId, token),
               types,
               webBase));
       events.addAll(AdoMapper.reviews(pr, votes, types, webBase));
