@@ -293,37 +293,59 @@ parent that was deleted or lies outside the ingested scope costs nothing.
 - **THEN** the item is still ingested with the parent's identity recorded
 
 ### Requirement: A pull request records how many files it changed
-Pull request ingestion SHALL record the number of **files changed** by the pull request, summed over
-its commits, so that PR Size measures the size of the change rather than the number of commits.
+Pull request ingestion SHALL record the number of **files changed** by the pull request, taken from
+the pull request's **own diff** — the difference between the target branch and the pull request's
+**latest iteration**, which is what the Files tab shows — so that PR Size measures the change the
+pull request proposes.
 
-The count SHALL be obtained by asking Azure DevOps for each commit's change counts explicitly: the
-commit list endpoints do not carry them, and the single-commit endpoint returns them only when the
-change-count parameter is present. The smallest request that yields the figure SHALL be used — the
-returned change list may be truncated while the counts themselves are the true totals, so there is
-no reason to transfer the list.
+It SHALL NOT be summed over the pull request's commits. That sum inflated the figure by two
+independent routes: a merge commit inside the pull request carries every file coming from the other
+branch, thousands of them, none of which is that pull request's work; and a file touched in five
+commits counted five times. A pull request with five files in the Files tab was reported as 2309.
 
-A pull request SHALL be recorded **without** a file count when the count cannot be obtained for any
-of its commits, rather than with a partial sum. A sum missing one commit is indistinguishable from a
-genuine measurement, and the metric that reads it cannot tell that it is low.
+Only **files** SHALL be counted: entries describing a folder are not files, and a rename is one
+file however the change type is spelled.
 
-The per-commit request SHALL serve every purpose that needs the commit's full form, so that a commit
-needing both its untruncated message and its change counts is fetched once.
+The diff SHALL be read in full when it arrives in pages, so a long one is counted whole rather than
+cut at the first page.
 
-#### Scenario: A pull request's file count is recorded
-- **WHEN** a pull request's commits are ingested and their change counts are available
-- **THEN** the event records the total number of changed files
+A pull request SHALL be recorded **without** a file count when the diff cannot be obtained —
+no iteration, or a request that fails — rather than with a partial count or any substitute. A
+partial count is indistinguishable from a genuine measurement, and the metric that reads it cannot
+tell that it is low. A failure SHALL be logged with the pull request's id and SHALL NOT fail the
+sync.
 
-#### Scenario: A commit whose counts cannot be read leaves the pull request without a count
-- **WHEN** the change counts of one of a pull request's commits cannot be obtained
-- **THEN** the pull request is ingested with no file count rather than with the sum of the others
+Reading the diff SHALL NOT remove the per-commit request that serves the **AI detection**, which
+needs each commit's untruncated message; what changes is that the file count no longer depends on
+it.
 
-#### Scenario: One request per commit
-- **WHEN** a commit needs both its full message and its change counts
-- **THEN** it is fetched once and both are read from the same response
+#### Scenario: The count is the pull request's own diff
+- **WHEN** a pull request whose latest iteration changes five files is ingested, and its commits together touch thousands of items
+- **THEN** the event records five
 
-#### Scenario: A failed count does not fail the sync
-- **WHEN** the request for a commit's change counts fails
-- **THEN** the sync continues and the pull request is reported without a file count
+#### Scenario: A merge commit inside the pull request does not weigh
+- **WHEN** a pull request contains a merge commit carrying files from another branch
+- **THEN** those files are not counted, because they are not in the pull request's diff
+
+#### Scenario: A file touched in several commits counts once
+- **WHEN** the same file is changed by several commits of the pull request
+- **THEN** it counts once
+
+#### Scenario: The latest iteration is the one read
+- **WHEN** a pull request has several iterations
+- **THEN** the diff of the one with the highest id is counted
+
+#### Scenario: A paged diff is counted whole
+- **WHEN** the diff arrives in more than one page
+- **THEN** every page is read and the counts are added
+
+#### Scenario: Folder entries are not files
+- **WHEN** the diff contains entries describing folders
+- **THEN** they are not counted
+
+#### Scenario: A failed read leaves the pull request without a count
+- **WHEN** the iterations or the diff of a pull request cannot be read
+- **THEN** that pull request is ingested with no file count, the failure is logged with its id, and the sync continues
 
 ### Requirement: A pull request records the work items it is linked to
 Ingestion SHALL read the work items linked to each pull request and SHALL record, on the pull
