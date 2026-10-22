@@ -96,6 +96,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
       FailureLog failures) {
     Predicate<String> isAi = aiDetector(config.aiConvention());
     CommitComments comments = new CommitComments(client, isAi);
+    PullRequestFiles prFiles = new PullRequestFiles(client);
     int prs = 0;
     int commits = 0;
     for (Repository repo : repos) {
@@ -107,7 +108,7 @@ public final class AdoEventSource implements AdoEventSourcePort {
         Map<String, Set<WorkType>> typesByCommit = new HashMap<>();
         prs +=
             PullRequestSync.fetch(
-                client, repo, urls, since, token, comments, events, typesByCommit);
+                client, urls, since, token, comments, prFiles, events, typesByCommit);
         progress.update("prs", "prs", prs);
         for (JsonNode c :
             arr(
@@ -132,10 +133,12 @@ public final class AdoEventSource implements AdoEventSourcePort {
       }
     }
     LOG.info(
-        "ADO sync: {} PR(s) e {} commit(s) coletados ({} comentário(s) recarregado(s) por truncamento)",
+        "ADO sync: {} PR(s) e {} commit(s) coletados ({} comentário(s) recarregado(s) por"
+            + " truncamento, {} requisição(ões) de diff de PR)",
         prs,
         commits,
-        comments.reloaded());
+        comments.reloaded(),
+        prFiles.requests());
   }
 
   /** Per distinct (org, project): pipeline runs (deploys) + work items — project-scoped in ADO. */

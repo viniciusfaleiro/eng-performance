@@ -1,0 +1,10 @@
+{
+  "changeEntries": [
+    { "changeId": 1, "changeType": "edit", "item": { "path": "/src/Merchant.cs", "gitObjectType": "blob" } },
+    { "changeId": 2, "changeType": "add", "item": { "path": "/src/MerchantService.cs", "gitObjectType": "blob" } },
+    { "changeId": 3, "changeType": "rename, edit", "item": { "path": "/src/Handlers/Renamed.cs", "gitObjectType": "blob" } },
+    { "changeId": 4, "changeType": "edit", "item": { "path": "/tests/MerchantTests.cs", "gitObjectType": "blob" } },
+    { "changeId": 5, "changeType": "delete", "item": { "path": "/src/Old.cs", "gitObjectType": "blob" } },
+    { "changeId": 6, "changeType": "add", "item": { "path": "/src/Handlers", "gitObjectType": "tree", "isFolder": true } }
+  ]
+}
